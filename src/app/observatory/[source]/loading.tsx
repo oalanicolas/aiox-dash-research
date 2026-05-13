@@ -14,8 +14,8 @@ export default function ObservatoryLoading() {
           </div>
         </div>
       </header>
-      <section className="grid min-h-0 grid-cols-[340px_minmax(0,1fr)]">
-        <aside className="border-r border-[var(--rule)] bg-[var(--paper-alt)] p-5">
+      <section className="grid min-h-0 grid-cols-[minmax(0,1fr)] md:grid-cols-[288px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]">
+        <aside className="hidden border-r border-[var(--rule)] bg-[var(--paper-alt)] p-5 md:block">
           <div className="mb-6 h-3 w-28 bg-[var(--ink-faint)]" />
           <div className="space-y-3">
             {Array.from({ length: 8 }).map((_, index) => (

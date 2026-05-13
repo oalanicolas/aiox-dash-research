@@ -56,7 +56,7 @@ export function RunRow({
       data-slug={slug}
       onClick={onSelect}
       className={cn(
-        "group grid min-h-[82px] w-full grid-cols-[28px_minmax(0,1fr)_48px_58px] items-stretch gap-3 border-b border-l-[3px] border-b-[var(--rule-soft)] border-l-transparent px-5 py-0 text-left transition-colors hover:bg-[var(--paper-alt)]",
+        "group grid min-h-[78px] w-full grid-cols-[22px_minmax(0,1fr)_42px_50px] items-stretch gap-2 border-b border-l-[3px] border-b-[var(--rule-soft)] border-l-transparent px-3 py-0 text-left transition-colors hover:bg-[var(--paper-alt)] xl:min-h-[82px] xl:grid-cols-[28px_minmax(0,1fr)_48px_58px] xl:gap-3 xl:px-5",
         isActive && "border-l-[var(--lime-ink)] bg-[var(--paper-deep)]",
       )}
     >
@@ -76,7 +76,7 @@ export function RunRow({
       </span>
       <span className="min-w-0 self-center py-3">
         <span
-          className="block text-[13px] font-bold leading-[1.2] tracking-[-0.005em] text-[var(--ink)]"
+            className="block text-[12.5px] font-bold leading-[1.18] tracking-[-0.005em] text-[var(--ink)] xl:text-[13px]"
           style={{
             display: "-webkit-box",
             fontFamily: SANS_FONT,
@@ -117,7 +117,7 @@ export function RunRow({
                   style={{ background: colorForSubject(subject, idx) }}
                   aria-hidden="true"
                 />
-                <span className="truncate max-w-[64px]">{subject}</span>
+                <span className="max-w-[52px] truncate xl:max-w-[64px]">{subject}</span>
               </span>
             ))}
             {subjects.length > 5 && (
@@ -136,7 +136,7 @@ export function RunRow({
         {coverageInferred && cov != null && <InferredFlag size={9} title="Coverage inferido" />}
         <span
           className={cn(
-            "text-[20px] font-black leading-none tracking-[-0.04em]",
+            "text-[18px] font-black leading-none tracking-[-0.04em] xl:text-[20px]",
             cov == null
               ? "font-normal text-[var(--ink-dim)]"
               : coverageInferred
@@ -153,7 +153,7 @@ export function RunRow({
         <span className="block leading-none text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
           {dateMissing(date) ? (
             <span
-              className="text-[20px] font-black tracking-[-0.04em] text-[var(--ink-dim)]"
+              className="text-[18px] font-black tracking-[-0.04em] text-[var(--ink-dim)] xl:text-[20px]"
               style={{ fontFamily: DISPLAY_FONT }}
               aria-label="data ausente"
               title="data ausente"
@@ -162,7 +162,7 @@ export function RunRow({
             </span>
           ) : (
             <>
-              <span className="text-[20px] font-black tracking-[-0.04em] text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+              <span className="text-[18px] font-black tracking-[-0.04em] text-[var(--ink)] xl:text-[20px]" style={{ fontFamily: DISPLAY_FONT }}>
                 {fmtDateShort(date).split("/")[0]}
               </span>
               <span className="ml-1 text-[10px] uppercase tracking-[0.08em]">

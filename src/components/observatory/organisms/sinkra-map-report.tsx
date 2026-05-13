@@ -1559,23 +1559,14 @@ export function SinkraFlowReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
         />
 
         {playbook && (
-          <section className="mt-6 border border-[var(--ink)] bg-[var(--paper)]">
-          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--rule)] bg-[var(--paper-alt)] p-5">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-                FlowPlaybook · brandbook/flow-diagram
-              </p>
-              <h3 className="mt-1 text-[30px] font-black leading-none tracking-[-0.05em] text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
-                Gates → caminho → riscos → ações
-              </h3>
-            </div>
+          <section className="mt-6 min-w-0 overflow-hidden border border-[var(--ink)] bg-[var(--paper)]">
+          <SectionHead eyebrow="FlowPlaybook · brandbook/flow-diagram" title="Gates → caminho → riscos → ações" />
             <div className="flex flex-wrap justify-end gap-2 text-[11px] uppercase tracking-[0.1em]" style={{ fontFamily: MONO_FONT }}>
               <span className="border border-[var(--rule)] bg-[var(--paper)] px-2 py-1 text-[var(--ink-3)]">top: gates</span>
               <span className="border border-[var(--rule)] bg-[var(--paper)] px-2 py-1 text-[var(--ink-3)]">mid: path</span>
               <span className="border border-[var(--warning-ink)] bg-[var(--paper)] px-2 py-1 text-[var(--warning-ink)]">low: risk/fix</span>
             </div>
-          </div>
-          <div className="p-4">
+          <div className="aiox-responsive-canvas p-3 sm:p-4">
             <FlowPlaybook
               nodes={playbook.nodes}
               edges={playbook.edges}
@@ -2550,23 +2541,14 @@ export function SinkraOperationsReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
           </div>
         </section>
 
-        <section className="mt-6 border border-[var(--rule)] bg-[var(--paper)]">
-          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-[var(--rule)] bg-[var(--paper-alt)] p-5">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-                FlowMap · brandbook/flow-diagram
-              </p>
-              <h3 className="mt-1 text-[30px] font-black leading-none tracking-[-0.05em] text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
-                Lanes, gates, riscos e fila de ação
-              </h3>
-            </div>
+        <section className="mt-6 min-w-0 overflow-hidden border border-[var(--rule)] bg-[var(--paper)]">
+          <SectionHead eyebrow="FlowMap · brandbook/flow-diagram" title="Lanes, gates, riscos e fila de ação" />
             <div className="flex flex-wrap justify-end gap-2 text-[11px] uppercase tracking-[0.1em]" style={{ fontFamily: MONO_FONT }}>
               <span className="border border-[var(--rule)] bg-[var(--paper)] px-2 py-1 text-[var(--ink-3)]">lanes</span>
               <span className="border border-[var(--rule)] bg-[var(--paper)] px-2 py-1 text-[var(--ink-3)]">controls</span>
               <span className="border border-[var(--warning-ink)] bg-[var(--paper)] px-2 py-1 text-[var(--warning-ink)]">risk/fix</span>
             </div>
-          </div>
-          <div className="p-4">
+          <div className="aiox-responsive-canvas p-3 sm:p-4">
             <FlowMap
               groups={flowMap.groups}
               edges={flowMap.edges}
@@ -2767,7 +2749,7 @@ function NarrativeAct({ index, title, body }: { index: string; title: string; bo
 function DarkPin({ label, tone = "neutral" }: { label: string; tone?: Tone }) {
   return (
     <span className={cn(
-      "border px-3 py-1.5 text-[10px] uppercase tracking-[0.13em]",
+      "aiox-safe-text border px-3 py-1.5 text-[10px] uppercase tracking-[0.13em]",
       tone === "danger" ? "border-[#ef4444]/40 text-[#ef4444]" : tone === "good" ? "border-[#d1ff00]/30 text-[#d1ff00]" : "border-[#f5f4e7]/20 text-[#f5f4e7]/60",
     )} style={{ fontFamily: MONO_FONT }}>
       {label}
@@ -2777,9 +2759,9 @@ function DarkPin({ label, tone = "neutral" }: { label: string; tone?: Tone }) {
 
 function DarkStat({ label, value, tone = "neutral" }: { label: string; value: string; tone?: Tone }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-[#f5f4e7]/10 py-3 last:border-b-0">
-      <span className="text-[10px] uppercase tracking-[0.13em] text-[#f5f4e7]/45" style={{ fontFamily: MONO_FONT }}>{label}</span>
-      <span className={cn("text-[24px] font-black leading-none tracking-[-0.04em]", tone === "danger" ? "text-[#ef4444]" : tone === "warn" ? "text-[#f5b340]" : tone === "good" ? "text-[#d1ff00]" : "text-[#d1ff00]")} style={{ fontFamily: DISPLAY_FONT }}>
+    <div className="grid min-w-0 gap-1 border-b border-[#f5f4e7]/10 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+      <span className="aiox-safe-text text-[10px] uppercase tracking-[0.13em] text-[#f5f4e7]/45" style={{ fontFamily: MONO_FONT }}>{label}</span>
+      <span className={cn("aiox-safe-text text-[22px] font-black leading-none tracking-[-0.04em] sm:text-[24px]", tone === "danger" ? "text-[#ef4444]" : tone === "warn" ? "text-[#f5b340]" : tone === "good" ? "text-[#d1ff00]" : "text-[#d1ff00]")} style={{ fontFamily: DISPLAY_FONT }}>
         {value}
       </span>
     </div>
@@ -2827,9 +2809,9 @@ function DarkSignal({ label, value, tone = "neutral" }: { label: string; value: 
 
 function DarkSectionTitle({ eyebrow, title }: { eyebrow: string; title: string }) {
   return (
-    <header>
-      <p className="text-[11px] uppercase tracking-[0.16em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>◤ {eyebrow}</p>
-      <h3 className="mt-1 text-[30px] font-black leading-none tracking-[-0.05em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+    <header className="min-w-0">
+      <p className="aiox-panel-kicker">◤ {eyebrow}</p>
+      <h3 className="aiox-panel-title">
         {title}
       </h3>
     </header>
@@ -3348,20 +3330,20 @@ function MiniEmpty({ title }: { title: string }) {
 
 function HeroMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-[#f5f4e7]/8 p-3">
+    <div className="min-w-0 bg-[#f5f4e7]/8 p-3">
       <div className="text-[10.5px] uppercase tracking-[0.1em] text-[#f5f4e7]/58" style={{ fontFamily: MONO_FONT }}>{label}</div>
-      <div className="mt-1 truncate text-[18px] font-black text-[#f5f4e7]">{value}</div>
+      <div className="aiox-safe-text mt-1 text-[18px] font-black leading-tight text-[#f5f4e7]">{value}</div>
     </div>
   )
 }
 
 function MetricTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-[var(--paper)] px-4 py-3">
+    <div className="min-w-0 bg-[var(--paper)] px-4 py-3">
       <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
         {label}
       </div>
-      <div className="mt-1 truncate text-[21px] font-black leading-none text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+      <div className="aiox-safe-text mt-1 text-[21px] font-black leading-none text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
         {value}
       </div>
     </div>
@@ -3370,9 +3352,9 @@ function MetricTile({ label, value }: { label: string; value: string }) {
 
 function Kpi({ label, value, tone = "neutral" }: { label: string; value: string; tone?: Tone }) {
   return (
-    <div className="bg-[var(--paper)] p-4">
+    <div className="min-w-0 bg-[var(--paper)] p-4">
       <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{label}</div>
-      <div className={cn("mt-1 text-[30px] font-black leading-none tabular-nums", toneClass(tone))} style={{ fontFamily: DISPLAY_FONT }}>
+      <div className={cn("aiox-safe-text mt-1 text-[30px] font-black leading-none tabular-nums", toneClass(tone))} style={{ fontFamily: DISPLAY_FONT }}>
         {value}
       </div>
     </div>
@@ -3381,23 +3363,23 @@ function Kpi({ label, value, tone = "neutral" }: { label: string; value: string;
 
 function Signal({ label, value, tone = "neutral" }: { label: string; value: string; tone?: Tone }) {
   return (
-    <div className="bg-[var(--paper)] px-3 py-2">
+    <div className="min-w-0 bg-[var(--paper)] px-3 py-2">
       <div className="text-[10px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{label}</div>
-      <div className={cn("mt-0.5 truncate text-[17px] font-black", toneClass(tone))}>{value}</div>
+      <div className={cn("aiox-safe-text mt-0.5 text-[17px] font-black leading-tight", toneClass(tone))}>{value}</div>
     </div>
   )
 }
 
 function SectionHead({ eyebrow, title, meta, compact = false }: { eyebrow: string; title: string; meta?: string; compact?: boolean }) {
   return (
-    <header className={cn("flex flex-wrap items-end justify-between gap-3 border-b border-[var(--rule)] bg-[var(--paper-alt)]", compact ? "p-4" : "p-5")}>
-      <div>
+    <header className={cn("flex min-w-0 flex-wrap items-end justify-between gap-3 border-b border-[var(--rule)] bg-[var(--paper-alt)]", compact ? "p-4" : "p-5")}>
+      <div className="min-w-0">
         <p className="text-[11px] uppercase tracking-[0.13em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{eyebrow}</p>
-        <h3 className={cn("mt-1 font-black tracking-[-0.035em] text-[var(--ink)]", compact ? "text-[22px]" : "text-[28px]")} style={{ fontFamily: DISPLAY_FONT }}>
+        <h3 className={cn("aiox-safe-text mt-1 font-black leading-[1.02] tracking-[-0.035em] text-[var(--ink)]", compact ? "text-[22px]" : "text-[28px]")} style={{ fontFamily: DISPLAY_FONT }}>
           {title}
         </h3>
       </div>
-      {meta && <span className="text-[11px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{meta}</span>}
+      {meta && <span className="aiox-safe-text text-[11px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{meta}</span>}
     </header>
   )
 }
