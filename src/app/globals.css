@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "TASAOrbiterDisplay";
+  src: url("/fonts/TASAOrbiterDisplay-Bold.otf") format("opentype"),
+       local("TASA Orbiter Display"), local("TASAOrbiterDisplay");
+  font-weight: 700 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --background: oklch(0.9644 0.0172 103.15);
+  --foreground: oklch(0.235 0.0116 122.3);
+  --cream: oklch(0.9639 0.0158 106.69);
+  --cream-alt: oklch(0.9644 0.0172 103.15);
+  --border: rgba(156, 156, 156, 0.24);
+  --border-subtle: rgba(156, 156, 156, 0.12);
+  --border-medium: rgba(156, 156, 156, 0.35);
+  --primary: oklch(0.934 0.2264 121.95);
+  --primary-foreground: oklch(0.235 0.0116 122.3);
+  --secondary: oklch(0.9252 0.0174 103.16);
+  --secondary-foreground: oklch(0.235 0.0116 122.3);
+  --muted: oklch(0.9252 0.0174 103.16);
+  --muted-foreground: oklch(0.5241 0.0183 107.02);
+  --accent: rgba(209, 255, 0, 0.15);
+  --accent-foreground: oklch(0.6801 0.1625 120.61);
+  --warning-ink: oklch(0.48 0.13 70.08);
+  --radius: 0px;
+
+  --bb-lime: oklch(0.934 0.2264 121.95);
+  --bb-dark: oklch(0.1149 0 0);
+  --bb-surface: oklch(0.1693 0.0041 285.95);
+  --bb-border: rgba(156, 156, 156, 0.15);
+  --bb-cream: oklch(0.9639 0.0158 106.69);
+  --bb-dim: rgba(245, 244, 231, 0.4);
+  --bb-accent-rgb: 209, 255, 0;
+  --bb-error: oklch(0.6368 0.2078 25.33);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
