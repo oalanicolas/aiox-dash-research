@@ -17,6 +17,7 @@ import {
 import type {
   ObservatoryAdapterMeta,
   ObservatoryData,
+  ReaderMode,
 } from "@/components/observatory/foundations/types"
 import { getBenchDashboardData } from "./bench-dashboard.server"
 import { getResearchObservatoryData } from "./research-observatory.server"
@@ -47,12 +48,23 @@ export type ObservatoryLoaderParams = {
   source: ObservatorySource
   slug?: string
   file?: string
+  view?: ReaderMode
 }
 
 export type ObservatoryLoaderResult = {
   data: ObservatoryData
   meta: ObservatoryAdapterMeta
 }
+
+const SOURCE_CACHE_TTL_MS = 5_000
+
+let sourceAvailabilityCache:
+  | {
+      cwd: string
+      expiresAt: number
+      sources: Array<[ObservatorySource, string]>
+    }
+  | null = null
 
 function findWorkspaceRoot(startPath: string) {
   let cursor = startPath
@@ -80,13 +92,25 @@ function isDirectory(targetPath: string) {
 }
 
 export function getAvailableObservatorySources(): Array<[ObservatorySource, string]> {
-  const root = findWorkspaceRoot(process.cwd())
+  const now = Date.now()
+  const cwd = process.cwd()
+  if (sourceAvailabilityCache && sourceAvailabilityCache.cwd === cwd && sourceAvailabilityCache.expiresAt > now) {
+    return sourceAvailabilityCache.sources
+  }
+
+  const root = findWorkspaceRoot(cwd)
   const sourcePaths: Record<ObservatorySource, string> = {
     research: path.join(root, "docs", "research"),
     bench: path.join(root, "docs", "bench"),
     "sinkra-maps": path.join(root, "outputs", "sinkra-squad"),
   }
-  return OBSERVATORY_SOURCE_LABELS.filter(([source]) => isDirectory(sourcePaths[source]))
+  const sources = OBSERVATORY_SOURCE_LABELS.filter(([source]) => isDirectory(sourcePaths[source]))
+  sourceAvailabilityCache = {
+    cwd,
+    expiresAt: now + SOURCE_CACHE_TTL_MS,
+    sources,
+  }
+  return sources
 }
 
 export function isObservatorySourceAvailable(source: ObservatorySource) {
@@ -110,7 +134,7 @@ export async function getObservatoryData(
       return { data: mapBenchToObservatory(native), meta: benchAdapterMeta }
     }
     case "sinkra-maps": {
-      const native = await getSinkraMapsObservatoryData(params.slug, params.file)
+      const native = await getSinkraMapsObservatoryData(params.slug, params.file, params.view)
       return { data: mapSinkraMapsToObservatory(native), meta: sinkraMapsAdapterMeta }
     }
     default: {

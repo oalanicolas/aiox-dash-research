@@ -4,6 +4,7 @@ import { existsSync } from "node:fs"
 import { readdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import YAML from "yaml"
+import type { ReaderMode } from "@/components/observatory/foundations/types"
 
 export type SinkraMapDocument = {
   id: string
@@ -30,6 +31,15 @@ export type SinkraMapRunSummary = {
   hasProcess: boolean
   hasDeps: boolean
   hasDomain: boolean
+  hasObservatory: boolean
+  hasAutomation: boolean
+  hasRaci: boolean
+  hasGaps: boolean
+  hasCompliance: boolean
+  hasComposition: boolean
+  hasTokens: boolean
+  hasState: boolean
+  hasMetrics: boolean
 }
 
 export type SinkraWorkflowStep = {
@@ -335,6 +345,7 @@ export type SinkraMapsObservatoryData = {
 const CONTENT_LIMIT = 50000
 const INDEX_CACHE_TTL_MS = 5 * 60_000
 const RUN_CACHE_TTL_MS = 5 * 60_000
+const INDEX_BUILD_CONCURRENCY = 24
 const KEY_FILES = [
   ["observatory_map.yaml", "Observatory"],
   ["composition_map.yaml", "Composition"],
@@ -373,6 +384,77 @@ const runCache = new Map<
     structured: SinkraMapStructured
   }
 >()
+
+const VIEW_FILE_SETS: Partial<Record<ReaderMode, string[]>> = {
+  map: [
+    "observatory_map.yaml",
+    "workflow_definition.yaml",
+    "quality_gates.yaml",
+    "score_card.yaml",
+    "process_map.yaml",
+    "domain_map.yaml",
+    "dependency_graph.yaml",
+  ],
+  flow: [
+    "observatory_map.yaml",
+    "workflow_definition.yaml",
+    "dependency_graph.yaml",
+    "composition_map.yaml",
+    "token_assignments.yaml",
+  ],
+  automation: [
+    "observatory_map.yaml",
+    "task_definitions.yaml",
+    "automation_specs.yaml",
+    "capability_gaps.yaml",
+  ],
+  governance: [
+    "observatory_map.yaml",
+    "quality_gates.yaml",
+    "score_card.yaml",
+    "compliance_score.yaml",
+  ],
+  accountability: [
+    "observatory_map.yaml",
+    "task_definitions.yaml",
+    "raci_matrix.yaml",
+  ],
+  gaps: [
+    "observatory_map.yaml",
+    "capability_gaps.yaml",
+    "compliance_score.yaml",
+    "score_card.yaml",
+  ],
+  evidence: [
+    "observatory_map.yaml",
+    "sinkra-state.json",
+    "metrics.jsonl",
+    "score_card.yaml",
+  ],
+  score: [
+    "score_card.yaml",
+    "compliance_score.yaml",
+  ],
+  document: [],
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(items.length)
+  let cursor = 0
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor
+      cursor += 1
+      results[index] = await mapper(items[index], index)
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
 
 function findRepoRoot(startPath: string) {
   let cursor = startPath
@@ -1249,7 +1331,7 @@ async function getSinkraMapIndex(root: string): Promise<{
   }
 
   const slugs = await listRunDirs(root)
-  const summaries = await Promise.all(slugs.map((s) => buildSummary(root, s)))
+  const summaries = await mapWithConcurrency(slugs, INDEX_BUILD_CONCURRENCY, (s) => buildSummary(root, s))
   indexCache = {
     root,
     expiresAt: now + INDEX_CACHE_TTL_MS,
