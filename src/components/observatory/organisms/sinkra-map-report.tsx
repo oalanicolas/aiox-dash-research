@@ -379,7 +379,7 @@ export function SinkraMapReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific["
   if (pilot) {
     return (
       <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-        <article className="mx-auto max-w-[1440px]" style={SINKRA_DARK_THEME}>
+        <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
           <ExecutiveDarkDeck pilot={pilot} sinkra={sinkra} />
         </article>
       </LightScrollArea>
@@ -388,7 +388,7 @@ export function SinkraMapReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific["
 
   return (
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-      <article className="mx-auto max-w-[1440px]" style={SINKRA_DARK_THEME}>
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
         <section className="grid overflow-hidden border border-[#f5f4e7]/16 bg-[#050505] lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="bg-[#10110d] p-6 text-[#f5f4e7] sm:p-8">
             <p className="text-[11px] uppercase tracking-[0.16em] text-[#f5f4e7]/62" style={{ fontFamily: MONO_FONT }}>
@@ -783,7 +783,7 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
             <DarkPin label={sinkra?.mode || "greenfield"} />
             <DarkPin label="outputs/sinkra-squad" />
           </div>
-          <h3 className="max-w-[1040px] text-[54px] font-black leading-[0.88] tracking-[-0.065em] sm:text-[82px]" style={{ fontFamily: DISPLAY_FONT }}>
+          <h3 className="max-w-[1040px] text-[38px] font-black leading-[0.9] tracking-[-0.055em] sm:text-[58px] lg:text-[82px]" style={{ fontFamily: DISPLAY_FONT }}>
             Score {compliance?.currentScore ?? sinkra?.score.score ?? "--"}.<br />
             Verdict <span className="text-[#ef4444]">{vetoActive ? "VETO" : "OK"}</span>.<br />
             <span className="text-[#d1ff00]">{vetoActive ? "Blueprint aprovado, produção não." : "Mapa pronto para operação assistida."}</span>
@@ -827,7 +827,7 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
 
       <div className="border-b border-[#f5f4e7]/10 px-5 py-12">
         <ReportBlockMarker index="00" label="Estado em 3 atos" meta="onde estamos / o que fazer / onde chegaremos" />
-        <h3 className="mt-5 max-w-[920px] text-[44px] font-black leading-[0.95] tracking-[-0.055em] text-[#f5f4e7] sm:text-[58px]" style={{ fontFamily: DISPLAY_FONT }}>
+        <h3 className="mt-5 max-w-[920px] text-[34px] font-black leading-[0.98] tracking-[-0.045em] text-[#f5f4e7] sm:text-[48px] lg:text-[58px]" style={{ fontFamily: DISPLAY_FONT }}>
           A narrativa do veto <span className="text-[#d1ff00]">em 3 colunas.</span>
         </h3>
         <p className="mt-4 max-w-[760px] text-[17px] leading-[1.62] text-[#f5f4e7]/58">
@@ -879,7 +879,7 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
 
       <div className="border-y border-[#f5f4e7]/10 px-5 py-12">
         <ReportBlockMarker index="02" label="Visual intelligence lab" meta="gráficos-alvo para evoluir o mapeamento" />
-        <h3 className="mt-5 max-w-[980px] text-[44px] font-black leading-[0.95] tracking-[-0.055em] text-[#f5f4e7] sm:text-[58px]" style={{ fontFamily: DISPLAY_FONT }}>
+        <h3 className="mt-5 max-w-[980px] text-[34px] font-black leading-[0.98] tracking-[-0.045em] text-[#f5f4e7] sm:text-[48px] lg:text-[58px]" style={{ fontFamily: DISPLAY_FONT }}>
           O painel deve revelar padrões, <span className="text-[#d1ff00]">não só listar arquivos.</span>
         </h3>
         <p className="mt-4 max-w-[780px] text-[17px] leading-[1.62] text-[#f5f4e7]/58">
@@ -950,7 +950,8 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
       <div className="grid gap-px bg-[#f5f4e7]/10 xl:grid-cols-[minmax(0,1.1fr)_minmax(420px,0.9fr)]">
         <div className="bg-[#050505] p-5">
           <DarkSectionTitle eyebrow="Remediation gantt" title="Quando o veto sai" />
-          <div className="mt-5 border border-[#f5f4e7]/10">
+          <div className="mt-5 overflow-x-auto border border-[#f5f4e7]/10">
+            <div className="min-w-[720px]">
             <div className="grid grid-cols-[220px_repeat(7,minmax(56px,1fr))] border-b border-[#f5f4e7]/10 bg-[#161618] text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/45" style={{ fontFamily: MONO_FONT }}>
               <div className="p-3">Ação</div>
               {["Hoje", "S+1", "S+2", "S+3", "S+4", "S+5", "S+6"].map((week) => <div key={week} className="border-l border-[#f5f4e7]/10 p-3 text-center">{week}</div>)}
@@ -978,6 +979,7 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
                 </div>
               )
             })}
+            </div>
           </div>
         </div>
 
@@ -1532,7 +1534,7 @@ export function SinkraFlowReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
 
   return (
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-      <article className="mx-auto max-w-[1440px]" style={SINKRA_DARK_THEME}>
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
         <DeepTabHero
           eyebrow="SINKRA flow"
           title="Fluxo profundo de execução"
@@ -1778,7 +1780,7 @@ export function SinkraAutomationReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
 
   return (
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-      <article className="mx-auto max-w-[1440px]" style={SINKRA_DARK_THEME}>
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
         <DeepTabHero
           eyebrow="SINKRA automation"
           title="O que deve ser humano, agent ou worker"
@@ -2067,7 +2069,7 @@ export function SinkraGovernanceReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
 
   return (
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-      <article className="mx-auto max-w-[1440px]" style={SINKRA_DARK_THEME}>
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
         <DeepTabHero
           eyebrow="SINKRA governance"
           title="Gates, compliance e veto de produção"
@@ -2176,7 +2178,7 @@ export function SinkraAccountabilityReport({ sinkra }: { sinkra?: ObservatoryTyp
 
   return (
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-      <article className="mx-auto max-w-[1440px]" style={SINKRA_DARK_THEME}>
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
         <DeepTabHero
           eyebrow="SINKRA accountability"
           title="RACI e carga de decisão"
@@ -2233,7 +2235,7 @@ export function SinkraGapsReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
 
   return (
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-      <article className="mx-auto max-w-[1440px]" style={SINKRA_DARK_THEME}>
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
         <DeepTabHero
           eyebrow="SINKRA gaps"
           title="Lacunas que bloqueiam evolução"
@@ -2347,7 +2349,7 @@ export function SinkraEvidenceReport({ sinkra }: { sinkra?: ObservatoryTypeSpeci
 
   return (
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-      <article className="mx-auto max-w-[1440px]" style={SINKRA_DARK_THEME}>
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
         <DeepTabHero
           eyebrow="SINKRA evidence"
           title="Linha de execução e prova gerada"
@@ -2431,7 +2433,7 @@ export function SinkraOperationsReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
 
   return (
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-      <article className="mx-auto max-w-[1440px]" style={SINKRA_DARK_THEME}>
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
         <DeepTabHero
           eyebrow="SINKRA operations"
           title="Mapa operacional do processo"
@@ -2555,7 +2557,7 @@ export function SinkraRiskReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
 
   return (
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-      <article className="mx-auto max-w-[1440px]" style={SINKRA_DARK_THEME}>
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
         <DeepTabHero
           eyebrow="SINKRA risk control"
           title="Riscos, bloqueios e plano de ação"
@@ -2630,7 +2632,7 @@ export function SinkraRiskReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
 function SinkraEmptyReport({ title }: { title: string }) {
   return (
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
-      <article className="mx-auto max-w-[920px]" style={SINKRA_DARK_THEME}>
+      <article className="mx-auto w-full min-w-0 max-w-[920px]" style={SINKRA_DARK_THEME}>
         <EmptyPanel title={title} body="Este mapeamento ainda não possui observatory_map.yaml curado para renderizar esta visualização." />
       </article>
     </LightScrollArea>
@@ -2882,29 +2884,31 @@ function DarkRiskHeatmap({
         <DarkSectionTitle eyebrow="Risk heatmap" title="Onde a operação quebra" />
         {!hasData && <SchemaChip label="schema pendente" />}
       </div>
-      <div className="mt-6 grid grid-cols-[110px_repeat(4,minmax(0,1fr))] border border-[#f5f4e7]/10">
-        <div className="bg-[#050505] p-3" />
-        {categories.map((category) => (
-          <div key={category} className="border-l border-[#f5f4e7]/10 bg-[#050505] p-3 text-center text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/40" style={{ fontFamily: MONO_FONT }}>{category}</div>
-        ))}
-        {severities.map((severity, row) => (
-          <Fragment key={severity}>
-            <div key={`${severity}-label`} className="border-t border-[#f5f4e7]/10 bg-[#050505] p-3 text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/45" style={{ fontFamily: MONO_FONT }}>{severity}</div>
-            {categories.map((category, col) => {
-              const count = hasData
-                ? risks.filter((risk) => risk.severity.toLowerCase().includes(severity)).length + gaps.filter((gap) => gap.severity.toLowerCase().includes(severity) && gap.category.toLowerCase().includes(category.slice(0, 4))).length
-                : Math.max(0, 4 - row - Math.abs(col - 1))
-              const hot = count > 2 || (row === 0 && count > 0)
-              return (
-                <div key={`${severity}-${category}`} className={cn("min-h-[70px] border-l border-t border-[#f5f4e7]/10 p-3", hot ? "bg-[#ef4444]/22" : count > 0 ? "bg-[#f5b340]/16" : "bg-[#050505]")}>
-                  <div className={cn("text-[28px] font-black leading-none", hot ? "text-[#ef4444]" : count > 0 ? "text-[#f5b340]" : "text-[#f5f4e7]/20")} style={{ fontFamily: DISPLAY_FONT }}>
-                    {count}
+      <div className="mt-6 overflow-x-auto border border-[#f5f4e7]/10">
+        <div className="grid min-w-[560px] grid-cols-[110px_repeat(4,minmax(0,1fr))]">
+          <div className="bg-[#050505] p-3" />
+          {categories.map((category) => (
+            <div key={category} className="border-l border-[#f5f4e7]/10 bg-[#050505] p-3 text-center text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/40" style={{ fontFamily: MONO_FONT }}>{category}</div>
+          ))}
+          {severities.map((severity, row) => (
+            <Fragment key={severity}>
+              <div key={`${severity}-label`} className="border-t border-[#f5f4e7]/10 bg-[#050505] p-3 text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/45" style={{ fontFamily: MONO_FONT }}>{severity}</div>
+              {categories.map((category, col) => {
+                const count = hasData
+                  ? risks.filter((risk) => risk.severity.toLowerCase().includes(severity)).length + gaps.filter((gap) => gap.severity.toLowerCase().includes(severity) && gap.category.toLowerCase().includes(category.slice(0, 4))).length
+                  : Math.max(0, 4 - row - Math.abs(col - 1))
+                const hot = count > 2 || (row === 0 && count > 0)
+                return (
+                  <div key={`${severity}-${category}`} className={cn("min-h-[70px] border-l border-t border-[#f5f4e7]/10 p-3", hot ? "bg-[#ef4444]/22" : count > 0 ? "bg-[#f5b340]/16" : "bg-[#050505]")}>
+                    <div className={cn("text-[28px] font-black leading-none", hot ? "text-[#ef4444]" : count > 0 ? "text-[#f5b340]" : "text-[#f5f4e7]/20")} style={{ fontFamily: DISPLAY_FONT }}>
+                      {count}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
-          </Fragment>
-        ))}
+                )
+              })}
+            </Fragment>
+          ))}
+        </div>
       </div>
       <p className="mt-4 text-[12px] leading-[1.5] text-[#f5f4e7]/45">{hasData ? "Mapa cruza severidade com categoria para priorizar correção." : emptySchema}</p>
     </section>

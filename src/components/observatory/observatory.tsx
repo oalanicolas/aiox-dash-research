@@ -387,6 +387,9 @@ export function Observatory({
   }
 
   const showDocCompanions = data.source !== "sinkra-maps" || mode === "document"
+  const compactShell = viewport === "sm"
+  const showSidePanes = !compactShell
+  const showBottomCompanion = showDocCompanions && !compactShell
 
   return (
     <main
@@ -412,54 +415,57 @@ export function Observatory({
       <div
         className={cn(
           "grid min-h-0 overflow-hidden",
+          compactShell && "grid-cols-[minmax(0,1fr)]",
           /* Pane sizes scale with viewport: tighter on md (1024-1280px),
              full on lg+. Sm viewports always collapse both via effect above. */
-          !showDocCompanions && leftCollapsed && "grid-cols-[32px_minmax(0,1fr)]",
-          !showDocCompanions && !leftCollapsed &&
-            "grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]",
-          showDocCompanions && leftCollapsed && rightCollapsed && "grid-cols-[32px_minmax(0,1fr)_32px]",
-          showDocCompanions && leftCollapsed && !rightCollapsed &&
-            "grid-cols-[32px_minmax(0,1fr)_280px] xl:grid-cols-[32px_minmax(0,1fr)_320px]",
-          showDocCompanions && !leftCollapsed && rightCollapsed &&
-            "grid-cols-[280px_minmax(0,1fr)_32px] xl:grid-cols-[340px_minmax(0,1fr)_32px]",
-          showDocCompanions && !leftCollapsed && !rightCollapsed &&
-            "grid-cols-[280px_minmax(0,1fr)_280px] xl:grid-cols-[340px_minmax(0,1fr)_320px]",
+          !compactShell && !showDocCompanions && leftCollapsed && "grid-cols-[32px_minmax(0,1fr)]",
+          !compactShell && !showDocCompanions && !leftCollapsed &&
+            "grid-cols-[var(--dash-sidebar-w-md)_minmax(0,1fr)] xl:grid-cols-[var(--dash-sidebar-w)_minmax(0,1fr)]",
+          !compactShell && showDocCompanions && leftCollapsed && rightCollapsed && "grid-cols-[32px_minmax(0,1fr)_32px]",
+          !compactShell && showDocCompanions && leftCollapsed && !rightCollapsed &&
+            "grid-cols-[32px_minmax(0,1fr)_var(--dash-inspector-w-md)] xl:grid-cols-[32px_minmax(0,1fr)_var(--dash-inspector-w)]",
+          !compactShell && showDocCompanions && !leftCollapsed && rightCollapsed &&
+            "grid-cols-[var(--dash-sidebar-w-md)_minmax(0,1fr)_32px] xl:grid-cols-[var(--dash-sidebar-w)_minmax(0,1fr)_32px]",
+          !compactShell && showDocCompanions && !leftCollapsed && !rightCollapsed &&
+            "grid-cols-[var(--dash-sidebar-w-md)_minmax(0,1fr)_var(--dash-inspector-w-md)] xl:grid-cols-[var(--dash-sidebar-w)_minmax(0,1fr)_var(--dash-inspector-w)]",
         )}
       >
-        {leftCollapsed ? (
-          <CollapsedRail
-            side="left"
-            label="Index"
-            onClick={() => setLeftCollapsed(false)}
-          />
-        ) : (
-          <div className="relative h-full min-h-0 overflow-hidden">
-            <IndexPane
-              sourceLabel={data.sourceLabel}
-              totalRuns={data.stats.totalRuns}
-              query={query}
-              onQueryChange={setQuery}
-              sort={sort}
-              statusF={statusF}
-              group={group}
-              onCycleSort={() => pushUrl({ sort: cycleNext(SORTS, sort) })}
-              onCycleStatus={() => pushUrl({ status: cycleNext(STATUSES, statusF) })}
-              onCycleGroup={() => pushUrl({ group: cycleNext(GROUPS, group) })}
-              quality={quality}
-              onCycleQuality={() => pushUrl({ quality: cycleNext(QUALITIES, quality) })}
-              visibleRuns={visibleRuns}
-              groupedRuns={groupedRuns}
-              selectedSlug={data.selectedRun.slug}
-              onSelectRun={(slug) => pushUrl({ slug })}
-              listRef={indexListRef}
-              categoryLabels={categoryBucketLabels}
-            />
-            <CollapseButton
+        {showSidePanes && (
+          leftCollapsed ? (
+            <CollapsedRail
               side="left"
-              title="Encolher índice"
-              onClick={() => setLeftCollapsed(true)}
+              label="Index"
+              onClick={() => setLeftCollapsed(false)}
             />
-          </div>
+          ) : (
+            <div className="relative h-full min-h-0 overflow-hidden">
+              <IndexPane
+                sourceLabel={data.sourceLabel}
+                totalRuns={data.stats.totalRuns}
+                query={query}
+                onQueryChange={setQuery}
+                sort={sort}
+                statusF={statusF}
+                group={group}
+                onCycleSort={() => pushUrl({ sort: cycleNext(SORTS, sort) })}
+                onCycleStatus={() => pushUrl({ status: cycleNext(STATUSES, statusF) })}
+                onCycleGroup={() => pushUrl({ group: cycleNext(GROUPS, group) })}
+                quality={quality}
+                onCycleQuality={() => pushUrl({ quality: cycleNext(QUALITIES, quality) })}
+                visibleRuns={visibleRuns}
+                groupedRuns={groupedRuns}
+                selectedSlug={data.selectedRun.slug}
+                onSelectRun={(slug) => pushUrl({ slug })}
+                listRef={indexListRef}
+                categoryLabels={categoryBucketLabels}
+              />
+              <CollapseButton
+                side="left"
+                title="Encolher índice"
+                onClick={() => setLeftCollapsed(true)}
+              />
+            </div>
+          )
         )}
 
         <section className="flex min-h-0 flex-col overflow-hidden">
@@ -513,7 +519,7 @@ export function Observatory({
             sourceSummary={data.sourceSummary}
             typeSpecific={data.typeSpecific}
           />
-          {showDocCompanions && (
+          {showBottomCompanion && (
             <CloserStrip
               artifactDocs={artifactDocs}
               selectedFile={selectedFile}
@@ -525,7 +531,7 @@ export function Observatory({
           )}
         </section>
 
-        {showDocCompanions && (
+        {showDocCompanions && showSidePanes && (
           rightCollapsed ? (
             <CollapsedRail
               side="right"

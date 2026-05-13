@@ -186,7 +186,7 @@ export function ReaderBody({
 
   return (
     <LightScrollArea ref={bodyRef} className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
-      <article className="mx-auto max-w-[720px]">
+      <article className="mx-auto w-full min-w-0 max-w-[720px]">
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
           {content}
         </ReactMarkdown>
@@ -286,7 +286,7 @@ function StructuredArtifactView({
   if (parseFailed) {
     return (
       <LightScrollArea ref={bodyRef} className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 lg:px-10">
-        <article className="mx-auto max-w-[960px]">
+        <article className="mx-auto w-full min-w-0 max-w-[960px]">
           <SinkraHeader eyebrow={`${format} artifact`} title={file} meta={["parse warning", `${content.length} chars`]} />
           <pre className="overflow-x-auto border border-[var(--rule)] bg-[var(--ink)] p-5 text-[12px] leading-[1.6] text-[var(--paper)]" style={{ fontFamily: MONO_FONT }}>
             {content}
@@ -298,7 +298,7 @@ function StructuredArtifactView({
 
   return (
     <LightScrollArea ref={bodyRef} className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 lg:px-8">
-      <article className="mx-auto max-w-[1280px]">
+      <article className="mx-auto w-full min-w-0 max-w-[1280px]">
         <SinkraHeader
           eyebrow={`${format} artifact`}
           title={file}
@@ -959,7 +959,7 @@ function SinkraWorkflowView({ sinkra }: { sinkra?: ObservatoryTypeSpecific["sink
   const workflows = sinkra?.workflows ?? []
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 lg:px-8">
-      <article className="mx-auto max-w-[1320px]">
+      <article className="mx-auto w-full min-w-0 max-w-[1320px]">
         <SinkraHeader eyebrow="SINKRA workflow" title={sinkra?.processName || "Workflow"} meta={[`${workflows.length} workflows`, `${workflows.reduce((total, wf) => total + wf.steps.length, 0)} steps`, sinkra?.mode || "structured"]} />
         <div className="grid gap-5">
           {workflows.map((workflow) => (
@@ -1016,22 +1016,24 @@ function SinkraTasksView({ sinkra }: { sinkra?: ObservatoryTypeSpecific["sinkra"
   const tasks = sinkra?.tasks ?? []
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 lg:px-8">
-      <article className="mx-auto max-w-[1280px]">
+      <article className="mx-auto w-full min-w-0 max-w-[1280px]">
         <SinkraHeader eyebrow="SINKRA task anatomy" title="Tasks" meta={[`${tasks.length} tasks`, sinkra?.version ? `v${sinkra.version}` : "version —"]} />
-        <div className="overflow-hidden border border-[var(--rule)] bg-[var(--paper)]">
-          <div className="grid grid-cols-[minmax(180px,1.5fr)_110px_100px_80px_80px_90px] border-b border-[var(--rule)] bg-[var(--paper-alt)] px-4 py-3 text-[10px] uppercase tracking-[0.13em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-            <span>Task</span><span>Layer</span><span>Executor</span><span>Inputs</span><span>Outputs</span><span>Checks</span>
-          </div>
-          {tasks.map((task) => (
-            <div key={task.id} className="grid grid-cols-[minmax(180px,1.5fr)_110px_100px_80px_80px_90px] items-center border-b border-[var(--rule-soft)] px-4 py-3 last:border-b-0">
-              <strong className="min-w-0 truncate text-[13px] text-[var(--ink)]">{task.id}</strong>
-              <span className="text-[12px] text-[var(--ink-2)]">{task.layer || "—"}</span>
-              <span className="text-[12px] text-[var(--ink-2)]">{task.executor || "—"}</span>
-              <span className="text-[18px] font-black text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>{task.inputCount}</span>
-              <span className="text-[18px] font-black text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>{task.outputCount}</span>
-              <span className="text-[12px] text-[var(--ink-2)]">{task.preconditions + task.postconditions}</span>
+        <div className="overflow-x-auto border border-[var(--rule)] bg-[var(--paper)]">
+          <div className="min-w-[720px]">
+            <div className="grid grid-cols-[minmax(180px,1.5fr)_110px_100px_80px_80px_90px] border-b border-[var(--rule)] bg-[var(--paper-alt)] px-4 py-3 text-[10px] uppercase tracking-[0.13em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
+              <span>Task</span><span>Layer</span><span>Executor</span><span>Inputs</span><span>Outputs</span><span>Checks</span>
             </div>
-          ))}
+            {tasks.map((task) => (
+              <div key={task.id} className="grid grid-cols-[minmax(180px,1.5fr)_110px_100px_80px_80px_90px] items-center border-b border-[var(--rule-soft)] px-4 py-3 last:border-b-0">
+                <strong className="min-w-0 truncate text-[13px] text-[var(--ink)]">{task.id}</strong>
+                <span className="text-[12px] text-[var(--ink-2)]">{task.layer || "—"}</span>
+                <span className="text-[12px] text-[var(--ink-2)]">{task.executor || "—"}</span>
+                <span className="text-[18px] font-black text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>{task.inputCount}</span>
+                <span className="text-[18px] font-black text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>{task.outputCount}</span>
+                <span className="text-[12px] text-[var(--ink-2)]">{task.preconditions + task.postconditions}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </article>
     </LightScrollArea>
@@ -1042,7 +1044,7 @@ function SinkraGatesView({ sinkra }: { sinkra?: ObservatoryTypeSpecific["sinkra"
   const gates = sinkra?.gates ?? []
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 lg:px-8">
-      <article className="mx-auto max-w-[1280px]">
+      <article className="mx-auto w-full min-w-0 max-w-[1280px]">
         <SinkraHeader eyebrow="SINKRA quality gates" title="Gates" meta={[`${gates.length} gates`, sinkra?.score.result || "result —", sinkra?.score.score === null ? "score —" : `score ${sinkra?.score.score}`]} />
         <div className="grid gap-3 lg:grid-cols-2">
           {gates.map((gate) => (
@@ -1122,7 +1124,7 @@ function ScoreView({
 
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-8 lg:pb-16">
-      <article className="mx-auto max-w-[1280px]">
+      <article className="mx-auto w-full min-w-0 max-w-[1280px]">
         <header className="mb-6 border-b border-[var(--rule)] pb-5">
           <p
             className="mb-2 text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-3)]"
@@ -1329,7 +1331,7 @@ function OverviewView({ runs }: { runs: ObservatoryRunSummary[] }) {
 
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
-      <article className="mx-auto max-w-[1260px]">
+      <article className="mx-auto w-full min-w-0 max-w-[1260px]">
         <header className="mb-6 grid gap-4 border-b border-[var(--rule)] pb-5 xl:grid-cols-[minmax(0,1fr)_280px]">
           <div>
             <p
@@ -1574,7 +1576,7 @@ function SourcesView({
 }) {
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
-      <article className="mx-auto max-w-[980px]">
+      <article className="mx-auto w-full min-w-0 max-w-[980px]">
         <header className="mb-7 border-b border-[var(--rule)] pb-5">
           <p
             className="mb-2 text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-3)]"
@@ -1625,7 +1627,7 @@ function ResearchPlayersView({ players }: { players: ObservatoryPlayer[] }) {
   const tiers = [1, 2, 3] as const
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
-      <article className="mx-auto max-w-[1080px]">
+      <article className="mx-auto w-full min-w-0 max-w-[1080px]">
         <header className="mb-7 border-b border-[var(--rule)] pb-5">
           <p
             className="mb-2 text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-3)]"

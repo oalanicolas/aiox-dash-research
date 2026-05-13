@@ -46,7 +46,7 @@ export function DecisionView({
 
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
-      <div className="mx-auto max-w-[1000px] space-y-10">
+      <div className="mx-auto w-full min-w-0 max-w-[1000px] space-y-10">
         {editorsNote && (
           <section className="border border-[var(--rule)] bg-[var(--paper-alt)] p-5">
             <div
@@ -142,7 +142,7 @@ export function DecisionView({
               {decisionTree.map((node, idx) => (
                 <div
                   key={`tree-${idx}`}
-                  className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-[var(--rule-soft)] py-3"
+                  className="grid grid-cols-1 gap-2 border-b border-[var(--rule-soft)] py-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] md:gap-3"
                 >
                   <span
                     className="text-[14px] font-bold leading-[1.4] text-[var(--ink)]"
@@ -180,7 +180,7 @@ export function DecisionView({
               {tiebreakers.map((tb) => (
                 <div
                   key={tb.id}
-                  className="grid grid-cols-[40px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] items-baseline gap-3 border-b border-[var(--rule-soft)] py-3"
+                  className="grid grid-cols-1 items-baseline gap-2 border-b border-[var(--rule-soft)] py-3 md:grid-cols-[40px_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)] md:gap-3"
                 >
                   <span
                     className="text-[10px] tracking-[0.12em] text-[var(--ink-dim)]"

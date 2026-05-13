@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils"
-import { DISPLAY_FONT, MONO_FONT, SANS_FONT, SERIF_FONT } from "../foundations/theme"
+import { DISPLAY_FONT, MONO_FONT, SANS_FONT } from "../foundations/theme"
 import { coverageNumeric, fmtDateShort, pad2, statusKeyFromRaw, statusLabel } from "../foundations/utils"
 import { InferredFlag } from "./inferred-flag"
 
@@ -56,8 +56,8 @@ export function RunRow({
       data-slug={slug}
       onClick={onSelect}
       className={cn(
-        "group grid min-h-[78px] w-full grid-cols-[28px_minmax(0,1fr)_42px_58px] items-stretch gap-3 border-b border-[var(--rule-soft)] px-5 py-0 text-left transition-colors hover:bg-[var(--paper-alt)]",
-        isActive && "bg-[var(--paper-deep)] shadow-[inset_3px_0_0_var(--lime-ink)]",
+        "group grid min-h-[82px] w-full grid-cols-[28px_minmax(0,1fr)_48px_58px] items-stretch gap-3 border-b border-l-[3px] border-b-[var(--rule-soft)] border-l-transparent px-5 py-0 text-left transition-colors hover:bg-[var(--paper-alt)]",
+        isActive && "border-l-[var(--lime-ink)] bg-[var(--paper-deep)]",
       )}
     >
       <span
@@ -69,7 +69,7 @@ export function RunRow({
           className={cn(
             "relative z-[1] h-2.5 w-2.5 border bg-[var(--paper)] transition-all",
             isActive
-              ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] shadow-[0_0_0_5px_color-mix(in_oklch,var(--lime-fill)_34%,transparent),0_0_18px_var(--lime-fill)]"
+              ? "border-[var(--lime-ink)] bg-[var(--lime-ink)]"
               : "border-[var(--lime-ink)] group-hover:bg-[var(--paper-alt)]",
           )}
         />
@@ -90,8 +90,8 @@ export function RunRow({
         </span>
         {!isCompleted && (
           <span
-            className="mt-1 block text-[11px] italic text-[var(--ink-dim)]"
-            style={{ fontFamily: SERIF_FONT }}
+            className="mt-1 block text-[10px] uppercase tracking-[0.1em] text-[var(--ink-dim)]"
+            style={{ fontFamily: MONO_FONT }}
           >
             {status}
           </span>

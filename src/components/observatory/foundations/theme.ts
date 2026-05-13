@@ -19,10 +19,13 @@ export const observatoryThemeVars: CSSProperties = {
   "--lime-ink": "oklch(0.6801 0.1625 120.61)",
   "--lime-fill": "var(--primary, oklch(0.934 0.2264 121.95))",
   "--warning-ink": "oklch(0.48 0.13 70.08)",
-  "--serif": "Georgia, 'Times New Roman', serif",
+  "--danger-ink": "oklch(0.6368 0.2078 25.33)",
+  "--dash-control-h": "34px",
+  "--dash-header-h": "44px",
+  "--serif": "var(--font-bb-sans), 'Geist', system-ui, sans-serif",
 } as CSSProperties
 
 export const MONO_FONT = "var(--font-bb-mono), 'Geist Mono', ui-monospace, monospace"
 export const SANS_FONT = "var(--font-bb-sans), 'Geist', system-ui, sans-serif"
 export const DISPLAY_FONT = "var(--font-bb-display), var(--font-bb-sans), system-ui, sans-serif"
-export const SERIF_FONT = "var(--serif)"
+export const SERIF_FONT = SANS_FONT

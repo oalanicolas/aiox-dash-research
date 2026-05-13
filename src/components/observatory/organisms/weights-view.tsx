@@ -59,7 +59,7 @@ export function WeightsView({
 
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
-      <div className="mx-auto grid max-w-[1400px] gap-8 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
+      <div className="mx-auto grid w-full min-w-0 max-w-[1400px] gap-8 xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.1fr)]">
         {/* Sliders panel */}
         <section className="border border-[var(--rule)] bg-[var(--paper)] p-5">
           <div className="flex items-start justify-between gap-4 border-b border-[var(--rule)] pb-4">
@@ -126,7 +126,7 @@ export function WeightsView({
         {/* Live leaderboard */}
         <section>
           <div className="grid gap-px border border-[var(--rule)] bg-[var(--rule)]">
-            <div className="grid grid-cols-[1fr_auto] bg-[var(--paper)] px-5 py-4">
+            <div className="grid gap-3 bg-[var(--paper)] px-5 py-4 sm:grid-cols-[1fr_auto]">
               <div>
                 <div
                   className="text-[10px] uppercase tracking-[0.14em] text-[var(--ink-3)]"
@@ -142,7 +142,7 @@ export function WeightsView({
                 </div>
               </div>
               <div
-                className="text-right text-[24px] font-black tracking-[-0.05em] text-[var(--ink)]"
+                className="text-left text-[24px] font-black tracking-[-0.05em] text-[var(--ink)] sm:text-right"
                 style={{ fontFamily: DISPLAY_FONT }}
               >
                 {ranking[0] ? profileByKey.get(ranking[0].player)?.name ?? ranking[0].player : "—"}
@@ -151,7 +151,7 @@ export function WeightsView({
             {ranking.map((item, index) => (
               <div
                 key={item.player}
-                className="grid grid-cols-[44px_minmax(0,1fr)_72px] items-center gap-4 bg-[var(--paper-alt)] px-5 py-4"
+                className="grid grid-cols-[34px_minmax(0,1fr)_64px] items-center gap-3 bg-[var(--paper-alt)] px-4 py-4 sm:grid-cols-[44px_minmax(0,1fr)_72px] sm:gap-4 sm:px-5"
               >
                 <div
                   className={cn(

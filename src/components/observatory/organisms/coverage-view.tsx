@@ -41,7 +41,7 @@ export function CoverageView({
 
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
-      <div className="mx-auto max-w-[1200px] space-y-6">
+      <div className="mx-auto w-full min-w-0 max-w-[1200px] space-y-6">
         {codebase && codebase.coverageStack.length > 0 && (
           <section className="border border-[var(--rule)] bg-[var(--paper)] p-5">
             <div className="grid gap-6 xl:grid-cols-[260px_minmax(0,1fr)]">
@@ -180,7 +180,7 @@ export function CoverageView({
               {codebase.knowledgeIceberg.map((item) => (
                 <div
                   key={item.id}
-                  className="grid grid-cols-[130px_minmax(0,1fr)_74px] items-center gap-4"
+                  className="grid grid-cols-1 gap-2 sm:grid-cols-[130px_minmax(0,1fr)_74px] sm:items-center sm:gap-4"
                 >
                   <div
                     className="truncate text-[13px] font-bold text-[var(--ink)]"
@@ -206,7 +206,7 @@ export function CoverageView({
                     />
                   </div>
                   <div
-                    className="text-right text-[11px] uppercase text-[var(--ink-3)]"
+                    className="text-left text-[11px] uppercase text-[var(--ink-3)] sm:text-right"
                     style={{ fontFamily: MONO_FONT }}
                   >
                     {item.ratio.toFixed(2)}x

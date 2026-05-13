@@ -9,7 +9,7 @@ import { ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { ObservatoryDocument, ObservatoryRunSummary } from "../foundations/types"
 import { FileChip } from "../molecules/file-chip"
-import { MONO_FONT, SERIF_FONT } from "../foundations/theme"
+import { MONO_FONT, SANS_FONT } from "../foundations/theme"
 
 type CorePhase = { label: string; key: string; on: boolean }
 
@@ -133,10 +133,7 @@ export function CloserStrip({
           style={{ fontFamily: MONO_FONT }}
         >
           <span>Artifacts</span>
-          <span
-            className="text-[12px] italic normal-case tracking-[0] text-[var(--ink-dim)]"
-            style={{ fontFamily: SERIF_FONT }}
-          >
+          <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-dim)]">
             {artifactDocs.length} files
           </span>
         </span>
@@ -194,17 +191,17 @@ export function CloserStrip({
 
           {/* stop reason row */}
           <div
-            className="flex items-baseline gap-3 px-4 py-2 text-[12px] italic leading-[1.4] text-[var(--ink-2)]"
-            style={{ fontFamily: SERIF_FONT }}
+            className="flex items-baseline gap-3 px-4 py-2 text-[12px] leading-[1.4] text-[var(--ink-2)]"
+            style={{ fontFamily: SANS_FONT }}
           >
             <span
-              className="shrink-0 text-[10px] uppercase not-italic tracking-[0.16em] text-[var(--ink-dim)]"
+              className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-[var(--ink-dim)]"
               style={{ fontFamily: MONO_FONT }}
             >
               Stop reason
             </span>
             <span className="truncate">— {stopNote}</span>
-            <span className="ml-auto shrink-0 text-[10px] not-italic tracking-[0.04em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+            <span className="ml-auto shrink-0 text-[10px] tracking-[0.04em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
               schema · {selectedRun.schema}
             </span>
           </div>

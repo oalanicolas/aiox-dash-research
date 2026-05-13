@@ -101,7 +101,7 @@ export function MatrixView({
   return (
     <div className="flex min-h-0 flex-1">
       <LightScrollArea className="flex-1" viewportClassName="px-3 pb-12 pt-4 sm:px-5 sm:pb-14 sm:pt-5 lg:px-6 lg:pb-16">
-        <div className="mx-auto max-w-[1500px]">
+        <div className="mx-auto w-full min-w-0 max-w-[1500px]">
           {/* Narrative header */}
         <div className="grid gap-6 border-b border-[var(--rule)] pb-5 xl:grid-cols-[minmax(0,1fr)_280px]">
           <p
@@ -126,7 +126,7 @@ export function MatrixView({
               : "."}
           </p>
           <div
-            className="border-l border-[var(--rule)] pl-5 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)]"
+            className="border-t border-[var(--rule)] pt-4 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)] xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"
             style={{ fontFamily: MONO_FONT }}
           >
             {[
@@ -151,7 +151,7 @@ export function MatrixView({
         <div className="mt-5 overflow-x-auto border border-[var(--rule)] bg-[var(--paper)]">
           {/* Header row — sticky top */}
           <div
-            className="sticky top-0 z-20 grid border-b border-[var(--rule)] bg-[var(--paper-alt)] shadow-[0_1px_0_var(--rule)]"
+            className="sticky top-0 z-20 grid border-b border-[var(--rule)] bg-[var(--paper-alt)]"
             style={gridStyle}
           >
             <div className="sticky left-0 z-30 bg-[var(--paper-deep)] px-4 py-4">
@@ -223,7 +223,7 @@ export function MatrixView({
                 className="grid border-b border-[var(--rule)] last:border-b-0"
                 style={gridStyle}
               >
-                <div className="sticky left-0 z-10 bg-[var(--paper-deep)] px-4 py-3 shadow-[1px_0_0_var(--rule)]">
+                <div className="sticky left-0 z-10 border-r border-[var(--rule)] bg-[var(--paper-deep)] px-4 py-3">
                   <div
                     className="text-[9px] uppercase tracking-[0.12em] text-[var(--ink-3)]"
                     style={{ fontFamily: MONO_FONT }}

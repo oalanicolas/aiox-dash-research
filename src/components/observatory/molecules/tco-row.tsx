@@ -23,7 +23,7 @@ export function TcoRow({
   return (
     <div
       className={cn(
-        "grid grid-cols-[88px_minmax(0,1fr)_140px] items-baseline gap-3 border-b border-[var(--rule-soft)] px-1 py-2",
+        "grid grid-cols-1 gap-1 border-b border-[var(--rule-soft)] px-1 py-2 sm:grid-cols-[88px_minmax(0,1fr)_140px] sm:items-baseline sm:gap-3",
         baseline && "bg-[var(--paper-deep)]",
       )}
     >
@@ -51,7 +51,7 @@ export function TcoRow({
         )}
       </span>
       <span
-        className="text-right text-[16px] font-black tracking-[-0.03em] tabular-nums text-[var(--ink)]"
+        className="text-left text-[16px] font-black tracking-[-0.03em] tabular-nums text-[var(--ink)] sm:text-right"
         style={{ fontFamily: DISPLAY_FONT }}
       >
         {range}

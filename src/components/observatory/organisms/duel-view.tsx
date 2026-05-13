@@ -88,7 +88,7 @@ export function DuelView({
 
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
-      <div className="mx-auto max-w-[1400px] space-y-6">
+      <div className="mx-auto w-full min-w-0 max-w-[1400px] space-y-6">
         {/* Pair picker */}
         <div className="flex justify-end">
           <div className="inline-flex max-w-full flex-wrap justify-end gap-px border border-[var(--rule)] bg-[var(--rule)] p-px">
@@ -112,7 +112,7 @@ export function DuelView({
         </div>
 
         {/* Headers — side-by-side big scores */}
-        <div className="grid grid-cols-[minmax(0,1fr)_60px_minmax(0,1fr)] border border-[var(--rule)] bg-[var(--paper)]">
+        <div className="grid grid-cols-1 border border-[var(--rule)] bg-[var(--paper)] md:grid-cols-[minmax(0,1fr)_60px_minmax(0,1fr)]">
           <div className="px-3 py-4 sm:px-5 sm:py-5 lg:px-8 lg:py-6">
             <div className="flex items-center gap-3">
               <span
@@ -140,7 +140,7 @@ export function DuelView({
             </div>
           </div>
           <div
-            className="grid place-items-center border-x border-[var(--rule)] bg-[var(--paper-alt)] text-[14px] italic text-[var(--ink-3)]"
+            className="grid place-items-center border-y border-[var(--rule)] bg-[var(--paper-alt)] py-2 text-[14px] italic text-[var(--ink-3)] md:border-x md:border-y-0 md:py-0"
             style={{ fontFamily: SERIF_FONT }}
           >
             vs.
@@ -181,7 +181,7 @@ export function DuelView({
             return (
               <div
                 key={row.id}
-                className="grid grid-cols-[minmax(0,1fr)_140px_minmax(0,1fr)] border-b border-[var(--rule-soft)] last:border-b-0"
+                className="grid grid-cols-1 border-b border-[var(--rule-soft)] last:border-b-0 md:grid-cols-[minmax(0,1fr)_140px_minmax(0,1fr)]"
               >
                 <div className={cn("px-5 py-4", leftWon && "bg-[var(--paper-deep)]")}>
                   <div
@@ -200,7 +200,7 @@ export function DuelView({
                     />
                   </div>
                 </div>
-                <div className="border-x border-[var(--rule-soft)] bg-[var(--paper-alt)] px-3 py-4 text-center">
+                <div className="border-y border-[var(--rule-soft)] bg-[var(--paper-alt)] px-3 py-3 text-center md:border-x md:border-y-0 md:py-4">
                   <div
                     className="text-[9px] uppercase tracking-[0.12em] text-[var(--ink-3)]"
                     style={{ fontFamily: MONO_FONT }}
