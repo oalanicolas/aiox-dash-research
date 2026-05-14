@@ -250,7 +250,7 @@ export function MatrixView({
                       }
                       className={cn(
                         "border-l border-[var(--rule)] px-4 py-3 text-left transition-colors hover:bg-[var(--paper-deep)]",
-                        isWinner && "bg-[var(--lime-fill)]",
+                        isWinner && "border-[#050505]/22 bg-[var(--lime-fill)] text-[#050505] hover:bg-[var(--lime-fill)]",
                         !isWinner && rowIndex % 2 === 0 && "bg-[var(--paper-alt)]",
                         isSelected && "outline outline-2 outline-[var(--ink)]",
                       )}
@@ -259,14 +259,17 @@ export function MatrixView({
                         <div
                           className={cn(
                             "text-[24px] font-black leading-none tracking-[-0.05em]",
-                            "text-[var(--ink)]",
+                            isWinner ? "text-[#050505]" : "text-[var(--ink)]",
                           )}
                           style={{ fontFamily: DISPLAY_FONT }}
                         >
                           {cell.score}
                         </div>
                         <div
-                          className="text-[9px] uppercase text-[var(--ink-3)]"
+                          className={cn(
+                            "text-[9px] uppercase",
+                            isWinner ? "text-[#050505]/62" : "text-[var(--ink-3)]",
+                          )}
                           style={{ fontFamily: MONO_FONT }}
                         >
                           {cell.confidence}
@@ -275,11 +278,11 @@ export function MatrixView({
                       <div
                         className={cn(
                           "mt-3 h-1.5",
-                          isWinner ? "bg-[var(--ink-faint)]" : "bg-[var(--paper-deep)]",
+                          isWinner ? "bg-[#050505]/18" : "bg-[var(--paper-deep)]",
                         )}
                       >
                         <div
-                          className="h-full bg-[var(--ink)]"
+                          className={cn("h-full", isWinner ? "bg-[#050505]" : "bg-[var(--ink)]")}
                           style={{ width: `${Math.max(0, Math.min(100, cell.score))}%` }}
                         />
                       </div>
@@ -292,7 +295,10 @@ export function MatrixView({
                       </div>
                       {cell.notes && (
                         <div
-                          className="mt-2 overflow-hidden text-[12px] leading-[1.45] text-[var(--ink-2)] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]"
+                          className={cn(
+                            "mt-2 overflow-hidden text-[12px] leading-[1.45] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]",
+                            isWinner ? "text-[#050505]/78" : "text-[var(--ink-2)]",
+                          )}
                           style={{ fontFamily: SANS_FONT }}
                         >
                           {cell.notes}

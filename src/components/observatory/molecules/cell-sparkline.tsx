@@ -27,7 +27,7 @@ export function CellSparkline({
     <svg
       className={cn(
         "block h-4 w-full",
-        isWinner ? "text-[var(--ink)]/70" : "text-[var(--ink-dim)]",
+        isWinner ? "text-[#050505]/70" : "text-[var(--ink-dim)]",
       )}
       viewBox={`0 0 ${max} 16`}
       preserveAspectRatio="none"

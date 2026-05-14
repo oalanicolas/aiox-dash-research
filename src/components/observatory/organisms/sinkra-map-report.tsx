@@ -1235,7 +1235,7 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
           </div>
         </div>
 
-        <aside className="bg-[var(--lime-fill)] p-6 text-[var(--ink)] sm:p-7">
+        <aside className="bg-[var(--lime-fill)] p-6 text-[#050505] sm:p-7">
           <p className="text-[11px] uppercase tracking-[0.14em] opacity-65" style={{ fontFamily: MONO_FONT }}>
             Decisão operacional
           </p>
@@ -1243,7 +1243,7 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
             {pilot.readiness || pilot.healthLabel}
           </div>
           <p className="mt-4 text-[16.5px] font-black leading-[1.44]">{pilot.decision}</p>
-          <div className="mt-6 grid grid-cols-2 gap-px bg-[var(--ink)]/18">
+          <div className="mt-6 grid grid-cols-2 gap-px bg-[#050505]/18">
             <Signal label="Prontos" value={String(readyReadiness.length)} tone="good" />
             <Signal label="Bloqueados" value={String(blockedReadiness.length)} tone={blockedReadiness.length > 0 ? "warn" : "good"} />
             <Signal label="Gates ok" value={`${passGates.length}/${pilot.gateBoard.length}`} tone={riskGates.length === 0 ? "good" : "warn"} />
@@ -1560,22 +1560,24 @@ export function SinkraFlowReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
 
         {playbook && (
           <section className="mt-6 min-w-0 overflow-hidden border border-[var(--ink)] bg-[var(--paper)]">
-          <SectionHead eyebrow="FlowPlaybook · brandbook/flow-diagram" title="Gates → caminho → riscos → ações" />
-            <div className="flex flex-wrap justify-end gap-2 text-[11px] uppercase tracking-[0.1em]" style={{ fontFamily: MONO_FONT }}>
-              <span className="border border-[var(--rule)] bg-[var(--paper)] px-2 py-1 text-[var(--ink-3)]">top: gates</span>
-              <span className="border border-[var(--rule)] bg-[var(--paper)] px-2 py-1 text-[var(--ink-3)]">mid: path</span>
-              <span className="border border-[var(--warning-ink)] bg-[var(--paper)] px-2 py-1 text-[var(--warning-ink)]">low: risk/fix</span>
-            </div>
-          <div className="aiox-responsive-canvas p-3 sm:p-4">
-            <FlowPlaybook
-              nodes={playbook.nodes}
-              edges={playbook.edges}
-              canvasWidth={playbook.width}
-              canvasHeight={playbook.height}
-              theme="dark"
-              className="rounded-none border-[var(--rule)]"
+            <SectionHead eyebrow="FlowPlaybook · brandbook/flow-diagram" title="Gates → caminho → riscos → ações" />
+            <FlowLegendRow
+              items={[
+                { label: "top: gates" },
+                { label: "mid: path" },
+                { label: "low: risk/fix", tone: "warning" },
+              ]}
             />
-          </div>
+            <div className="aiox-responsive-canvas p-3 sm:p-4">
+              <FlowPlaybook
+                nodes={playbook.nodes}
+                edges={playbook.edges}
+                canvasWidth={playbook.width}
+                canvasHeight={playbook.height}
+                theme="dark"
+                className="rounded-none border-[var(--rule)]"
+              />
+            </div>
           </section>
         )}
 
@@ -2543,11 +2545,13 @@ export function SinkraOperationsReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
 
         <section className="mt-6 min-w-0 overflow-hidden border border-[var(--rule)] bg-[var(--paper)]">
           <SectionHead eyebrow="FlowMap · brandbook/flow-diagram" title="Lanes, gates, riscos e fila de ação" />
-            <div className="flex flex-wrap justify-end gap-2 text-[11px] uppercase tracking-[0.1em]" style={{ fontFamily: MONO_FONT }}>
-              <span className="border border-[var(--rule)] bg-[var(--paper)] px-2 py-1 text-[var(--ink-3)]">lanes</span>
-              <span className="border border-[var(--rule)] bg-[var(--paper)] px-2 py-1 text-[var(--ink-3)]">controls</span>
-              <span className="border border-[var(--warning-ink)] bg-[var(--paper)] px-2 py-1 text-[var(--warning-ink)]">risk/fix</span>
-            </div>
+          <FlowLegendRow
+            items={[
+              { label: "lanes" },
+              { label: "controls" },
+              { label: "risk/fix", tone: "warning" },
+            ]}
+          />
           <div className="aiox-responsive-canvas p-3 sm:p-4">
             <FlowMap
               groups={flowMap.groups}
@@ -2655,7 +2659,7 @@ export function SinkraRiskReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
           </section>
 
           <aside className="grid content-start gap-6">
-            <section className="border border-[var(--ink)] bg-[var(--lime-fill)] p-5 text-[var(--ink)]">
+            <section className="border border-[#050505]/22 bg-[var(--lime-fill)] p-5 text-[#050505]">
               <p className="text-[11px] uppercase tracking-[0.14em] opacity-65" style={{ fontFamily: MONO_FONT }}>
                 Ação executiva
               </p>
@@ -2712,21 +2716,21 @@ function DeepTabHero({
   metric: string
 }) {
   return (
-    <section className="grid overflow-hidden border border-[#f5f4e7]/16 bg-[#050505] lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="bg-[#10110d] p-6 text-[#f5f4e7] sm:p-8">
+    <section className="grid min-w-0 overflow-hidden border border-[#f5f4e7]/16 bg-[#050505] lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="min-w-0 bg-[#10110d] p-6 text-[#f5f4e7] sm:p-8">
         <p className="text-[11px] uppercase tracking-[0.16em] text-[#f5f4e7]/58" style={{ fontFamily: MONO_FONT }}>
           {eyebrow}
         </p>
-        <h2 className="mt-3 max-w-[900px] text-[40px] font-black leading-[0.95] tracking-[-0.055em] sm:text-[54px]" style={{ fontFamily: DISPLAY_FONT }}>
+        <h2 className="aiox-safe-text mt-3 max-w-[900px] text-[34px] font-black leading-[0.98] tracking-[-0.05em] sm:text-[48px] lg:text-[54px]" style={{ fontFamily: DISPLAY_FONT }}>
           {title}
         </h2>
         <p className="mt-5 max-w-[760px] text-[16px] leading-[1.62] text-[#f5f4e7]/78">{body}</p>
       </div>
-      <aside className="grid place-items-center bg-[#d1ff00] p-6 text-center text-[#050505]">
+      <aside className="grid min-w-0 place-items-center bg-[#d1ff00] p-6 text-center text-[#050505]">
         <p className="text-[11px] uppercase tracking-[0.14em] opacity-65" style={{ fontFamily: MONO_FONT }}>
           visual report
         </p>
-        <div className="mt-3 text-[38px] font-black leading-none tracking-[-0.055em]" style={{ fontFamily: DISPLAY_FONT }}>
+        <div className="aiox-safe-text mt-3 max-w-full text-[32px] font-black leading-none tracking-[-0.05em] sm:text-[38px]" style={{ fontFamily: DISPLAY_FONT }}>
           {metric}
         </div>
       </aside>
@@ -2736,9 +2740,9 @@ function DeepTabHero({
 
 function NarrativeAct({ index, title, body }: { index: string; title: string; body: string }) {
   return (
-    <article className="bg-[var(--paper)] p-5">
+    <article className="min-w-0 bg-[var(--paper)] p-5">
       <div className="text-[28px] font-black leading-none text-[var(--ink-dim)]" style={{ fontFamily: DISPLAY_FONT }}>{index}</div>
-      <h4 className="mt-3 text-[24px] font-black leading-tight tracking-[-0.035em] text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+      <h4 className="aiox-safe-text mt-3 text-[22px] font-black leading-tight tracking-[-0.035em] text-[var(--ink)] sm:text-[24px]" style={{ fontFamily: DISPLAY_FONT }}>
         {title}
       </h4>
       <p className="mt-3 text-[15px] font-bold leading-[1.55] text-[var(--ink-2)]">{body}</p>
@@ -3381,6 +3385,33 @@ function SectionHead({ eyebrow, title, meta, compact = false }: { eyebrow: strin
       </div>
       {meta && <span className="aiox-safe-text text-[11px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{meta}</span>}
     </header>
+  )
+}
+
+function FlowLegendRow({
+  items,
+}: {
+  items: Array<{ label: string; tone?: "neutral" | "warning" }>
+}) {
+  return (
+    <div
+      className="flex min-w-0 flex-wrap justify-start gap-2 border-b border-[var(--rule)] bg-[var(--paper-alt)] px-4 pb-4 sm:justify-end sm:px-5"
+      style={{ fontFamily: MONO_FONT }}
+    >
+      {items.map((item) => (
+        <span
+          key={item.label}
+          className={cn(
+            "max-w-full border bg-[var(--paper)] px-2 py-1 text-[10.5px] uppercase tracking-[0.1em]",
+            item.tone === "warning"
+              ? "border-[var(--warning-ink)] text-[var(--warning-ink)]"
+              : "border-[var(--rule)] text-[var(--ink-3)]",
+          )}
+        >
+          {item.label}
+        </span>
+      ))}
+    </div>
   )
 }
 

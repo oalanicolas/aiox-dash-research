@@ -124,30 +124,6 @@ a {
   border: 1px solid var(--aiox-border);
 }
 
-.aiox-hud-frame::before,
-.aiox-hud-frame::after {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  content: "";
-  border: 1px solid var(--aiox-lime);
-  pointer-events: none;
-}
-
-.aiox-hud-frame::before {
-  top: -1px;
-  left: -1px;
-  border-right: 0;
-  border-bottom: 0;
-}
-
-.aiox-hud-frame::after {
-  right: -1px;
-  bottom: -1px;
-  border-top: 0;
-  border-left: 0;
-}
-
 .aiox-surface-card {
   position: relative;
   min-width: 0;
@@ -223,9 +199,24 @@ a {
 
 .aiox-responsive-canvas {
   min-width: 0;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
 }
 
 .aiox-responsive-canvas svg {
   max-width: 100%;
+}
+
+.aiox-report-grid {
+  display: grid;
+  min-width: 0;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1280px) {
+  .aiox-report-grid--aside {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 0.42fr);
+  }
 }
