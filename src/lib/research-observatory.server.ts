@@ -3,6 +3,7 @@ import "server-only"
 import { existsSync } from "node:fs"
 import { readdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
+import type { ReaderMode } from "@/components/observatory/foundations/types"
 
 export type ResearchDocument = {
   id: string
@@ -154,6 +155,18 @@ type IndexEntry = {
 const CORE_FILES = ["README.md", "00-query-original.md", "01-deep-research-prompt.md", "02-research-report.md", "03-recommendations.md"]
 const CONTENT_LIMIT = 30000
 const DISPLAY_TITLE_MAX = 60
+const RESEARCH_CACHE_TTL_MS = 5_000
+
+let summaryCache:
+  | {
+      root: string
+      expiresAt: number
+      summaries: ResearchRunSummary[]
+    }
+  | null = null
+
+const sourcesCache = new Map<string, { expiresAt: number; entries: SourceEntry[] }>()
+const playersCache = new Map<string, { expiresAt: number; entries: PlayerEntry[] }>()
 
 function findRepoRoot(startPath: string) {
   let cursor = startPath
@@ -369,12 +382,18 @@ async function readFreshnessRatio(sourcesYamlPath: string): Promise<string> {
 }
 
 async function readTopSources(sourcesYamlPath: string, limit = 30): Promise<SourceEntry[]> {
+  const cacheKey = `${sourcesYamlPath}:${limit}`
+  const cached = sourcesCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) return cached.entries
+
   try {
     const raw = await readFile(sourcesYamlPath, "utf8")
     const credibilityRank: Record<SourceEntry["credibility"], number> = { HIGH: 0, MEDIUM: 1, LOW: 2 }
-    return parseSourcesYaml(raw)
+    const entries = parseSourcesYaml(raw)
       .sort((a, b) => credibilityRank[a.credibility] - credibilityRank[b.credibility])
       .slice(0, limit)
+    sourcesCache.set(cacheKey, { expiresAt: Date.now() + RESEARCH_CACHE_TTL_MS, entries })
+    return entries
   } catch {
     return []
   }
@@ -477,9 +496,14 @@ function parseSourcesYaml(raw: string): SourceEntry[] {
 }
 
 async function readPlayers(playersYamlPath: string): Promise<PlayerEntry[]> {
+  const cached = playersCache.get(playersYamlPath)
+  if (cached && cached.expiresAt > Date.now()) return cached.entries
+
   try {
     const raw = await readFile(playersYamlPath, "utf8")
-    return parsePlayersYaml(raw)
+    const entries = parsePlayersYaml(raw)
+    playersCache.set(playersYamlPath, { expiresAt: Date.now() + RESEARCH_CACHE_TTL_MS, entries })
+    return entries
   } catch {
     return []
   }
@@ -617,14 +641,64 @@ function parsePlayersYaml(raw: string): PlayerEntry[] {
   return entries
 }
 
-async function buildDocuments(runPath: string) {
+function filesForView(view?: ReaderMode, selectedFile?: string) {
+  const files = new Set<string>()
+  if (selectedFile) files.add(selectedFile)
+  if (!view || view === "document") return null
+
+  files.add("README.md")
+  if (view === "map") {
+    files.add("metrics.yaml")
+    files.add("pipeline-state.yaml")
+    files.add("research-graph.json")
+    files.add("matrices.yaml")
+    files.add("ux-patterns.yaml")
+    files.add("execution-log.jsonl")
+    return files
+  }
+  if (view === "curiosity") {
+    files.add("curiosity_queue.yaml")
+    return files
+  }
+  if (view === "recommendations") {
+    files.add("03-recommendations.md")
+    files.add("quick-wins.md")
+    files.add("curiosity_queue.yaml")
+    files.add("execution-log.jsonl")
+    return files
+  }
+  if (view === "waves") {
+    files.add("execution-log.jsonl")
+    return files
+  }
+  if (view === "sources") {
+    files.add("sources.yaml")
+    return files
+  }
+  if (view === "players") {
+    files.add("players.yaml")
+    return files
+  }
+  return files
+}
+
+async function buildDocuments(runPath: string, view?: ReaderMode, selectedFile?: string) {
   const files = await listRunFiles(runPath)
   const readableFiles = files.filter((file) => /\.(md|yaml|yml|jsonl|json)$/i.test(file))
+  const contentFiles = filesForView(view, selectedFile)
 
   return Promise.all(
     readableFiles.map(async (file) => {
       const filePath = path.join(runPath, file)
-      const [raw, fileStat] = await Promise.all([readFile(filePath, "utf8"), stat(filePath)])
+      const shouldReadContent =
+        contentFiles === null ||
+        contentFiles.has(file) ||
+        (view === "recommendations" && (phaseForFile(file) === "recommend" || /quick-win|followup|follow-up/i.test(file))) ||
+        (view === "waves" && (phaseForFile(file) === "wave" || /wave/i.test(file)))
+      const [raw, fileStat] = await Promise.all([
+        shouldReadContent ? readFile(filePath, "utf8") : Promise.resolve(""),
+        stat(filePath),
+      ])
       const truncated = raw.length > CONTENT_LIMIT
       const content = truncated ? `${raw.slice(0, CONTENT_LIMIT)}\n\n[...conteúdo truncado para preview local...]` : raw
 
@@ -641,25 +715,39 @@ async function buildDocuments(runPath: string) {
   )
 }
 
-export async function getResearchObservatoryData(selectedSlug?: string, selectedFile?: string): Promise<ResearchObservatoryData> {
-  const repoRoot = findRepoRoot(process.cwd())
-  const researchRoot = path.join(repoRoot, "docs", "research")
-  const index = await readIndex(researchRoot)
+async function getCachedRunSummaries(researchRoot: string, index: Map<string, IndexEntry>) {
+  const now = Date.now()
+  if (summaryCache && summaryCache.root === researchRoot && summaryCache.expiresAt > now) {
+    return summaryCache.summaries
+  }
+
   const entries = await readdir(researchRoot, { withFileTypes: true })
   const runSlugs = entries
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort((a, b) => b.localeCompare(a))
-
   const summaries = await Promise.all(
     runSlugs.map((slug) => buildRunSummary(path.join(researchRoot, slug), slug, index.get(slug))),
   )
+  summaryCache = {
+    root: researchRoot,
+    expiresAt: now + RESEARCH_CACHE_TTL_MS,
+    summaries,
+  }
+  return summaries
+}
+
+export async function getResearchObservatoryData(selectedSlug?: string, selectedFile?: string, view?: ReaderMode): Promise<ResearchObservatoryData> {
+  const repoRoot = findRepoRoot(process.cwd())
+  const researchRoot = path.join(repoRoot, "docs", "research")
+  const index = await readIndex(researchRoot)
+  const summaries = await getCachedRunSummaries(researchRoot, index)
   const preferredSlug = selectedSlug && summaries.some((run) => run.slug === selectedSlug)
     ? selectedSlug
     : summaries.find((run) => run.slug === "2026-05-11-visual-deep-research-apps")?.slug ?? summaries[0]?.slug
   const runs = summaries.map((run) => ({ ...run, active: run.slug === preferredSlug }))
   const selectedRun = runs.find((run) => run.slug === preferredSlug) ?? runs[0]
-  const documents = selectedRun ? await buildDocuments(path.join(researchRoot, selectedRun.slug)) : []
+  const documents = selectedRun ? await buildDocuments(path.join(researchRoot, selectedRun.slug), view, selectedFile) : []
   const selectedDocument = documents.find((doc) => doc.file === selectedFile)
     ?? documents.find((doc) => doc.file === "README.md")
     ?? documents.find((doc) => doc.file === "02-research-report.md")

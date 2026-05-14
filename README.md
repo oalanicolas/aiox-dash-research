@@ -50,11 +50,92 @@ http://localhost:3001/observatory
 ```txt
 docs/research/<slug>/
   README.md
-  report.md
-  recommendations.md
+  00-query-original.md
+  01-deep-research-prompt.md
+  02-research-report.md
+  03-recommendations.md
   metrics.yaml
+  pipeline-state.yaml
+  execution-log.jsonl
   sources.yaml
+  research-graph.json
+  matrices.yaml
+  curiosity_queue.yaml
+  players.yaml
+  ux-patterns.yaml
+  quick-wins.md
 ```
+
+#### Contrato Visual de Research
+
+O Research Observatory não deve depender de leitura manual do Markdown para comunicar valor. Cada pesquisa deve tentar alimentar estas abas:
+
+| Aba | Função narrativa | Artefatos principais |
+|---|---|---|
+| `Map` | visão executiva da descoberta | `metrics.yaml`, `pipeline-state.yaml`, `matrices.yaml`, `ux-patterns.yaml`, `curiosity_queue.yaml` |
+| `Ações` | decisão, checklist, quick wins e roadmap | `03-recommendations.md`, `quick-wins.md`, `curiosity_queue.yaml`, follow-ups Markdown |
+| `Evidências` | confiança, fontes, grafo e materialidade da conclusão | `sources.yaml`, `research-graph.json`, `metrics.yaml` |
+| `Waves` | evolução da investigação | `execution-log.jsonl`, arquivos `wave*.md` |
+| `Fontes` | referências externas acionáveis | `sources.yaml` |
+| `Players` | ferramentas, empresas ou alternativas analisadas | `players.yaml` |
+| `Perguntas` | fila de dúvidas que podem mudar a decisão | `curiosity_queue.yaml` |
+| `Doc` | leitura integral dos documentos | qualquer `.md`, `.yaml`, `.json`, `.jsonl` legível |
+
+Arquivos estruturados podem ser gerados a partir dos Markdown existentes, desde que a regra de não invenção seja respeitada. Quando um valor for derivado por heurística, ele deve ser claramente marcado como inferido no próprio YAML/JSON ou no comentário do campo.
+
+#### Processo Para Compatibilizar Pesquisas Existentes
+
+Use este processo para tornar qualquer pasta `docs/research/<slug>/` compatível com o painel visual:
+
+1. **Inventariar**
+   - Liste os arquivos do slug.
+   - Classifique o run como `rich`, `partial` ou `legacy`.
+   - Identifique quais abas ficariam vazias hoje.
+
+2. **Preservar**
+   - Não apague nem reescreva os documentos originais.
+   - Não renomeie o slug sem aprovação.
+   - Não invente fonte, player, score ou decisão.
+
+3. **Normalizar o core**
+   - Garanta, quando possível, `README.md`, `00-query-original.md`, `01-deep-research-prompt.md`, `02-research-report.md` e `03-recommendations.md`.
+   - Se o run antigo usa nomes diferentes (`report.md`, `recommendations.md`), mantenha o original e crie uma versão canônica apenas quando o conteúdo estiver claro.
+
+4. **Gerar artefatos visuais**
+   - `metrics.yaml`: `coverage_score`, `integrity_score`, `decision`, `stop_reason`, `coverage_breakdown`.
+   - `pipeline-state.yaml`: fases executadas e status de cada fase.
+   - `execution-log.jsonl`: eventos em ordem temporal, quando houver evidência.
+   - `sources.yaml`: URLs, títulos, credibilidade e flags.
+   - `research-graph.json`: nós e edges entre query, prompt, waves, fontes, métricas, relatório e decisão.
+   - `matrices.yaml`: tabelas extraídas dos Markdown.
+   - `curiosity_queue.yaml`: perguntas abertas, prioridade e próximo movimento.
+   - `players.yaml`: ferramentas, empresas, frameworks ou alternativas citadas.
+   - `ux-patterns.yaml`: padrões reutilizáveis quando existirem achados de UX/produto.
+   - `quick-wins.md`: ações rápidas extraídas das recomendações.
+
+5. **Validar visualmente**
+   - Abra `/observatory/research?slug=<slug>&view=map`.
+   - Abra `/observatory/research?slug=<slug>&view=evidence`.
+   - Abra `/observatory/research?slug=<slug>&view=recommendations`.
+   - Abra `/observatory/research?slug=<slug>&view=curiosity`.
+   - Verifique se cada aba tem uma narrativa clara e não apenas cards vazios.
+
+6. **Registrar**
+   - Registre quais slugs foram compatibilizados.
+   - Marque lacunas que exigem nova pesquisa em vez de preencher artificialmente.
+
+Checklist mínimo por slug:
+
+```txt
+[ ] Map tem score, fases, gaps ou padrões úteis
+[ ] Evidências tem fontes ou grafo
+[ ] Ações tem decisão/checklist/roadmap quando há recomendações
+[ ] Perguntas tem fila priorizada ou a aba não aparece
+[ ] Doc preserva leitura dos arquivos originais
+[ ] Dados inferidos estão marcados
+```
+
+Handoff detalhado para outro agente: `apps/dash/HANDOFF-research-compatibility.md`.
 
 ### Bench
 

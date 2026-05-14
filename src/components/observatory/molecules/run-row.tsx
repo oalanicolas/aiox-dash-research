@@ -56,7 +56,7 @@ export function RunRow({
       data-slug={slug}
       onClick={onSelect}
       className={cn(
-        "group grid min-h-[78px] w-full grid-cols-[22px_minmax(0,1fr)_42px_50px] items-stretch gap-2 border-b border-l-[3px] border-b-[var(--rule-soft)] border-l-transparent px-3 py-0 text-left transition-colors hover:bg-[var(--paper-alt)] xl:min-h-[82px] xl:grid-cols-[28px_minmax(0,1fr)_48px_58px] xl:gap-3 xl:px-5",
+        "group grid min-h-[82px] w-full grid-cols-[22px_minmax(0,1fr)_72px] items-stretch gap-2 border-b border-l-[3px] border-b-[var(--rule-soft)] border-l-transparent px-3 py-0 text-left transition-colors hover:bg-[var(--paper-alt)] xl:grid-cols-[28px_minmax(0,1fr)_82px] xl:gap-3 xl:px-5",
         isActive && "border-l-[var(--lime-ink)] bg-[var(--paper-deep)]",
       )}
     >
@@ -132,28 +132,27 @@ export function RunRow({
         )}
       </span>
 
-      <span className="flex items-center justify-end gap-1 self-center justify-self-end">
-        {coverageInferred && cov != null && <InferredFlag size={9} title="Coverage inferido" />}
-        <span
-          className={cn(
-            "text-[18px] font-black leading-none tracking-[-0.04em] xl:text-[20px]",
-            cov == null
-              ? "font-normal text-[var(--ink-dim)]"
-              : coverageInferred
-                ? "text-[var(--ink-dim)]"
-                : "text-[var(--ink)]",
-          )}
-          style={{ fontFamily: DISPLAY_FONT }}
-        >
-          {cov ?? "—"}
+      <span className="grid content-center justify-items-end gap-1 self-stretch py-3 text-right">
+        <span className="flex items-center justify-end gap-1">
+          {coverageInferred && cov != null && <InferredFlag size={9} title="Coverage inferido" />}
+          <span
+            className={cn(
+              "text-[22px] font-black leading-none tracking-[-0.045em]",
+              cov == null
+                ? "font-normal text-[var(--ink-dim)]"
+                : coverageInferred
+                  ? "text-[var(--ink-dim)]"
+                  : "text-[var(--ink)]",
+            )}
+            style={{ fontFamily: DISPLAY_FONT }}
+          >
+            {cov ?? "—"}
+          </span>
         </span>
-      </span>
-
-      <span className="self-center text-right">
         <span className="block leading-none text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
           {dateMissing(date) ? (
             <span
-              className="text-[18px] font-black tracking-[-0.04em] text-[var(--ink-dim)] xl:text-[20px]"
+              className="text-[13px] font-black tracking-[-0.04em] text-[var(--ink-dim)]"
               style={{ fontFamily: DISPLAY_FONT }}
               aria-label="data ausente"
               title="data ausente"
@@ -162,16 +161,16 @@ export function RunRow({
             </span>
           ) : (
             <>
-              <span className="text-[18px] font-black tracking-[-0.04em] text-[var(--ink)] xl:text-[20px]" style={{ fontFamily: DISPLAY_FONT }}>
+              <span className="text-[13px] font-black tracking-[-0.035em] text-[var(--ink-2)]" style={{ fontFamily: DISPLAY_FONT }}>
                 {fmtDateShort(date).split("/")[0]}
               </span>
-              <span className="ml-1 text-[10px] uppercase tracking-[0.08em]">
+              <span className="ml-1 text-[9px] uppercase tracking-[0.08em]">
                 {monthSigla(date)}
               </span>
             </>
           )}
         </span>
-        <span className="mt-1 block text-[9px] uppercase tracking-[0.12em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+        <span className="block text-[8.5px] uppercase tracking-[0.12em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
           {statusLabel(status)}
         </span>
       </span>

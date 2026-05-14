@@ -126,7 +126,7 @@ export async function getObservatoryData(
 
   switch (params.source) {
     case "research": {
-      const native = await getResearchObservatoryData(params.slug, params.file)
+      const native = await getResearchObservatoryData(params.slug, params.file, params.view ?? "map")
       return { data: mapResearchToObservatory(native), meta: researchAdapterMeta }
     }
     case "bench": {

@@ -352,7 +352,7 @@ export function Observatory({
         { label: "Query", key: "query", on: data.documents.some((d) => d.file.startsWith("00-")) },
         { label: "Prompt", key: "prompt", on: data.documents.some((d) => d.file.startsWith("01-")) },
         { label: "Report", key: "report", on: data.documents.some((d) => d.file.startsWith("02-")) },
-        { label: "Recomm.", key: "recommend", on: data.documents.some((d) => d.file.startsWith("03-")) },
+        { label: "Ações", key: "recommend", on: data.documents.some((d) => d.file.startsWith("03-")) },
         { label: "Waves", key: "waves", on: data.selectedRun.waves > 0 },
       ]
     }
@@ -398,7 +398,7 @@ export function Observatory({
     copyCommand(data.deepenCommand, setCopiedDeepen)
   }
 
-  const showDocCompanions = data.source !== "sinkra-maps" || mode === "document"
+  const showDocCompanions = data.source === "bench" || mode === "document"
   const compactShell = viewport === "sm"
   const showSidePanes = !compactShell
   const showBottomCompanion = showDocCompanions && !compactShell

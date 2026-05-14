@@ -33,6 +33,7 @@ export type ReaderMode =
   | "document"
   | "overview"
   | "map"
+  | "recommendations"
   | "curiosity"
   | "waves"
   | "sources"

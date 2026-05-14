@@ -1,6 +1,6 @@
 "use client"
 
-import { forwardRef, type ReactNode } from "react"
+import { forwardRef, type CSSProperties, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 /* Molecule — scroll container with editorial polish.
@@ -11,14 +11,15 @@ type Props = {
   className?: string
   viewportClassName?: string
   fadeColor?: string
+  style?: CSSProperties
 }
 
 export const LightScrollArea = forwardRef<HTMLDivElement, Props>(function LightScrollArea(
-  { children, className, viewportClassName, fadeColor = "var(--paper)" },
+  { children, className, viewportClassName, fadeColor = "var(--paper)", style },
   ref,
 ) {
   return (
-    <div className={cn("relative min-h-0 overflow-hidden", className)}>
+    <div className={cn("relative min-h-0 overflow-hidden", className)} style={style}>
       <div
         ref={ref}
         className={cn(
