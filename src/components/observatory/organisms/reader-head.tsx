@@ -12,7 +12,9 @@ import type { ObservatoryRunSummary } from "../foundations/types"
 const MODE_LABELS: Record<ReaderMode, string> = {
   document: "Doc",
   overview: "Overview",
-  map: "Mapa",
+  map: "Map",
+  curiosity: "Curiosity",
+  waves: "Waves",
   sources: "Fontes",
   players: "Players",
   score: "Score",

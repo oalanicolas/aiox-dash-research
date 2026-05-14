@@ -103,10 +103,10 @@ export function mapSinkraMapsToObservatory(
   if (extras.hasRaci) modes.push("accountability")
   if (extras.hasGaps || extras.hasObservatory) modes.push("gaps")
   if (extras.hasState || extras.hasMetrics) modes.push("evidence")
-  modes.push("document")
   if (!extras.hasObservatory && (extras.hasScore || data.structured.artifactCoverage.length > 0)) {
     modes.push("score")
   }
+  modes.push("document")
 
   return {
     source: "sinkra-maps",

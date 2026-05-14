@@ -1,5 +1,6 @@
 import { type ReactNode, type RefObject } from "react"
 import dynamic from "next/dynamic"
+import { ExternalLink } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import YAML from "yaml"
@@ -7,7 +8,6 @@ import { cn } from "@/lib/utils"
 import { LightScrollArea } from "../molecules/light-scroll-area"
 import { PlayerCard } from "../molecules/player-card"
 import { ScatterChart, type ScatterPoint } from "../molecules/scatter-chart"
-import { SourceRow } from "../molecules/source-row"
 import { TaxonomyList, type TaxonomyItem } from "../molecules/taxonomy-list"
 import { TimelineChart, type TimelinePoint } from "../molecules/timeline-chart"
 import { markdownComponents } from "../foundations/markdown-components"
@@ -15,6 +15,7 @@ import type {
   ObservatoryCliff,
   ObservatoryCategoricalWinner,
   ObservatoryDecisionNode,
+  ObservatoryDocument,
   ObservatoryEditorsNote,
   ObservatoryMatrix,
   ObservatoryPersona,
@@ -29,7 +30,7 @@ import type {
   ObservatoryTypeSpecific,
 } from "../foundations/types"
 import type { ObservatorySource, ReaderMode } from "../foundations/constants"
-import { coverageNumeric, statusKeyFromRaw } from "../foundations/utils"
+import { coverageNumeric, formatBytes, statusKeyFromRaw } from "../foundations/utils"
 import { DISPLAY_FONT, MONO_FONT, SERIF_FONT, observatoryDarkThemeVars } from "../foundations/theme"
 
 const MatrixView = dynamic(() => import("./matrix-view").then((mod) => mod.MatrixView), {
@@ -87,6 +88,7 @@ export function ReaderBody({
   content,
   file,
   bodyRef,
+  documents,
   matrix,
   scoreDimensions,
   scoreMetrics,
@@ -109,6 +111,7 @@ export function ReaderBody({
   content: string
   file?: string
   bodyRef: RefObject<HTMLDivElement | null>
+  documents?: ObservatoryDocument[]
   matrix?: ObservatoryMatrix | null
   scoreDimensions?: ObservatoryScoreDimension[]
   scoreMetrics?: ObservatoryMetric[]
@@ -133,7 +136,24 @@ export function ReaderBody({
     return <OverviewView runs={runs ?? []} />
   }
   if (mode === "map") {
+    if (source === "research") {
+      return (
+        <ResearchMapReport
+          runs={runs ?? []}
+          documents={documents ?? []}
+          sources={topSources ?? []}
+          players={researchPlayers ?? []}
+          sourceSummary={sourceSummary ?? []}
+        />
+      )
+    }
     return <SinkraMapReport sinkra={typeSpecific?.sinkra} />
+  }
+  if (mode === "curiosity" && source === "research") {
+    return <ResearchCuriosityReport documents={documents ?? []} />
+  }
+  if (mode === "waves" && source === "research") {
+    return <ResearchWavesReport runs={runs ?? []} documents={documents ?? []} />
   }
   if (mode === "flow") {
     return <SinkraFlowReport sinkra={typeSpecific?.sinkra} />
@@ -268,6 +288,457 @@ function ReportLoader({ label, dark = false }: { label: string; dark?: boolean }
       </div>
     </div>
   )
+}
+
+function ResearchMapReport({
+  runs,
+  documents,
+  sources,
+  players,
+  sourceSummary,
+}: {
+  runs: ObservatoryRunSummary[]
+  documents: ObservatoryDocument[]
+  sources: ObservatorySource_Entry[]
+  players: ObservatoryPlayer[]
+  sourceSummary: string[]
+}) {
+  const activeRun = runs.find((run) => run.active) ?? runs[0]
+  const docMap = new Map(documents.map((doc) => [doc.file, doc]))
+  const metrics = asDisplayRecord(parseOptionalArtifact(docMap.get("metrics.yaml")))
+  const pipeline = asDisplayRecord(parseOptionalArtifact(docMap.get("pipeline-state.yaml")))
+  const graph = asDisplayRecord(parseOptionalArtifact(docMap.get("research-graph.json")))
+  const matrices = asDisplayRecord(parseOptionalArtifact(docMap.get("matrices.yaml")))
+  const curiosity = asDisplayRecord(parseOptionalArtifact(docMap.get("curiosity_queue.yaml")))
+  const uxPatterns = asDisplayRecord(parseOptionalArtifact(docMap.get("ux-patterns.yaml")))
+  const events = parseJsonl(docMap.get("execution-log.jsonl")?.content ?? "")
+
+  const breakdown = asDisplayRecord(recordValue(metrics, "coverage_breakdown"))
+  const phases = asDisplayRecord(recordValue(pipeline, "phases"))
+  const questions = arrayValue(curiosity, "questions").map((item) => asDisplayRecord(item))
+  const matrixItems = arrayValue(matrices, "matrices").map((item) => asDisplayRecord(item))
+  const patterns = arrayValue(uxPatterns, "patterns").map((item) => asDisplayRecord(item))
+  const graphNodes = arrayValue(graph, "nodes").map((item) => asDisplayRecord(item))
+  const graphEdges = arrayValue(graph, "edges").map((item) => asDisplayRecord(item))
+  const highPriorityQuestions = questions.filter((q) => stringValue(q, "priority", "").toUpperCase() === "HIGH")
+  const highCredibilitySources = sources.filter((source) => source.credibility === "HIGH")
+  const coverage = numberValue(metrics, "coverage_score") ?? coverageNumeric(activeRun?.coverage) ?? 0
+  const integrity = numberValue(metrics, "integrity_score") ?? coverageNumeric(activeRun?.integrity) ?? 0
+  const decision = stringValue(metrics, "decision", activeRun?.status ?? "—")
+  const stopReason = stringValue(metrics, "stop_reason", "Sem stop reason estruturado.")
+
+  return (
+    <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={observatoryDarkThemeVars}>
+        <section className="grid min-w-0 overflow-hidden border border-[#f5f4e7]/16 bg-[#050505] lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="min-w-0 bg-[#10110d] p-6 text-[#f5f4e7] sm:p-8">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+              Research map
+            </p>
+            <h2 className="aiox-safe-text mt-3 max-w-[960px] text-[34px] font-black leading-[0.98] tracking-[-0.05em] sm:text-[48px] lg:text-[58px]" style={{ fontFamily: DISPLAY_FONT }}>
+              {activeRun?.displayTitle ?? "Pesquisa"}
+            </h2>
+            <p className="mt-5 max-w-[840px] text-[16px] leading-[1.62] text-[#f5f4e7]/76">
+              Painel visual da pesquisa selecionada: score, fases, evidências, perguntas abertas e artefatos que sustentam a decisão.
+            </p>
+            <div className="mt-6 grid gap-px bg-[#f5f4e7]/10 sm:grid-cols-4">
+              <ResearchDarkMetric label="Coverage" value={String(coverage || activeRun?.coverage || "—")} />
+              <ResearchDarkMetric label="Integrity" value={String(integrity || activeRun?.integrity || "—")} />
+              <ResearchDarkMetric label="Sources" value={String(sources.length || activeRun?.sources || "—")} />
+              <ResearchDarkMetric label="Waves" value={String(activeRun?.waves ?? "—")} />
+            </div>
+          </div>
+          <aside className="grid min-w-0 content-between gap-5 bg-[#d1ff00] p-6 text-[#050505] sm:p-8">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.14em] opacity-65" style={{ fontFamily: MONO_FONT }}>
+                decisão
+              </p>
+              <div className="aiox-safe-text mt-2 text-[42px] font-black leading-none tracking-[-0.055em]" style={{ fontFamily: DISPLAY_FONT }}>
+                {decision}
+              </div>
+              <p className="mt-4 text-[15px] font-black leading-[1.46]">{stopReason}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-px bg-[#050505]/18">
+              <ResearchLightMetric label="Artefatos" value={String(documents.length)} />
+              <ResearchLightMetric label="Matrizes" value={String(matrixItems.length)} />
+              <ResearchLightMetric label="Questões P1" value={String(highPriorityQuestions.length)} />
+              <ResearchLightMetric label="Players" value={String(players.length)} />
+            </div>
+          </aside>
+        </section>
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+          <section className="aiox-panel bg-[#0f0f11]">
+            <ResearchPanelHead eyebrow="pipeline" title="Fases e execução" meta={`${events.length} eventos`} />
+            <div className="grid gap-px bg-[#f5f4e7]/10 md:grid-cols-2">
+              {Object.entries(phases).map(([phase, status], index) => (
+                <div key={phase} className="grid grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-3 bg-[#050505] p-4">
+                  <span className="text-[24px] font-black leading-none text-[#f5f4e7]/25" style={{ fontFamily: DISPLAY_FONT }}>{String(index + 1).padStart(2, "0")}</span>
+                  <div className="min-w-0">
+                    <div className="aiox-safe-text text-[15px] font-black text-[#f5f4e7]">{humanizeResearchLabel(phase)}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>{phase}</div>
+                  </div>
+                  <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{String(status)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-3 p-4">
+              {events.slice(0, 8).map((event, index) => (
+                <div key={`${stringValue(event, "ts", String(index))}-${index}`} className="grid gap-3 border border-[#f5f4e7]/10 bg-[#050505] p-3 md:grid-cols-[150px_minmax(0,1fr)_110px]">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/45" style={{ fontFamily: MONO_FONT }}>{stringValue(event, "ts", "—").replace("T", " ").replace("Z", "")}</div>
+                  <div className="min-w-0">
+                    <div className="aiox-safe-text text-[14px] font-black text-[#f5f4e7]">{humanizeResearchLabel(stringValue(event, "phase", "evento"))}</div>
+                    <p className="mt-1 line-clamp-2 text-[12.5px] leading-[1.45] text-[#f5f4e7]/58">{stringValue(event, "notes", stringValue(event, "action", ""))}</p>
+                  </div>
+                  <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{stringValue(event, "status", "—")}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <aside className="grid content-start gap-6">
+            <section className="aiox-panel bg-[#0f0f11]">
+              <ResearchPanelHead eyebrow="coverage" title="Breakdown" meta={`${coverage}/100`} />
+              <div className="grid gap-3 p-4">
+                {Object.entries(breakdown).map(([key, value]) => (
+                  <ResearchBar key={key} label={humanizeResearchLabel(key)} value={Number(value) || 0} />
+                ))}
+              </div>
+            </section>
+            <section className="aiox-panel bg-[#0f0f11]">
+              <ResearchPanelHead eyebrow="evidence" title="Fonte e confiança" meta={`${highCredibilitySources.length}/${sources.length} high`} />
+              <div className="grid gap-px bg-[#f5f4e7]/10 sm:grid-cols-2">
+                <ResearchDarkMetric label="High credibility" value={String(highCredibilitySources.length)} />
+                <ResearchDarkMetric label="Date coverage" value={stringValue(asDisplayRecord(recordValue(metrics, "sources")), "freshness_ratio", activeRun?.extras?.freshness ? String(activeRun.extras.freshness) : "—")} />
+                <ResearchDarkMetric label="Graph nodes" value={String(graphNodes.length)} />
+                <ResearchDarkMetric label="Graph edges" value={String(graphEdges.length)} />
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <section className="aiox-panel bg-[#0f0f11]">
+            <ResearchPanelHead eyebrow="knowledge graph" title="Mapa de sinais" meta={`${graphNodes.length} nós · ${graphEdges.length} links`} />
+            <div className="grid gap-px bg-[#f5f4e7]/10 p-px md:grid-cols-3">
+              {graphNodes.slice(0, 9).map((node, index) => (
+                <article key={`${stringValue(node, "id", "node")}-${index}`} className="min-w-0 bg-[#050505] p-4">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                    {stringValue(node, "type", `sinal ${index + 1}`)}
+                  </div>
+                  <h3 className="aiox-safe-text mt-2 text-[18px] font-black leading-tight text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+                    {stringValue(node, "label", stringValue(node, "id", "Sinal"))}
+                  </h3>
+                  <p className="mt-3 line-clamp-3 text-[13px] leading-[1.5] text-[#f5f4e7]/58">
+                    {shortPreview(recordValue(node, "summary") ?? recordValue(node, "description") ?? recordValue(node, "evidence"), 180)}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <aside className="grid content-start gap-6">
+            <section className="aiox-panel bg-[#0f0f11]">
+              <ResearchPanelHead eyebrow="matrices" title="Quadros extraídos" meta={`${matrixItems.length}`} />
+              <div className="grid gap-2 p-4">
+                {matrixItems.slice(0, 6).map((matrix) => (
+                  <div key={stringValue(matrix, "id", stringValue(matrix, "title"))} className="border border-[#f5f4e7]/10 bg-[#050505] p-3">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/40" style={{ fontFamily: MONO_FONT }}>{stringValue(matrix, "row_count", "0")} linhas</div>
+                    <div className="aiox-safe-text mt-1 text-[14px] font-black text-[#f5f4e7]">{stringValue(matrix, "title")}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="aiox-panel bg-[#0f0f11]">
+              <ResearchPanelHead eyebrow="patterns" title="Padrões UX" meta={`${patterns.length}`} />
+              <div className="grid gap-2 p-4">
+                {patterns.slice(0, 5).map((pattern) => (
+                  <div key={stringValue(pattern, "id", stringValue(pattern, "name"))} className="border border-[#f5f4e7]/10 bg-[#050505] p-3">
+                    <div className="aiox-safe-text text-[14px] font-black text-[#f5f4e7]">{stringValue(pattern, "name")}</div>
+                    <p className="mt-1 line-clamp-2 text-[12px] leading-[1.45] text-[#f5f4e7]/55">{stringValue(pattern, "description")}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </aside>
+        </div>
+
+        {sourceSummary.length > 0 && (
+          <div className="mt-6 flex flex-wrap gap-2">
+            {sourceSummary.map((item) => (
+              <span key={item} className="border border-[#f5f4e7]/12 bg-[#0f0f11] px-3 py-2 text-[11px] uppercase tracking-[0.1em] text-[#f5f4e7]/50" style={{ fontFamily: MONO_FONT }}>
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+      </article>
+    </LightScrollArea>
+  )
+}
+
+function ResearchCuriosityReport({ documents }: { documents: ObservatoryDocument[] }) {
+  const docMap = new Map(documents.map((doc) => [doc.file, doc]))
+  const curiosity = asDisplayRecord(parseOptionalArtifact(docMap.get("curiosity_queue.yaml")))
+  const questions = arrayValue(curiosity, "questions").map((item) => asDisplayRecord(item))
+  const high = questions.filter((q) => stringValue(q, "priority", "").toUpperCase() === "HIGH")
+  const medium = questions.filter((q) => stringValue(q, "priority", "").toUpperCase() === "MEDIUM")
+  const low = questions.filter((q) => stringValue(q, "priority", "").toUpperCase() === "LOW")
+  const groups = [
+    { key: "HIGH", label: "Alta prioridade", items: high, color: "#d1ff00" },
+    { key: "MEDIUM", label: "Boa aposta", items: medium, color: "#f5b340" },
+    { key: "LOW", label: "Explorar depois", items: low, color: "#f5f4e7" },
+  ]
+
+  return (
+    <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={observatoryDarkThemeVars}>
+        <section className="grid overflow-hidden border border-[#f5f4e7]/16 bg-[#10110d] lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="p-6 sm:p-8">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+              curiosity backlog
+            </p>
+            <h2 className="aiox-safe-text mt-3 max-w-[900px] text-[38px] font-black leading-[0.98] tracking-[-0.05em] text-[#f5f4e7] sm:text-[56px]" style={{ fontFamily: DISPLAY_FONT }}>
+              Perguntas que ainda podem mudar a decisão
+            </h2>
+            <p className="mt-5 max-w-[780px] text-[16px] leading-[1.62] text-[#f5f4e7]/70">
+              Esta aba separa hipóteses, dúvidas e próximos testes. O objetivo é deixar claro o que vale investigar antes da próxima wave.
+            </p>
+          </div>
+          <aside className="grid content-end gap-px bg-[#d1ff00] p-6 text-[#050505] sm:p-8">
+            <div className="text-[72px] font-black leading-none tracking-[-0.06em]" style={{ fontFamily: DISPLAY_FONT }}>{questions.length}</div>
+            <div className="text-[12px] uppercase tracking-[0.14em]" style={{ fontFamily: MONO_FONT }}>perguntas abertas</div>
+            <div className="mt-5 grid grid-cols-3 gap-px bg-[#050505]/16">
+              <ResearchLightMetric label="Alta" value={String(high.length)} />
+              <ResearchLightMetric label="Média" value={String(medium.length)} />
+              <ResearchLightMetric label="Baixa" value={String(low.length)} />
+            </div>
+          </aside>
+        </section>
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-3">
+          {groups.map((group) => (
+            <section key={group.key} className="aiox-panel bg-[#0f0f11]">
+              <ResearchPanelHead eyebrow={group.key} title={group.label} meta={`${group.items.length} itens`} />
+              <div className="grid gap-3 p-4">
+                {group.items.length === 0 && (
+                  <div className="border border-[#f5f4e7]/10 bg-[#050505] p-5 text-[14px] text-[#f5f4e7]/50">
+                    Nenhuma pergunta nesta faixa.
+                  </div>
+                )}
+                {group.items.map((question, index) => (
+                  <article key={`${stringValue(question, "id", "q")}-${index}`} className="border border-[#f5f4e7]/10 bg-[#050505] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-[10px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO_FONT, color: group.color }}>
+                        {stringValue(question, "id", `Q${index + 1}`)}
+                      </span>
+                      <span className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>
+                        {stringValue(question, "category", "investigação")}
+                      </span>
+                    </div>
+                    <h3 className="aiox-safe-text mt-3 text-[22px] font-black leading-[1.05] tracking-[-0.035em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+                      {stringValue(question, "question")}
+                    </h3>
+                    <p className="mt-3 text-[14px] leading-[1.55] text-[#f5f4e7]/62">
+                      {stringValue(question, "why_it_matters", "Sem justificativa estruturada.")}
+                    </p>
+                    <div className="mt-4 border-t border-[#f5f4e7]/10 pt-3">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/35" style={{ fontFamily: MONO_FONT }}>
+                        próximo movimento
+                      </div>
+                      <p className="mt-1 text-[13px] leading-[1.45] text-[#f5f4e7]/72">
+                        {stringValue(question, "next_action", "Definir teste ou fonte para a próxima wave.")}
+                      </p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </article>
+    </LightScrollArea>
+  )
+}
+
+function ResearchWavesReport({ runs, documents }: { runs: ObservatoryRunSummary[]; documents: ObservatoryDocument[] }) {
+  const activeRun = runs.find((run) => run.active) ?? runs[0]
+  const waveDocs = documents.filter((doc) => doc.phase === "wave" || /wave/i.test(doc.file))
+  const events = parseJsonl(documents.find((doc) => doc.file === "execution-log.jsonl")?.content ?? "")
+  const waveEvents = events.filter((event) => /wave|follow|deep|aprofund/i.test(`${stringValue(event, "phase", "")} ${stringValue(event, "action", "")} ${stringValue(event, "notes", "")}`))
+  const timeline = waveDocs.map((doc, index) => ({
+    index,
+    file: doc.file,
+    title: markdownTitle(doc.content) || humanizeResearchLabel(doc.file.replace(/\.[^.]+$/, "")),
+    summary: markdownSummary(doc.content),
+    bytes: doc.bytes,
+  }))
+
+  return (
+    <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={observatoryDarkThemeVars}>
+        <section className="grid overflow-hidden border border-[#f5f4e7]/16 bg-[#10110d] lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="p-6 sm:p-8">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+              deepening waves
+            </p>
+            <h2 className="aiox-safe-text mt-3 max-w-[900px] text-[38px] font-black leading-[0.98] tracking-[-0.05em] text-[#f5f4e7] sm:text-[56px]" style={{ fontFamily: DISPLAY_FONT }}>
+              Como a pesquisa evoluiu
+            </h2>
+            <p className="mt-5 max-w-[780px] text-[16px] leading-[1.62] text-[#f5f4e7]/70">
+              A leitura aqui é temporal: quais ondas de aprofundamento existem, que evidência cada uma acrescentou e onde ainda falta uma nova rodada.
+            </p>
+          </div>
+          <aside className="grid content-end gap-px bg-[#d1ff00] p-6 text-[#050505] sm:p-8">
+            <div className="text-[72px] font-black leading-none tracking-[-0.06em]" style={{ fontFamily: DISPLAY_FONT }}>{activeRun?.waves ?? waveDocs.length}</div>
+            <div className="text-[12px] uppercase tracking-[0.14em]" style={{ fontFamily: MONO_FONT }}>waves detectadas</div>
+            <div className="mt-5 grid grid-cols-2 gap-px bg-[#050505]/16">
+              <ResearchLightMetric label="Docs" value={String(waveDocs.length)} />
+              <ResearchLightMetric label="Eventos" value={String(waveEvents.length || events.length)} />
+            </div>
+          </aside>
+        </section>
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <section className="aiox-panel bg-[#0f0f11]">
+            <ResearchPanelHead eyebrow="timeline" title="Ondas de aprofundamento" meta={`${timeline.length} documentos`} />
+            <div className="relative grid gap-4 p-5">
+              <div className="absolute bottom-5 left-[34px] top-5 w-px bg-[#f5f4e7]/12" />
+              {timeline.length === 0 && (
+                <div className="border border-[#f5f4e7]/10 bg-[#050505] p-5 text-[14px] text-[#f5f4e7]/55">
+                  Nenhum documento de wave foi encontrado neste run.
+                </div>
+              )}
+              {timeline.map((wave) => (
+                <article key={wave.file} className="relative grid gap-3 pl-12">
+                  <div className="absolute left-[21px] top-1.5 h-7 w-7 border border-[#d1ff00] bg-[#050505] text-center text-[11px] font-black leading-7 text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                    {String(wave.index + 1).padStart(2, "0")}
+                  </div>
+                  <div className="border border-[#f5f4e7]/10 bg-[#050505] p-5">
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>{wave.file}</div>
+                    <h3 className="aiox-safe-text mt-2 text-[28px] font-black leading-[1.02] tracking-[-0.04em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+                      {wave.title}
+                    </h3>
+                    <p className="mt-3 max-w-[900px] text-[15px] leading-[1.58] text-[#f5f4e7]/66">{wave.summary}</p>
+                    <div className="mt-4 text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/35" style={{ fontFamily: MONO_FONT }}>
+                      {formatBytes(wave.bytes)}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <aside className="aiox-panel bg-[#0f0f11]">
+            <ResearchPanelHead eyebrow="execution log" title="Sinais de execução" meta={`${waveEvents.length || events.length} eventos`} />
+            <div className="grid gap-3 p-4">
+              {(waveEvents.length > 0 ? waveEvents : events).slice(0, 12).map((event, index) => (
+                <div key={`${stringValue(event, "ts", String(index))}-${index}`} className="border border-[#f5f4e7]/10 bg-[#050505] p-4">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                    {stringValue(event, "phase", `evento ${index + 1}`)}
+                  </div>
+                  <p className="mt-2 text-[14px] leading-[1.48] text-[#f5f4e7]/70">
+                    {stringValue(event, "notes", stringValue(event, "action", "Evento registrado."))}
+                  </p>
+                  <div className="mt-3 text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/35" style={{ fontFamily: MONO_FONT }}>
+                    {stringValue(event, "ts", "sem timestamp")} · {stringValue(event, "status", "—")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+      </article>
+    </LightScrollArea>
+  )
+}
+
+function parseOptionalArtifact(doc?: ObservatoryDocument): unknown {
+  if (!doc) return {}
+  if (/\.jsonl$/i.test(doc.file)) return parseJsonl(doc.content)
+  return parseStructured(doc.file, doc.content) ?? {}
+}
+
+function parseJsonl(content: string): Array<Record<string, unknown>> {
+  return content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        const parsed = JSON.parse(line)
+        return isRecord(parsed) ? parsed : {}
+      } catch {
+        return {}
+      }
+    })
+    .filter((item) => Object.keys(item).length > 0)
+}
+
+function ResearchPanelHead({ eyebrow, title, meta }: { eyebrow: string; title: string; meta?: string }) {
+  return (
+    <header className="flex min-w-0 flex-wrap items-end justify-between gap-3 border-b border-[#f5f4e7]/10 bg-[#10110d] p-5">
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase tracking-[0.16em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{eyebrow}</p>
+        <h3 className="aiox-safe-text mt-1 text-[26px] font-black leading-none tracking-[-0.045em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+          {title}
+        </h3>
+      </div>
+      {meta && <span className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/42" style={{ fontFamily: MONO_FONT }}>{meta}</span>}
+    </header>
+  )
+}
+
+function ResearchDarkMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 bg-[#050505] p-4">
+      <div className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/40" style={{ fontFamily: MONO_FONT }}>{label}</div>
+      <div className="aiox-safe-text mt-1 text-[28px] font-black leading-none tracking-[-0.045em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>{value}</div>
+    </div>
+  )
+}
+
+function ResearchLightMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 bg-[#d1ff00] p-3">
+      <div className="text-[9px] uppercase tracking-[0.12em] text-[#050505]/55" style={{ fontFamily: MONO_FONT }}>{label}</div>
+      <div className="aiox-safe-text mt-1 text-[22px] font-black leading-none text-[#050505]" style={{ fontFamily: DISPLAY_FONT }}>{value}</div>
+    </div>
+  )
+}
+
+function ResearchBar({ label, value }: { label: string; value: number }) {
+  const width = Math.max(3, Math.min(100, value))
+  return (
+    <div>
+      <div className="mb-1 flex justify-between gap-3 text-[10px] uppercase tracking-[0.11em] text-[#f5f4e7]/45" style={{ fontFamily: MONO_FONT }}>
+        <span className="truncate">{label}</span>
+        <span>{value}</span>
+      </div>
+      <div className="h-2.5 bg-[#f5f4e7]/10">
+        <div className="h-full bg-[#d1ff00]" style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function humanizeResearchLabel(raw: string) {
+  return raw.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function markdownTitle(content: string) {
+  return content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? ""
+}
+
+function markdownSummary(content: string) {
+  const text = content
+    .split("\n")
+    .filter((line) => !/^#/.test(line.trim()))
+    .join(" ")
+    .replace(/[`*_>#-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  return text.length > 280 ? `${text.slice(0, 280).trim()}…` : text || "Sem resumo textual estruturado neste artefato."
 }
 
 function isStructuredArtifact(file: string) {
@@ -1649,49 +2120,116 @@ function SourcesView({
   sources: ObservatorySource_Entry[]
   sourceSummary: string[]
 }) {
+  const high = sources.filter((source) => source.credibility === "HIGH")
+  const dated = sources.filter((source) => source.date && source.date !== "—")
+  const flagged = sources.filter((source) => source.flags.length > 0)
+  const hosts = countBy(sources, (source) => sourceHost(source.url)).slice(0, 8)
+
   return (
-    <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
-      <article className="mx-auto w-full min-w-0 max-w-[980px]">
-        <header className="mb-7 border-b border-[var(--rule)] pb-5">
-          <p
-            className="mb-2 text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-3)]"
-            style={{ fontFamily: MONO_FONT }}
-          >
-            Research sources
-          </p>
-          <h2
-            className="text-[22px] font-black leading-none text-[var(--ink)] sm:text-[26px] lg:text-[30px]"
-            style={{ fontFamily: DISPLAY_FONT }}
-          >
-            Fontes críticas
-          </h2>
-          {sourceSummary.length > 0 && (
-            <div className="mt-4 grid gap-2 md:grid-cols-2">
-              {sourceSummary.slice(0, 4).map((item) => (
-                <div
-                  key={item}
-                  className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] px-3 py-2 text-[12.5px] leading-[1.45] text-[var(--ink-2)]"
-                  style={{ fontFamily: SERIF_FONT }}
-                >
-                  {item}
-                </div>
+    <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={observatoryDarkThemeVars}>
+        <section className="grid overflow-hidden border border-[#f5f4e7]/16 bg-[#10110d] lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="p-6 sm:p-8">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+              evidence system
+            </p>
+            <h2 className="aiox-safe-text mt-3 max-w-[900px] text-[38px] font-black leading-[0.98] tracking-[-0.05em] text-[#f5f4e7] sm:text-[56px]" style={{ fontFamily: DISPLAY_FONT }}>
+              Fontes que sustentam a pesquisa
+            </h2>
+            <p className="mt-5 max-w-[760px] text-[16px] leading-[1.62] text-[#f5f4e7]/70">
+              Visão de confiabilidade, variedade e recência das evidências. A lista deixa de ser só referência e passa a mostrar risco de base empírica.
+            </p>
+          </div>
+          <aside className="grid content-end gap-px bg-[#d1ff00] p-6 text-[#050505] sm:p-8">
+            <div className="text-[72px] font-black leading-none tracking-[-0.06em]" style={{ fontFamily: DISPLAY_FONT }}>{sources.length}</div>
+            <div className="text-[12px] uppercase tracking-[0.14em]" style={{ fontFamily: MONO_FONT }}>fontes indexadas</div>
+            <div className="mt-5 grid grid-cols-3 gap-px bg-[#050505]/16">
+              <ResearchLightMetric label="High" value={String(high.length)} />
+              <ResearchLightMetric label="Com data" value={String(dated.length)} />
+              <ResearchLightMetric label="Flags" value={String(flagged.length)} />
+            </div>
+          </aside>
+        </section>
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <section className="aiox-panel bg-[#0f0f11]">
+            <ResearchPanelHead eyebrow="source register" title="Registro de evidências" meta={`${high.length}/${sources.length} high`} />
+            <div className="grid gap-px bg-[#f5f4e7]/10 p-px">
+              {sources.map((source, index) => (
+                <article key={source.id || source.url || `${source.title}-${index}`} className="grid gap-4 bg-[#050505] p-4 md:grid-cols-[44px_minmax(0,1fr)_160px]">
+                  <div className="text-[22px] font-black leading-none text-[#f5f4e7]/25" style={{ fontFamily: DISPLAY_FONT }}>
+                    {String(index + 1).padStart(2, "0")}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{source.credibility || "—"}</span>
+                      <span className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/35" style={{ fontFamily: MONO_FONT }}>{sourceHost(source.url)}</span>
+                    </div>
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="group mt-2 block cursor-pointer text-[#f5f4e7] transition-colors hover:text-[#d1ff00]"
+                    >
+                      <h3 className="aiox-safe-text text-[20px] font-black leading-[1.08] tracking-[-0.035em]" style={{ fontFamily: DISPLAY_FONT }}>
+                        {source.title || source.url}
+                      </h3>
+                      <span className="mt-2 block truncate text-[12px] text-[#f5f4e7]/45 transition-colors group-hover:text-[#d1ff00]/70">
+                        {source.url}
+                      </span>
+                    </a>
+                    {source.flags.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {source.flags.slice(0, 4).map((flag) => (
+                          <span key={flag} className="border border-[#f5f4e7]/12 px-2 py-1 text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/55" style={{ fontFamily: MONO_FONT }}>
+                            {flag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid content-start gap-2 md:justify-items-end">
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex h-9 w-9 cursor-pointer items-center justify-center border border-[#f5f4e7]/16 text-[#f5f4e7]/64 transition-colors hover:border-[#d1ff00] hover:text-[#d1ff00]"
+                      title="Abrir fonte"
+                      aria-label={`Abrir fonte: ${source.title || source.url}`}
+                    >
+                      <ExternalLink size={15} strokeWidth={1.8} />
+                    </a>
+                    {typeof source.multiplier === "number" && (
+                      <span className="text-[26px] font-black leading-none text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>{source.multiplier}x</span>
+                    )}
+                  </div>
+                </article>
               ))}
             </div>
-          )}
-        </header>
+          </section>
 
-        <div className="border border-[var(--rule)]">
-          {sources.map((source, index) => (
-            <SourceRow
-              key={source.id || source.url || `${source.title}-${index}`}
-              index={index}
-              title={source.title}
-              url={source.url}
-              credibility={source.credibility}
-              date={source.date}
-              flags={source.flags}
-            />
-          ))}
+          <aside className="grid content-start gap-6">
+            <section className="aiox-panel bg-[#0f0f11]">
+              <ResearchPanelHead eyebrow="domains" title="Mix de fontes" meta={`${hosts.length} domínios`} />
+              <div className="grid gap-3 p-4">
+                {hosts.map(([host, count]) => (
+                  <ResearchBar key={host} label={host} value={Math.round((count / Math.max(1, sources.length)) * 100)} />
+                ))}
+              </div>
+            </section>
+            {sourceSummary.length > 0 && (
+              <section className="aiox-panel bg-[#0f0f11]">
+                <ResearchPanelHead eyebrow="summary" title="Leitura rápida" meta={`${sourceSummary.length} sinais`} />
+                <div className="grid gap-2 p-4">
+                  {sourceSummary.slice(0, 8).map((item) => (
+                    <div key={item} className="border border-[#f5f4e7]/10 bg-[#050505] p-3 text-[13px] leading-[1.5] text-[#f5f4e7]/68">
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </aside>
         </div>
       </article>
     </LightScrollArea>
@@ -1700,91 +2238,139 @@ function SourcesView({
 
 function ResearchPlayersView({ players }: { players: ObservatoryPlayer[] }) {
   const tiers = [1, 2, 3] as const
-  return (
-    <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
-      <article className="mx-auto w-full min-w-0 max-w-[1080px]">
-        <header className="mb-7 border-b border-[var(--rule)] pb-5">
-          <p
-            className="mb-2 text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-3)]"
-            style={{ fontFamily: MONO_FONT }}
-          >
-            Research players
-          </p>
-          <h2
-            className="text-[22px] font-black leading-none text-[var(--ink)] sm:text-[26px] lg:text-[30px]"
-            style={{ fontFamily: DISPLAY_FONT }}
-          >
-            Players citados
-          </h2>
-        </header>
+  const included = players.filter((player) => !player.excluded)
+  const excluded = players.filter((player) => player.excluded)
+  const categories = countBy(players, (player) => player.category ?? "sem categoria").slice(0, 8)
 
-        <div className="grid gap-5 lg:grid-cols-3">
+  return (
+    <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
+      <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={observatoryDarkThemeVars}>
+        <section className="grid overflow-hidden border border-[#f5f4e7]/16 bg-[#10110d] lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="p-6 sm:p-8">
+            <p className="text-[11px] uppercase tracking-[0.16em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+              market map
+            </p>
+            <h2 className="aiox-safe-text mt-3 max-w-[900px] text-[38px] font-black leading-[0.98] tracking-[-0.05em] text-[#f5f4e7] sm:text-[56px]" style={{ fontFamily: DISPLAY_FONT }}>
+              Players, categorias e exclusões
+            </h2>
+            <p className="mt-5 max-w-[760px] text-[16px] leading-[1.62] text-[#f5f4e7]/70">
+              A aba organiza quem realmente entrou na análise, quem foi descartado e quais categorias estão dominando a pesquisa.
+            </p>
+          </div>
+          <aside className="grid content-end gap-px bg-[#d1ff00] p-6 text-[#050505] sm:p-8">
+            <div className="text-[72px] font-black leading-none tracking-[-0.06em]" style={{ fontFamily: DISPLAY_FONT }}>{players.length}</div>
+            <div className="text-[12px] uppercase tracking-[0.14em]" style={{ fontFamily: MONO_FONT }}>players detectados</div>
+            <div className="mt-5 grid grid-cols-3 gap-px bg-[#050505]/16">
+              <ResearchLightMetric label="Incluídos" value={String(included.length)} />
+              <ResearchLightMetric label="Excluídos" value={String(excluded.length)} />
+              <ResearchLightMetric label="Categorias" value={String(categories.length)} />
+            </div>
+          </aside>
+        </section>
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <section className="aiox-panel bg-[#0f0f11]">
+            <ResearchPanelHead eyebrow="tiers" title="Mapa competitivo" meta={`${included.length} incluídos`} />
+            <div className="grid gap-px bg-[#f5f4e7]/10 p-px lg:grid-cols-3">
           {tiers.map((tier) => {
             const tierPlayers = players.filter((player) => player.tier === tier)
-            if (tierPlayers.length === 0) return null
             return (
-              <section key={tier} className="border border-[var(--rule)] bg-[var(--paper)]">
+              <section key={tier} className="min-w-0 bg-[#050505]">
                 <div
-                  className="flex items-center justify-between border-b border-[var(--rule)] px-4 py-3 text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-3)]"
+                  className="flex items-center justify-between border-b border-[#f5f4e7]/10 px-4 py-3 text-[10.5px] uppercase tracking-[0.16em] text-[#f5f4e7]/42"
                   style={{ fontFamily: MONO_FONT }}
                 >
                   <span>Tier {tier}</span>
                   <span>{tierPlayers.length}</span>
                 </div>
-                <div>
-                  {tierPlayers.map((player) => (
-                    <PlayerCard key={player.id || player.name} {...player} />
+                <div className="grid gap-3 p-4">
+                  {tierPlayers.length === 0 && (
+                    <div className="text-[13px] text-[#f5f4e7]/45">Sem players neste tier.</div>
+                  )}
+                  {tierPlayers.map((player, index) => (
+                    <ResearchPlayerCard key={player.id || player.name} player={player} index={index} />
                   ))}
                 </div>
               </section>
             )
           })}
-          {players.some((player) => player.tier == null) && (
-            <section className="border border-[var(--rule)] bg-[var(--paper)]">
-              <div
-                className="flex items-center justify-between border-b border-[var(--rule)] px-4 py-3 text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-3)]"
-                style={{ fontFamily: MONO_FONT }}
-              >
-                <span>Sem tier</span>
-                <span>{players.filter((player) => player.tier == null).length}</span>
+            </div>
+          </section>
+
+          <aside className="grid content-start gap-6">
+            <section className="aiox-panel bg-[#0f0f11]">
+              <ResearchPanelHead eyebrow="categories" title="Categorias" meta={`${categories.length}`} />
+              <div className="grid gap-3 p-4">
+                {categories.map(([category, count]) => (
+                  <ResearchBar key={category} label={category} value={Math.round((count / Math.max(1, players.length)) * 100)} />
+                ))}
               </div>
-              <div>
+            </section>
+          {players.some((player) => player.tier == null) && (
+              <section className="aiox-panel bg-[#0f0f11]">
+                <ResearchPanelHead eyebrow="untiered" title="Sem tier" meta={`${players.filter((player) => player.tier == null).length}`} />
+                <div className="grid gap-3 p-4">
                 {players
                   .filter((player) => player.tier == null)
                   .map((player) => (
-                    <PlayerCard key={player.id || player.name} {...player} />
+                      <ResearchPlayerCard key={player.id || player.name} player={player} />
                   ))}
               </div>
             </section>
           )}
-        </div>
-
-        <div className="mt-7 grid gap-3 sm:grid-cols-3">
-          {[
-            ["Total", players.length],
-            ["Incluídos", players.filter((player) => !player.excluded).length],
-            ["Excluídos", players.filter((player) => player.excluded).length],
-          ].map(([label, value]) => (
-            <div
-              key={label}
-              className={cn("border border-[var(--rule-soft)] bg-[var(--paper-alt)] px-4 py-3")}
-            >
-              <div
-                className="text-[10px] uppercase tracking-[0.15em] text-[var(--ink-3)]"
-                style={{ fontFamily: MONO_FONT }}
-              >
-                {label}
+          {excluded.length > 0 && (
+            <section className="aiox-panel bg-[#0f0f11]">
+              <ResearchPanelHead eyebrow="excluded" title="Descartados" meta={`${excluded.length}`} />
+              <div className="grid gap-2 p-4">
+                {excluded.slice(0, 8).map((player) => (
+                  <div key={player.id || player.name} className="border border-[#f5f4e7]/10 bg-[#050505] p-3">
+                    <div className="aiox-safe-text text-[15px] font-black text-[#f5f4e7]">{player.name}</div>
+                    <p className="mt-1 line-clamp-2 text-[12px] leading-[1.45] text-[#f5f4e7]/55">{player.exclusionReason ?? "Sem motivo estruturado."}</p>
+                  </div>
+                ))}
               </div>
-              <div
-                className="mt-1 text-[20px] font-black leading-none text-[var(--ink)] sm:text-[23px] lg:text-[26px]"
-                style={{ fontFamily: DISPLAY_FONT }}
-              >
-                {value}
-              </div>
-            </div>
-          ))}
+            </section>
+          )}
+          </aside>
         </div>
       </article>
     </LightScrollArea>
   )
+}
+
+function ResearchPlayerCard({ player, index = 0 }: { player: ObservatoryPlayer; index?: number }) {
+  return (
+    <article className={cn("min-w-0 border bg-[#050505] p-4", player.excluded ? "border-[#f5f4e7]/10 opacity-55" : "border-[#f5f4e7]/14")}>
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+          {player.number || String(index + 1).padStart(2, "0")}
+        </span>
+        <span className="max-w-[160px] truncate text-right text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>
+          {player.category ?? "sem categoria"}
+        </span>
+      </div>
+      <h3 className="aiox-safe-text mt-3 text-[22px] font-black leading-[1.05] tracking-[-0.035em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+        {player.name}
+      </h3>
+      {player.whatItDoes && (
+        <p className="mt-3 line-clamp-3 text-[13px] leading-[1.5] text-[#f5f4e7]/64">{player.whatItDoes}</p>
+      )}
+      {player.insight && (
+        <p className="mt-3 border-t border-[#f5f4e7]/10 pt-3 text-[13px] leading-[1.5] text-[#d1ff00]/82">{player.insight}</p>
+      )}
+      {player.sourceTitle && (
+        <div className="mt-4 text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/34" style={{ fontFamily: MONO_FONT }}>
+          {player.sourceTitle}
+        </div>
+      )}
+    </article>
+  )
+}
+
+function sourceHost(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "")
+  } catch {
+    return url || "sem domínio"
+  }
 }

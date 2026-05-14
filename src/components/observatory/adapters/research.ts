@@ -62,9 +62,14 @@ export function mapResearchToObservatory(
 ): ObservatoryData {
   const runs = data.runs.map(mapRun)
   const selectedRun = mapRun(data.selectedRun)
-  const availableModes: ObservatoryData["availableModes"] = ["document", "overview"]
+  const availableModes: ObservatoryData["availableModes"] = ["map"]
+  if (data.documents.some((doc) => doc.file === "curiosity_queue.yaml")) availableModes.push("curiosity")
+  if (selectedRun.waves > 0 || data.documents.some((doc) => doc.phase === "wave" || /wave/i.test(doc.file))) {
+    availableModes.push("waves")
+  }
   if (data.topSources.length > 0) availableModes.push("sources")
   if (data.players.length > 0) availableModes.push("players")
+  availableModes.push("document")
 
   return {
     source: "research",

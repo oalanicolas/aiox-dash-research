@@ -2,6 +2,7 @@
 
 import {
   type PointerEvent as ReactPointerEvent,
+  useEffect,
   useRef,
   useState,
 } from "react"
@@ -41,27 +42,23 @@ export function CloserStrip({
   corePhases: CorePhase[]
   stopNote: string
 }) {
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false
-    try {
-      return window.localStorage.getItem(LS_COLLAPSED) === "1"
-    } catch {
-      return false
-    }
-  })
-  const [height, setHeight] = useState<number>(() => {
-    if (typeof window === "undefined") return DEFAULT_HEIGHT
-    try {
-      const h = parseInt(window.localStorage.getItem(LS_HEIGHT) ?? "", 10)
-      if (Number.isNaN(h)) return DEFAULT_HEIGHT
-      const max = Math.round(window.innerHeight * 0.6)
-      return Math.max(80, Math.min(max, h))
-    } catch {
-      return DEFAULT_HEIGHT
-    }
-  })
+  const [collapsed, setCollapsed] = useState(false)
+  const [height, setHeight] = useState(DEFAULT_HEIGHT)
   const [dragging, setDragging] = useState(false)
   const dragRef = useRef<{ y: number; h: number } | null>(null)
+
+  useEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(LS_COLLAPSED) === "1")
+      const storedHeight = parseInt(window.localStorage.getItem(LS_HEIGHT) ?? "", 10)
+      if (!Number.isNaN(storedHeight)) {
+        const max = Math.round(window.innerHeight * 0.6)
+        setHeight(Math.max(80, Math.min(max, storedHeight)))
+      }
+    } catch {
+      /* noop */
+    }
+  }, [])
 
   function onDown(e: ReactPointerEvent<HTMLDivElement>) {
     if (collapsed) return

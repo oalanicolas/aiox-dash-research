@@ -516,6 +516,7 @@ export function Observatory({
             content={selectedContent}
             file={selectedDocument.file}
             bodyRef={readerBodyRef}
+            documents={data.documents}
             matrix={data.matrix}
             scoreDimensions={data.scoreDimensions}
             scoreMetrics={data.scoreMetrics}
@@ -684,6 +685,9 @@ function defaultReaderMode(data: ObservatoryData): ReaderMode {
     return data.availableModes[0] ?? "document"
   }
   if (data.source === "sinkra-maps") {
+    return data.availableModes.includes("map") ? "map" : data.availableModes[0] ?? "document"
+  }
+  if (data.source === "research") {
     return data.availableModes.includes("map") ? "map" : data.availableModes[0] ?? "document"
   }
   return data.availableModes.includes("document") ? "document" : data.availableModes[0] ?? "document"

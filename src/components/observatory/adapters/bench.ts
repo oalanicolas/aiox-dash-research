@@ -111,7 +111,7 @@ export function mapBenchToObservatory(
   const runs = data.runs.map(mapRun)
   const selectedRun = mapRun(data.selectedRun)
   /* Derive which Reader modes are available based on what the dash carries */
-  const availableModes: ReaderMode[] = ["document"]
+  const availableModes: ReaderMode[] = []
   const dashMatrix = data.scoreboard
   const hasLegacyMatrix = !dashMatrix && data.matrixRows.length > 0
   const hasScore = data.scoreDimensions.length > 0 || data.scoreMetrics.length > 0
@@ -142,6 +142,7 @@ export function mapBenchToObservatory(
   if (dashMatrix && dashMatrix.rows.length > 0) {
     availableModes.push("weights")
   }
+  availableModes.push("document")
 
   const legacyPlayers = Array.from(
     new Set(data.matrixRows.flatMap((row) => row.values.map((value) => value.label))),

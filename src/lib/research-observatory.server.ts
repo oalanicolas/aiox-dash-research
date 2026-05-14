@@ -656,7 +656,7 @@ export async function getResearchObservatoryData(selectedSlug?: string, selected
   )
   const preferredSlug = selectedSlug && summaries.some((run) => run.slug === selectedSlug)
     ? selectedSlug
-    : summaries.find((run) => run.slug === "2026-05-06-tech-research-pipeline-improvements")?.slug ?? summaries[0]?.slug
+    : summaries.find((run) => run.slug === "2026-05-11-visual-deep-research-apps")?.slug ?? summaries[0]?.slug
   const runs = summaries.map((run) => ({ ...run, active: run.slug === preferredSlug }))
   const selectedRun = runs.find((run) => run.slug === preferredSlug) ?? runs[0]
   const documents = selectedRun ? await buildDocuments(path.join(researchRoot, selectedRun.slug)) : []
