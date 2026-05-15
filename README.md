@@ -1,20 +1,56 @@
 # AIOX Dash
 
-Dashboard local para visualizar artefatos operacionais de Research, Bench e SINKRA Maps.
+Dashboard local-first para visualizar artefatos operacionais de Research, Bench e SINKRA Maps.
 
-O app foi pensado para funcionar em instalações parciais. Se uma instalação não tiver `docs/` ou `outputs/`, a fonte correspondente simplesmente não aparece no menu.
+O app foi pensado para funcionar em instalações locais e parciais. Se uma instalação não tiver `docs/` ou `outputs/`, a fonte correspondente simplesmente não aparece no menu. O `Demo` sempre fica disponível para onboarding.
+
+## Para Quem Está Instalando Pela Primeira Vez
+
+Você pode rodar o app sem nenhum dado próprio:
+
+```bash
+npm install
+npm run dev -- --port 3001
+```
+
+Abra:
+
+```txt
+http://localhost:3001/observatory/demo
+```
+
+Quando quiser apontar para uma pasta de trabalho com dados reais, crie `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+Edite:
+
+```txt
+AIOX_DASH_ROOT=/caminho/absoluto/para/seu/workspace
+```
+
+Esse workspace pode conter qualquer combinação destas pastas:
+
+```txt
+docs/research
+docs/bench
+outputs/sinkra-squad
+```
 
 ## Fontes Suportadas
 
 | Fonte | Pasta esperada | Rota | Comportamento |
 |---|---|---|---|
+| Demo | nenhuma | `/observatory/demo` | Exemplo completo para onboarding, incluindo Map, Slides, Roadmap, Evidências, Matriz, Duelo, Score, Personas, TCO e Decisão |
 | Research | `docs/research` | `/observatory/research` | Leitor de pesquisas em Markdown/YAML/JSON estruturado |
 | Bench | `docs/bench` | `/observatory/bench` | Relatórios comparativos, matriz, score, personas, TCO e decisão |
 | SINKRA Maps | `outputs/sinkra-squad` | `/observatory/sinkra-maps` | Mapas visuais de processo, fluxo, automação, governança, RACI, gaps e evidências |
 
 ## Descoberta Automática
 
-Na inicialização de cada request, o app verifica se estas pastas existem:
+Na inicialização de cada request, o app verifica estas pastas dentro de `AIOX_DASH_ROOT`. Se `AIOX_DASH_ROOT` não estiver definido, o app tenta detectar o root local automaticamente:
 
 ```txt
 docs/research
@@ -24,15 +60,15 @@ outputs/sinkra-squad
 
 Regras:
 
+- `Demo` sempre aparece e não depende de filesystem externo.
 - Se uma pasta não existir, a fonte não aparece no menu superior.
 - Se uma rota direta for aberta para uma fonte inexistente, o app retorna `404`.
 - `/observatory` redireciona para a primeira fonte disponível.
-- Se nenhuma fonte existir, `/observatory` mostra uma tela de configuração vazia.
+- Em instalações sem `docs/` e sem `outputs/`, `/observatory/demo` continua funcionando como experiência inicial.
 
 ## Rodando Localmente
 
 ```bash
-cd apps/dash
 npm install
 npm run dev -- --port 3001
 ```
@@ -183,19 +219,34 @@ Próximo passo recomendado: materializar um `_index.json` e um `observatory_payl
 ## Build
 
 ```bash
-npm run build --workspaces=false
-npm run typecheck --workspaces=false
+npm run build
+npm run typecheck
 ```
 
 Em uma instalação limpa, rode `build` antes de `typecheck`: o Next gera `.next/types`, que faz parte do `tsconfig.json`.
 
+Se estiver rodando este app dentro de um monorepo npm workspaces, use:
+
+```bash
+npm run build --workspaces=false
+npm run typecheck --workspaces=false
+```
+
 ## Adaptação Para Outras Instalações
 
-Para usar o app fora do Sinkra Hub:
+Para usar o app fora deste repositório:
 
-1. Copie `apps/dash` para o novo monorepo ou app.
-2. Preserve o layout relativo das pastas que deseja habilitar.
-3. Crie apenas as fontes necessárias. Exemplo: se só quiser SINKRA Maps, crie apenas `outputs/sinkra-squad`.
-4. Rode `/observatory`; o menu será montado automaticamente com base no que existir.
+1. Clone ou copie este app.
+2. Rode `npm install`.
+3. Opcionalmente configure `AIOX_DASH_ROOT` em `.env.local`.
+4. Crie apenas as fontes necessárias. Exemplo: se só quiser SINKRA Maps, crie apenas `outputs/sinkra-squad`.
+5. Rode `/observatory`; o menu será montado automaticamente com base no que existir.
 
-Instalações sem `docs/` e sem `outputs/` continuam abrindo normalmente: o app mostra uma tela de estado vazio em `/observatory` em vez de quebrar no loader.
+Instalações sem `docs/` e sem `outputs/` continuam abrindo normalmente: o app expõe `Demo` como experiência inicial em vez de quebrar no loader.
+
+## Segurança Local
+
+- O app é read-only: ele lê arquivos locais e renderiza os relatórios.
+- Não há autenticação embutida; rode em `localhost` ou atrás de um reverse proxy com autenticação se for expor na rede.
+- Não publique workspaces com dados sensíveis em repositórios abertos.
+- `AIOX_DASH_ROOT` deve apontar apenas para a pasta que você quer permitir que o app leia.
