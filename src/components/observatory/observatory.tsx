@@ -429,7 +429,7 @@ export function Observatory({
         ? `claude && /spy *bench "<player-a>" "<player-b>" "Compare estes players e gere bench-output-dash.json em ${data.sourceRoot}/<slug>/."`
         : data.source === "sinkra-maps"
           ? `claude && *map "<processo-ou-missão>" "Mapeie com SINKRA e gere workflow_definition.yaml, task_definitions.yaml, quality_gates.yaml e score_card.yaml em ${data.sourceRoot}/<slug>/."`
-        : `claude && /tech-research "<tema da pesquisa>" "Gere uma pesquisa completa em ${data.sourceRoot}/ com README, report, recommendations, metrics e sources."`
+          : `claude -p "Gere uma pesquisa completa em ${data.sourceRoot}/ com README, report, recommendations, metrics e sources usando contrato inline."`
     copyCommand(command, setCopiedNew)
   }
 

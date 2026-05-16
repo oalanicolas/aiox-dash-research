@@ -91,27 +91,14 @@ export type ResearchRunState = {
   logPath: string
 }
 
-const TECH_RESEARCH_CANONICAL_REFS = [
-  ".agents/skills/tech-research/SKILL.md",
-  "squads/research/workflows/tech-research/tech-research-pipeline.yaml",
-  "squads/research/templates/tech-research/deep-research-prompt-template.md",
-  "squads/research/templates/tech-research/output-structure.md",
-  "squads/research/templates/tech-research/output-structure.yaml",
-  "squads/research/prompts/tech-research/decompose.md",
-  "squads/research/prompts/tech-research/tool-strategy.md",
-  "squads/research/prompts/tech-research/evaluate.md",
-  "squads/research/prompts/tech-research/verify-citations.md",
-  "squads/research/checklists/tech-research/guardrails.yaml",
-] as const
-
 const TECH_RESEARCH_RUNTIME_PHASES = [
   "[P0] Auto-clarify: inferir foco, domínio, tecnologias e intenção temporal antes de perguntar qualquer coisa.",
   "[P1] Clarify fallback: só perguntar se o contexto não puder ser inferido.",
   "[P1.5] Decompose: quebrar a pergunta em 5-7 subqueries ortogonais usando o prompt de decomposição.",
-  "[P2] Generate prompt: gerar o deep research prompt com o template canônico.",
+  "[P2] Generate prompt: registrar o prompt executado e o plano de pesquisa derivado do contrato inline.",
   "[P3] Execute waves: pesquisar em ondas, registrar progresso e usar estratégia de ferramentas por fonte.",
   "[P3.2] Deep read: ler fontes prioritárias quando snippets/resumos forem insuficientes.",
-  "[P3.5] Coverage gate: calcular coverage_score, source_quality, gaps e next_queries com o rubric do squad.",
+  "[P3.5] Coverage gate: calcular coverage_score, source_quality, gaps e next_queries com o rubric inline.",
   "[P3.6] Compress wave: produzir wave-{N}-summary.md e manter evolving_report.md.",
   "[P3.7] Escape valve: em modo profundo ou coverage < 70 após wave 2, usar extração profunda disponível e documentar limitações.",
   "[P4] Synthesize: sintetizar findings sem apagar contradições; extrair quick wins de alto valor e baixo esforço.",
@@ -119,24 +106,24 @@ const TECH_RESEARCH_RUNTIME_PHASES = [
   "[P5] Document: materializar narrativa, métricas, fontes, grafo e arquivos ricos consumidos pelo Observatory.",
 ] as const
 
-const TECH_RESEARCH_OUTPUT_ATOMS = [
-  "`README.md`",
-  "`00-query-original.md`",
-  "`01-deep-research-prompt.md`",
-  "`02-research-report.md`",
-  "`03-recommendations.md`",
-  "`quick-wins.md`",
-  "`curiosity_queue.yaml`",
-  "`evolving_report.md`",
-  "`wave-{N}-summary.md`",
-  "`metrics.yaml`",
-  "`pipeline-state.yaml`",
-  "`sources.yaml`",
-  "`players.yaml`",
-  "`ux-patterns.yaml`",
-  "`matrices.yaml`",
-  "`execution-log.jsonl`",
-  "`research-graph.json`",
+const TECH_RESEARCH_OUTPUT_CONTRACT = [
+  "`README.md` — sumário executivo, escopo, método, principais achados, limitações e próximos passos.",
+  "`00-query-original.md` — pergunta original, interpretação do foco, premissas e critérios de sucesso.",
+  "`01-deep-research-prompt.md` — prompt/contrato executado e decisões de escopo tomadas pelo runtime.",
+  "`02-research-report.md` — relatório principal com achados, evidências, trade-offs, riscos e lacunas.",
+  "`03-recommendations.md` — recomendações acionáveis, priorizadas por impacto, esforço e confiança.",
+  "`quick-wins.md` — ações de alto valor e baixa fricção, com responsável sugerido quando inferível.",
+  "`curiosity_queue.yaml` — perguntas abertas com prioridade, razão e status.",
+  "`evolving_report.md` — progresso incremental por onda, incluindo mudanças de hipótese.",
+  "`wave-{N}-summary.md` — resumo de cada onda com queries, fontes, aprendizados e gaps restantes.",
+  "`metrics.yaml` — coverage_score, integrity_score, confidence_score, waves, source totals, stop_reason e inferências.",
+  "`pipeline-state.yaml` — fases executadas, status, timestamps e checkpoints.",
+  "`sources.yaml` — fontes com URL, título, data, tipo, credibilidade, claims suportados e notas.",
+  "`players.yaml` — projetos/players com categoria, maturidade, sinais, riscos e links.",
+  "`ux-patterns.yaml` — padrões de experiência ou operação observados, quando aplicável.",
+  "`matrices.yaml` — matrizes comparativas defensáveis; vazio estruturado se não houver dados suficientes.",
+  "`execution-log.jsonl` — eventos relevantes em JSONL com timestamp, fase, status e notas.",
+  "`research-graph.json` — grafo conectando query, ondas, fontes, claims, players e decisões.",
 ] as const
 
 const MAX_RESEARCH_TOPIC_SLUG_LENGTH = 44
@@ -208,8 +195,8 @@ export function buildResearchWorkbenchPrompt(request: ResearchRunRequest) {
   const runtimeDir = `docs/research/${outputSlug}/runtimes/${request.cliId}`
 
   return [
-    "Execute esta pesquisa usando a profundidade completa do Research Squad, não como resposta rápida.",
-    "Se o runtime suportar skills locais, ative `sinkra-hub:tech-research`. Se não suportar, siga o contrato canônico abaixo como especificação inline.",
+    "Execute esta pesquisa usando o protocolo autônomo embutido do AIOX Research, não como resposta rápida.",
+    "Não dependa de skills, agentes, prompts, templates ou arquivos externos ao diretório atual. O contrato completo está inline abaixo.",
     "",
     `Pergunta de pesquisa: ${request.query}`,
     `Modo: ${method.label} — ${method.description}`,
@@ -227,8 +214,8 @@ export function buildResearchWorkbenchPrompt(request: ResearchRunRequest) {
     "",
     buildTechResearchRuntimeProtocol(request.depth, runtimeDir),
     "",
-    "Contrato visual desejado dentro do diretório do runtime:",
-    ...TECH_RESEARCH_OUTPUT_ATOMS.map((atom) => `- ${atom} conforme \`squads/research/templates/tech-research/output-structure.md\`.`),
+    "Contrato de saída desejado dentro do diretório do runtime:",
+    ...TECH_RESEARCH_OUTPUT_CONTRACT.map((atom) => `- ${atom}`),
     "",
     "Regras:",
     "- Não implemente código de produto nesta execução.",
@@ -252,8 +239,9 @@ export function buildResearchConsolidationPrompt(request: ResearchConsolidationR
   const cliList = request.sourceCliIds.length > 0 ? request.sourceCliIds.join(", ") : "CLIs paralelos selecionados"
 
   return [
-    "Consolide pesquisas paralelas já geradas no workspace atual usando o protocolo do Research Squad.",
+    "Consolide pesquisas paralelas já geradas no workspace atual usando o protocolo autônomo embutido do AIOX Research.",
     "Esta etapa não é uma resposta rápida: ela deve reconciliar os runtimes com avaliação de cobertura, verificação de citações e documentação compatível com o Observatory.",
+    "Não dependa de skills, agentes, prompts, templates ou arquivos externos ao diretório atual. O contrato completo está inline abaixo.",
     "",
     `Pergunta original: ${request.query}`,
     `Modo base: ${method.label} — ${method.description}`,
@@ -264,18 +252,15 @@ export function buildResearchConsolidationPrompt(request: ResearchConsolidationR
     "Fontes internas obrigatórias:",
     sourceList || "- Nenhum diretório de origem informado; interrompa e reporte o problema.",
     "",
-    "Assets canônicos obrigatórios:",
-    ...TECH_RESEARCH_CANONICAL_REFS.map((ref) => `- \`${ref}\``),
-    "",
     "Tarefa:",
     "- Leia os artefatos em `runtimes/*/` antes de escrever a consolidação.",
     "- Compare convergências, divergências, lacunas, fontes fortes/fracas e decisões conflitantes.",
-    "- Use `squads/research/prompts/tech-research/evaluate.md` para pontuar cobertura por runtime e no consolidado.",
-    "- Use `squads/research/prompts/tech-research/verify-citations.md` para separar fonte confirmada, inferência e claim não suportado.",
+    "- Pontue cobertura por runtime e no consolidado usando os thresholds inline: target 85, approve >= 70, review 50-70, veto/caveat abaixo de 50.",
+    "- Separe fonte confirmada, inferência e claim não suportado; não trate ausência de evidência como evidência positiva.",
     `- Grave o resultado consolidado nos arquivos raiz de \`docs/research/${outputSlug}/\`.`,
     "",
     "Contrato de saída no diretório raiz:",
-    ...TECH_RESEARCH_OUTPUT_ATOMS.map((atom) => `- ${atom} consolidado conforme o contrato do Research Observatory.`),
+    ...TECH_RESEARCH_OUTPUT_CONTRACT.map((atom) => `- ${atom}`),
     "",
     "Regras:",
     "- Não rode uma nova pesquisa externa se as fontes internas forem suficientes; só navegue se houver lacuna crítica.",
@@ -303,12 +288,11 @@ function buildTechResearchRuntimeProtocol(depth: ResearchRunRequest["depth"], ru
 
   return [
     "Protocolo obrigatório de profundidade:",
-    "- Antes de responder, leia ou reproduza o contrato destes assets canônicos:",
-    ...TECH_RESEARCH_CANONICAL_REFS.map((ref) => `  - \`${ref}\``),
-    "- Execute as fases do pipeline `SP-TECH-RESEARCH` dentro do runtime, com persona inline quando o CLI não suportar agentes/squad nativos:",
+    "- Este protocolo é autônomo e substitui qualquer skill, prompt, template ou agente externo que não esteja disponível.",
+    "- Execute as fases do pipeline `SP-TECH-RESEARCH` dentro do runtime:",
     ...TECH_RESEARCH_RUNTIME_PHASES.map((phase) => `  - ${phase}`),
     ...depthRules,
-    "- Use os thresholds do squad: target coverage 85, approve >= 70, review 50-70, veto/caveat abaixo de 50 após max_waves=3.",
+    "- Use os thresholds inline: target coverage 85, approve >= 70, review 50-70, veto/caveat abaixo de 50 após max_waves=3.",
     "- Classifique fontes por credibilidade: official docs, papers, maintainer/core team, GitHub repo, issues, blogs conhecidos, vendor marketing e baixa qualidade.",
     "- `sources.yaml` precisa conter URL, título, data quando houver, tipo, credibilidade, claims suportados e notas de uso.",
     "- `metrics.yaml` precisa conter coverage_score, coverage_breakdown, integrity_score, citation_verified, waves, totals de fontes e stop_reason.",

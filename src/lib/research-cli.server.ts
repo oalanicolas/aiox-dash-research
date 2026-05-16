@@ -364,7 +364,7 @@ async function ensureResearchRunShell(input: ResearchShellInput) {
         "",
         "Esta pasta é a unidade canônica da pesquisa. Saídas individuais de CLIs/LLMs ficam em `runtimes/<runtime>/`; os arquivos raiz são usados pelo Observatory e pela consolidação.",
         "",
-        "O contrato de execução segue o pipeline completo `SP-TECH-RESEARCH` do Research Squad: decomposição, ondas de pesquisa, gate de cobertura, síntese, verificação de citações e documentação rica.",
+        "O contrato de execução segue o protocolo autônomo embutido `SP-TECH-RESEARCH`: decomposição, ondas de pesquisa, gate de cobertura, síntese, verificação de citações e documentação rica.",
         "",
         "## Estado",
         "",

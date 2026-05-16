@@ -1938,7 +1938,7 @@ function buildRuntimeDetailSteps(run: ResearchRunState): RuntimeDetailStep[] {
       short: "Contexto",
       name: "Ler contrato e contexto",
       desc: "Carrega o prompt técnico, restrições de escrita e contrato de artefatos em docs/research.",
-      substeps: ["Skill · tech-research", "Saída · README/report/recommendations", "Governança · sem escrita fora de docs/research"],
+      substeps: ["Protocolo · inline", "Saída · README/report/recommendations", "Governança · sem escrita fora de docs/research"],
     },
     {
       id: "evidence",

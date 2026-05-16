@@ -27,7 +27,7 @@ export const researchAdapterMeta: ObservatoryAdapterMeta = {
   },
   formatCoverage: (run) => run.coverage,
   buildDeepenCommand: (run) =>
-    `claude && /tech-research "${run.slug}" "Aprofunde esta pesquisa: valide lacunas, atualize fontes críticas, detalhe recomendações acionáveis e gere um novo follow-up em docs/research."`,
+    `claude -p "Aprofunde a pesquisa docs/research/${run.slug} usando o contrato inline do AIOX Research: valide lacunas, atualize fontes críticas, refine recomendações acionáveis e gere um novo follow-up em docs/research."`,
 }
 
 function mapRun(run: ResearchRunSummary): ObservatoryRunSummary {
