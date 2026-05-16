@@ -1726,20 +1726,21 @@ function RuntimeStepRow({
         ) : null}
       </div>
       <div className="flex items-center justify-between gap-3 border-t border-[var(--rule-soft)] px-4 py-3 lg:flex-col lg:items-end lg:justify-center lg:border-l lg:border-t-0 lg:border-[var(--rule-soft)]">
-        <RuntimeStepBadge state={step.state} />
         {onRetry ? (
           <button
             type="button"
             onClick={onRetry}
             disabled={retrying}
             title="Tentar de Novo"
-            className="inline-flex min-h-8 items-center justify-center gap-2 border border-[var(--danger-ink)] px-2 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--danger-ink)] transition-colors hover:bg-[rgba(239,68,68,0.10)] disabled:opacity-60"
+            className="inline-flex h-6 items-center gap-1.5 bg-[var(--danger-ink)] px-2 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--ink)] transition-opacity hover:opacity-85 disabled:opacity-60"
             style={{ fontFamily: MONO_FONT }}
           >
-            <RefreshCcw size={11} className={cn(retrying && "animate-spin")} />
-            {retrying ? "Tentando" : "Tentar de Novo"}
+            <RefreshCcw size={10} className={cn(retrying && "animate-spin")} />
+            {retrying ? "Retrying" : "Retry"}
           </button>
-        ) : null}
+        ) : (
+          <RuntimeStepBadge state={step.state} />
+        )}
         <span className="text-[10px] tracking-[0.08em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
           {step.meta}
         </span>
