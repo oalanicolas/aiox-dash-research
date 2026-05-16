@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react"
+import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
 import {
   AlertTriangle,
   Check,
@@ -47,6 +47,7 @@ type ResearchExecutionMode = "local" | "byok"
 
 const BYOK_STORAGE_KEY = "aiox-research:research-byok"
 const RUNTIME_STEP_TOTAL = 7
+const MAX_RESEARCH_TOPIC_SLUG_LENGTH = 44
 
 const DEFAULT_BYOK_CONFIG: ResearchByokConfig = {
   providerLabel: "OpenAI compatible",
@@ -69,7 +70,7 @@ const AIOX_RESEARCH_THEME = {
   "--surface": "#0F0F11",
   "--surface-alt": "#1C1E19",
   "--surface-hover": "#1E1F22",
-  "--surface-console": "#1A1C14",
+  "--surface-console": "#12130F",
   "--ink": "rgb(244, 244, 232)",
   "--ink-2": "rgba(244, 244, 232, 0.70)",
   "--ink-3": "rgba(244, 244, 232, 0.55)",
@@ -101,6 +102,7 @@ export function ResearchWorkbench({
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
   const [isConsolidating, setIsConsolidating] = useState(false)
+  const [retryingRunIds, setRetryingRunIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [runtimePickerOpen, setRuntimePickerOpen] = useState(false)
   const [executionMode, setExecutionMode] = useState<ResearchExecutionMode>("local")
@@ -359,6 +361,45 @@ export function ResearchWorkbench({
     applyRunState(next)
   }
 
+  async function retryRun(run: ResearchRunState) {
+    if (run.status !== "failed" || retryingRunIds.includes(run.runId)) return
+    setRetryingRunIds((current) => [...current, run.runId])
+    setError(null)
+    try {
+      const response = await fetch("/api/research/runs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: run.query,
+          cliId: run.cliId,
+          methodId: run.methodId,
+          depth,
+          outputSlug: run.outputSlug,
+          byok: run.cliId === "byok" ? byokConfig : undefined,
+        }),
+      })
+      const body = (await response.json()) as ResearchRunState | { error?: string }
+      if (!response.ok || "error" in body) {
+        throw new Error("error" in body && body.error ? body.error : `Falha ao reiniciar ${cliLabel(run.cliId)}.`)
+      }
+
+      const nextRun = body as ResearchRunState
+      let nextRunsSnapshot: ResearchRunState[] | null = null
+      setRuns((current) => {
+        const nextRuns = current.map((item) => (item.runId === run.runId ? nextRun : item))
+        nextRunsSnapshot = nextRuns
+        return nextRuns
+      })
+      setConsolidationRun((current) => (current?.runId === run.runId ? nextRun : current))
+      setFocusedRunId(nextRun.runId)
+      syncResearchUrl(nextRunsSnapshot ?? runs.map((item) => (item.runId === run.runId ? nextRun : item)), consolidationRun?.runId === run.runId ? nextRun : consolidationRun)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : `Falha ao reiniciar ${cliLabel(run.cliId)}.`)
+    } finally {
+      setRetryingRunIds((current) => current.filter((runId) => runId !== run.runId))
+    }
+  }
+
   function applyRunState(next: ResearchRunState) {
     setRuns((current) => current.map((run) => (run.runId === next.runId ? next : run)))
     setConsolidationRun((current) => (current?.runId === next.runId ? next : current))
@@ -449,6 +490,7 @@ export function ResearchWorkbench({
               className="grid h-10 w-10 place-items-center border border-[var(--rule)] text-[var(--ink-3)] transition-colors hover:border-[var(--lime-ink)] hover:text-[var(--ink)]"
               disabled={isRefreshing}
               title="Detectar CLIs"
+              aria-label="Detectar CLIs"
             >
               <RefreshCcw size={14} className={cn(isRefreshing && "animate-spin")} />
             </button>
@@ -478,8 +520,20 @@ export function ResearchWorkbench({
           AIOX
         </div>
 
-        <div className="relative z-10 mx-auto flex min-h-[calc(100vh-60px)] max-w-[1280px] flex-col px-5 py-14 lg:px-10 lg:py-20">
-          <div className="mx-auto flex w-full max-w-[960px] flex-1 flex-col items-center justify-center text-center">
+        <div
+          className={cn(
+            "relative z-10 mx-auto flex max-w-[1280px] flex-col px-5 lg:px-10",
+            hasResearchSession
+              ? "min-h-0 py-12 lg:py-16"
+              : "min-h-[calc(100vh-60px)] py-14 lg:py-20",
+          )}
+        >
+          <div
+            className={cn(
+              "mx-auto flex w-full max-w-[960px] flex-col items-center text-center",
+              hasResearchSession ? "justify-start" : "flex-1 justify-center",
+            )}
+          >
             <div
               className="mb-5 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em]"
               style={{ fontFamily: MONO_FONT }}
@@ -629,48 +683,33 @@ export function ResearchWorkbench({
             )}
           </div>
 
-          <div className="mx-auto mt-14 w-full max-w-[960px] border border-[var(--rule)] bg-[var(--surface)]">
-            <section className="min-w-0">
-              <div className="border-b border-[var(--rule)] px-5 py-4">
-                <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-                  [02] Execução
-                </p>
-              </div>
-              <div className="p-5">
-                {runs.length > 0 || consolidationRun ? (
-                  <BatchStatus
-                    runs={runs}
-                    consolidationRun={consolidationRun}
-                    focusedRunId={focusedRunId}
-                    canConsolidate={canConsolidate}
-                    isConsolidating={isConsolidating}
-                    onConsolidate={() => void startConsolidationRun()}
-                    onFocus={setFocusedRunId}
-                    onOpen={(run) => router.push(`/observatory/research?slug=${encodeURIComponent(run.outputSlug)}`)}
-                  />
-                ) : hasUrlScopedSession ? (
-                  <div className="grid min-h-40 place-items-center border border-dashed border-[var(--rule)] bg-[var(--paper-deep)] p-5 text-center">
-                    <div>
-                      <RefreshCcw className="mx-auto mb-3 animate-spin text-[var(--lime-ink)]" size={22} />
-                      <p className="text-[14px] font-semibold">Restaurando execução</p>
-                      <p className="mt-1 text-[12px] leading-[1.45] text-[var(--ink-2)]">
-                        Buscando o estado salvo dos runs informados nesta URL.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid min-h-40 place-items-center border border-dashed border-[var(--rule)] bg-[var(--paper-deep)] p-5 text-center">
-                    <div>
-                      <FileText className="mx-auto mb-3 text-[var(--ink-3)]" size={22} />
-                      <p className="text-[14px] font-semibold">O resultado aparecerá aqui</p>
-                      <p className="mt-1 text-[12px] leading-[1.45] text-[var(--ink-2)]">
-                        A pesquisa será salva em `docs/research/` e poderá ser aberta no Observatory.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
+          <div className="mx-auto mt-12 w-full max-w-[960px]">
+            {runs.length > 0 || consolidationRun ? (
+              <BatchStatus
+                runs={runs}
+                consolidationRun={consolidationRun}
+                focusedRunId={focusedRunId}
+                canConsolidate={canConsolidate}
+                isConsolidating={isConsolidating}
+                onConsolidate={() => void startConsolidationRun()}
+                retryingRunIds={retryingRunIds}
+                onRetryRun={(run) => void retryRun(run)}
+                onFocus={setFocusedRunId}
+                onOpen={(run) => router.push(`/observatory/research?slug=${encodeURIComponent(run.outputSlug)}`)}
+              />
+            ) : hasUrlScopedSession ? (
+              <ExecutionEmptyState
+                icon={<RefreshCcw className="mx-auto mb-3 animate-spin text-[var(--lime-ink)]" size={22} />}
+                title="Restaurando execução"
+                body="Buscando o estado salvo dos runs informados nesta URL."
+              />
+            ) : (
+              <ExecutionEmptyState
+                icon={<FileText className="mx-auto mb-3 text-[var(--ink-3)]" size={22} />}
+                title="O resultado aparecerá aqui"
+                body="A pesquisa será salva em docs/research/ e poderá ser aberta no Observatory."
+              />
+            )}
           </div>
         </div>
       </section>
@@ -1014,6 +1053,58 @@ function SessionMetaCell({ label, value }: { label: string; value: string }) {
   )
 }
 
+function ExecutionEmptyState({
+  icon,
+  title,
+  body,
+}: {
+  icon: ReactNode
+  title: string
+  body: string
+}) {
+  return (
+    <section className="border border-[var(--rule)] bg-[var(--surface)]">
+      <SectionHeading index="02" title="Execução" meta="aguardando pesquisa" />
+      <div className="grid min-h-40 place-items-center border-t border-dashed border-[var(--rule)] bg-[var(--paper-deep)] p-5 text-center">
+        <div>
+          {icon}
+          <p className="text-[14px] font-semibold">{title}</p>
+          <p className="mt-1 text-[12px] leading-[1.45] text-[var(--ink-2)]">{body}</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function SectionHeading({
+  index,
+  title,
+  meta,
+  accent,
+}: {
+  index: string
+  title: string
+  meta?: string
+  accent?: string
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-3 py-5">
+      <h2 className="flex items-baseline gap-3 text-[22px] font-black uppercase tracking-normal text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+        <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+          [{index}]
+        </span>
+        {title}
+        {accent ? <span className="text-[var(--lime-ink)]">{accent}</span> : null}
+      </h2>
+      {meta ? (
+        <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+          {meta}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
 function BatchStatus({
   runs,
   consolidationRun,
@@ -1021,6 +1112,8 @@ function BatchStatus({
   canConsolidate,
   isConsolidating,
   onConsolidate,
+  retryingRunIds,
+  onRetryRun,
   onFocus,
   onOpen,
 }: {
@@ -1030,6 +1123,8 @@ function BatchStatus({
   canConsolidate: boolean
   isConsolidating: boolean
   onConsolidate: () => void
+  retryingRunIds: string[]
+  onRetryRun: (run: ResearchRunState) => void
   onFocus: (runId: string) => void
   onOpen: (run: ResearchRunState) => void
 }) {
@@ -1040,45 +1135,55 @@ function BatchStatus({
   const allParallelRunsFinished = runs.length > 0 && activeRuns.length === 0
   const showConsolidationPanel = allParallelRunsFinished || Boolean(consolidationRun)
   const focusedRun = visibleRuns.find((run) => run.runId === focusedRunId) ?? visibleRuns[0] ?? null
-  const pipelineSteps = buildPipelineSteps({
-    hasRuns: runs.length > 0,
-    activeCount: activeRuns.length,
-    completedCount: completedRuns.length,
-    canConsolidate,
-    consolidationRun,
-  })
 
   return (
-    <div className="grid gap-5">
-      <PipelineRibbon
+    <div className="grid gap-8 text-left">
+      <RunStatsStrip
         runs={runs}
         activeCount={activeRuns.length}
         completedCount={completedRuns.length}
         failedCount={failedRuns.length}
-        steps={pipelineSteps}
+        consolidationRun={consolidationRun}
       />
 
-      <div className="grid gap-[1px] bg-[var(--rule)] md:grid-cols-3">
-        <MetricCell label="Ativas" value={String(activeRuns.length)} />
-        <MetricCell label="Concluídas" value={String(completedRuns.length)} />
-        <MetricCell label="Falhas" value={String(failedRuns.length)} />
-      </div>
+      <section>
+        <SectionHeading
+          index="02"
+          title="Runtimes paralelos"
+          meta={`${runs.length} runtime${runs.length === 1 ? "" : "s"} · ${completedRuns.length} concluído${completedRuns.length === 1 ? "" : "s"} · ${activeRuns.length} em curso`}
+        />
+        <div
+          className="grid gap-[1px] bg-[var(--rule)]"
+          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))" }}
+        >
+          {visibleRuns.map((run) => (
+            <RuntimeRunCard
+              key={run.runId}
+              run={run}
+              selected={run.runId === focusedRun?.runId}
+              consolidation={run.runId === consolidationRun?.runId}
+              onFocus={() => onFocus(run.runId)}
+            />
+          ))}
+        </div>
+      </section>
 
-      <div className="grid gap-[1px] bg-[var(--rule)] lg:grid-cols-3">
-        {visibleRuns.map((run) => (
-          <RuntimeRunCard
-            key={run.runId}
-            run={run}
-            selected={run.runId === focusedRun?.runId}
-            consolidation={run.runId === consolidationRun?.runId}
-            onFocus={() => onFocus(run.runId)}
-          />
-        ))}
-      </div>
-
-      <div className="grid gap-5">
+      <div className="grid gap-8">
         {focusedRun ? (
-          <FocusedRunConsole run={focusedRun} onOpen={() => onOpen(focusedRun)} />
+          <>
+            <SectionHeading
+              index="03"
+              title="Runtime"
+              accent={focusedRun.runId === consolidationRun?.runId ? "Consolidação" : cliLabel(focusedRun.cliId)}
+              meta={runtimeSummaryLabel(focusedRun)}
+            />
+            <FocusedRunConsole
+              run={focusedRun}
+              retrying={retryingRunIds.includes(focusedRun.runId)}
+              onRetry={() => onRetryRun(focusedRun)}
+              onOpen={() => onOpen(focusedRun)}
+            />
+          </>
         ) : null}
         {showConsolidationPanel ? (
           <ConsolidationPanel
@@ -1098,75 +1203,75 @@ function BatchStatus({
 
 type PipelineStepState = "done" | "active" | "pending" | "failed"
 
-function PipelineRibbon({
+function RunStatsStrip({
   runs,
   activeCount,
   completedCount,
   failedCount,
-  steps,
+  consolidationRun,
 }: {
   runs: ResearchRunState[]
   activeCount: number
   completedCount: number
   failedCount: number
-  steps: Array<{ id: string; label: string; state: PipelineStepState }>
+  consolidationRun: ResearchRunState | null
 }) {
-  const liveLabel =
-    activeCount > 0
-      ? `EM EXECUÇÃO · ${activeCount} ativo${activeCount === 1 ? "" : "s"}`
-      : completedCount >= 2
-        ? "PRONTO PARA CONSOLIDAR"
-        : failedCount > 0
-          ? "EXECUÇÃO COM FALHAS"
-          : "AGUARDANDO"
+  const totalSteps = Math.max(1, runs.length * RUNTIME_STEP_TOTAL)
+  const doneSteps = runs.reduce((total, run) => total + runProgress(run).done, 0)
+  const percent = Math.round((doneSteps / totalSteps) * 100)
+  const newestRun = [...runs, consolidationRun]
+    .filter((run): run is ResearchRunState => Boolean(run))
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0]
+  const elapsed = newestRun ? formatElapsed(newestRun.startedAt, newestRun.updatedAt) : "0s"
+  const pipelineLabel = consolidationRun
+    ? `consolidação · ${statusLabel(consolidationRun.status)}`
+    : activeCount > 0
+      ? `${activeCount} em curso`
+      : failedCount > 0
+        ? `${failedCount} com falha`
+        : "runtimes finalizados"
 
   return (
-    <section className="border border-[var(--rule)] bg-[var(--surface)] p-5">
-      <div
-        className="mb-5 flex flex-wrap items-center justify-between gap-3 text-[10px] uppercase tracking-[0.14em] text-[var(--ink-dim)]"
+    <section className="grid gap-[1px] border border-[var(--rule)] bg-[var(--rule-soft)] sm:grid-cols-2 lg:grid-cols-4" aria-label="Estatísticas da execução">
+      <RunStatCard label="Runtimes" value={String(runs.length)} unit={activeCount > 0 ? "ativos" : "total"} trend={`${completedCount} done · ${activeCount} em curso`} />
+      <RunStatCard label="Steps" value={String(doneSteps)} unit={`de ${totalSteps}`} trend={`${percent}% do pipeline paralelo`} positive />
+      <RunStatCard label="Tempo" value={elapsed} unit="janela" trend={newestRun ? `${cliLabel(newestRun.cliId)} · ${formatRunTime(newestRun.updatedAt)}` : "sem run ativo"} />
+      <RunStatCard label="Estado" value={failedCount > 0 ? "!" : activeCount > 0 ? "live" : "ok"} unit="pipeline" trend={pipelineLabel} positive={failedCount === 0} />
+    </section>
+  )
+}
+
+function RunStatCard({
+  label,
+  value,
+  unit,
+  trend,
+  positive = false,
+}: {
+  label: string
+  value: string
+  unit: string
+  trend: string
+  positive?: boolean
+}) {
+  return (
+    <article className="grid min-h-[128px] min-w-0 content-between bg-[var(--surface)] px-5 py-5">
+      <p className="text-[10px] uppercase tracking-[0.16em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+        {label}
+      </p>
+      <p className="flex min-w-0 items-baseline gap-2 text-[40px] font-black leading-none text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+        <span className="shrink-0">{value}</span>
+        <span className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.14em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+          {unit}
+        </span>
+      </p>
+      <p
+        className={cn("truncate text-[10.5px] tracking-[0.06em] text-[var(--ink-dim)]", positive && "text-[var(--lime-ink)]")}
         style={{ fontFamily: MONO_FONT }}
       >
-        <span>
-          Pipeline · <b className="font-medium text-[var(--ink)]">{runs.length || 0} runtime{runs.length === 1 ? "" : "s"}</b>
-        </span>
-        <span className="inline-flex items-center gap-2 text-[var(--lime-ink)]">
-          {activeCount > 0 && <span className="h-1.5 w-1.5 animate-pulse bg-[var(--lime-ink)]" />}
-          {liveLabel}
-        </span>
-      </div>
-
-      <div className="relative grid grid-cols-5 gap-2">
-        <span className="absolute left-[10%] right-[10%] top-3 h-px bg-[var(--rule)]" />
-        {steps.map((step, index) => (
-          <div key={step.id} className="relative z-10 grid justify-items-center gap-2 text-center">
-            <span
-              className={cn(
-                "grid h-7 w-7 place-items-center border bg-[var(--paper-deep)] text-[10px] font-bold",
-                step.state === "done" && "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black",
-                step.state === "active" && "border-[var(--lime-ink)] text-[var(--lime-ink)] shadow-[0_0_0_4px_rgba(209,255,0,0.08)]",
-                step.state === "failed" && "border-[var(--danger-ink)] text-[var(--danger-ink)]",
-                step.state === "pending" && "border-[var(--rule)] text-[var(--ink-dim)]",
-              )}
-              style={{ fontFamily: MONO_FONT }}
-            >
-              {String(index + 1).padStart(2, "0")}
-            </span>
-            <span
-              className={cn(
-                "text-[10px] uppercase tracking-[0.10em]",
-                step.state === "done" && "text-[var(--ink)]",
-                step.state === "active" && "text-[var(--lime-ink)]",
-                step.state === "pending" && "text-[var(--ink-dim)]",
-                step.state === "failed" && "text-[var(--danger-ink)]",
-              )}
-              style={{ fontFamily: MONO_FONT }}
-            >
-              {step.label}
-            </span>
-          </div>
-        ))}
-      </div>
-    </section>
+        {trend}
+      </p>
+    </article>
   )
 }
 
@@ -1199,20 +1304,23 @@ function RuntimeRunCard({
   const issueLines = runIssueLines(run.log, run.status === "failed")
   const hasLiveIssue = issueLines.length > 0 && run.status !== "completed"
   const displayLine = hasLiveIssue ? issueLines.at(-1) ?? lastLine : lastLine
+  const percent = Math.round((progress.done / RUNTIME_STEP_TOTAL) * 100)
+  const currentStep = String(Math.min(RUNTIME_STEP_TOTAL, Math.max(1, progress.done + (run.status === "completed" ? 0 : 1)))).padStart(2, "0")
+  const cardStatus = run.status === "completed" ? "FINAL" : run.status === "failed" ? "FALHA" : `[${currentStep}] AGORA`
   return (
     <button
       type="button"
       onClick={onFocus}
       aria-pressed={selected}
       className={cn(
-        "relative grid min-h-44 content-between gap-4 bg-[var(--paper-deep)] p-4 text-left transition-colors hover:bg-[var(--surface-hover)]",
-        selected && "bg-[rgba(209,255,0,0.05)]",
-        hasLiveIssue && run.status !== "failed" && "border-l-2 border-l-[var(--warning-ink)]",
-        run.status === "failed" && "border-l-2 border-l-[var(--danger-ink)]",
+        "relative grid min-h-[244px] overflow-hidden content-between gap-5 bg-[var(--surface)] p-5 text-left transition-colors hover:bg-[var(--surface-hover)]",
+        selected && "bg-[rgba(209,255,0,0.045)]",
       )}
     >
+      {hasLiveIssue && run.status !== "failed" ? <span className="absolute inset-y-0 left-0 w-0.5 bg-[var(--warning-ink)]" /> : null}
+      {run.status === "failed" ? <span className="absolute inset-y-0 left-0 w-0.5 bg-[var(--danger-ink)]" /> : null}
       {selected && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[var(--lime-ink)] shadow-[0_0_14px_rgba(209,255,0,0.45)]" />}
-      <span className="flex items-start gap-3">
+      <span className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3">
         <span
           className={cn(
             "grid h-8 w-8 shrink-0 place-items-center border text-[11px] font-black uppercase",
@@ -1235,6 +1343,16 @@ function RuntimeRunCard({
         <StatusBadge status={run.status} exitCode={run.exitCode} hasIssue={hasLiveIssue} />
       </span>
 
+      <span className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-end gap-3">
+        <span className="text-[52px] font-black leading-none text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+          {String(progress.done).padStart(2, "0")}
+        </span>
+        <span className="min-w-0 text-[10.5px] uppercase tracking-[0.14em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+          <b className="block font-medium text-[var(--ink)]">de 07 steps</b>
+          {run.status === "completed" ? "concluído" : run.status === "failed" ? "interrompido" : `${percent}% concluído`}
+        </span>
+      </span>
+
       <span className="grid gap-2">
         <span className="grid grid-cols-7 gap-1">
           {Array.from({ length: RUNTIME_STEP_TOTAL }).map((_, index) => (
@@ -1251,12 +1369,13 @@ function RuntimeRunCard({
         </span>
         <span className="flex items-center justify-between text-[10px] uppercase tracking-[0.10em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
           <span>{progress.label}</span>
-          <span>{formatRunTime(run.updatedAt)}</span>
+          <span>{formatElapsed(run.startedAt, run.updatedAt)}</span>
         </span>
       </span>
 
       <span className="line-clamp-2 text-[11px] leading-[1.45] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-        {displayLine || "Aguardando saída do processo..."}
+        <span className="text-[var(--ink-dim)]">{cardStatus} · </span>
+        <b className="font-medium text-[var(--ink)]">{displayLine || "Aguardando saída do processo..."}</b>
       </span>
     </button>
   )
@@ -1273,7 +1392,17 @@ type RuntimeDetailStep = {
   meta: string
 }
 
-function FocusedRunConsole({ run, onOpen }: { run: ResearchRunState; onOpen: () => void }) {
+function FocusedRunConsole({
+  run,
+  retrying,
+  onRetry,
+  onOpen,
+}: {
+  run: ResearchRunState
+  retrying: boolean
+  onRetry: () => void
+  onOpen: () => void
+}) {
   const steps = buildRuntimeDetailSteps(run)
   const activeStep = steps.find((step) => step.state === "active" || step.state === "failed") ?? steps.at(-1)
   const doneCount = steps.filter((step) => step.state === "done").length
@@ -1297,7 +1426,7 @@ function FocusedRunConsole({ run, onOpen }: { run: ResearchRunState; onOpen: () 
           </p>
           <p className="mt-1 text-[15px] font-semibold text-[var(--ink)]">{run.outputSlug}</p>
           <p className="mt-1 text-[11px] text-[var(--ink-3)]">
-            {doneCount} steps concluídos · docs/research/*-{run.outputSlug}
+            {doneCount} steps concluídos · docs/research/{run.outputSlug}
           </p>
         </div>
         <StatusBadge status={run.status} exitCode={run.exitCode} hasIssue={hasLiveIssue} />
@@ -1309,23 +1438,16 @@ function FocusedRunConsole({ run, onOpen }: { run: ResearchRunState; onOpen: () 
 
       <div className="border-t border-[var(--rule)]">
         {steps.map((step) => (
-          <RuntimeStepRow key={step.id} step={step} />
+          <RuntimeStepRow
+            key={step.id}
+            step={step}
+            retrying={retrying}
+            onRetry={run.status === "failed" && step.state === "failed" ? onRetry : undefined}
+          />
         ))}
       </div>
 
-      <div className="border-t border-[var(--rule)] bg-[rgba(0,0,0,0.18)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--rule)] px-4 py-3">
-          <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-            Saída bruta · tail do processo
-          </span>
-          <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-            {formatRunTime(run.updatedAt)}
-          </span>
-        </div>
-        <pre className="max-h-[34vh] min-h-48 overflow-auto p-4 text-[11px] leading-[1.55] text-[var(--ink-2)]">
-          {run.log || "Aguardando saída do processo..."}
-        </pre>
-      </div>
+      <TerminalOutput run={run} />
 
       <button
         type="button"
@@ -1337,6 +1459,85 @@ function FocusedRunConsole({ run, onOpen }: { run: ResearchRunState; onOpen: () 
         Abrir no Observatory
       </button>
     </section>
+  )
+}
+
+type TerminalLineKind = "local" | "stdout" | "stderr" | "plain"
+
+type TerminalLine = {
+  kind: TerminalLineKind
+  text: string
+}
+
+function TerminalOutput({ run }: { run: ResearchRunState }) {
+  const lines = parseTerminalLines(run.log)
+  const visibleLines = lines.length > 0 ? lines : [{ kind: "plain" as const, text: "Aguardando saída do processo..." }]
+  const hasErrors = lines.some((line) => line.kind === "stderr")
+  const prompt = terminalPrompt()
+
+  return (
+    <div className="border-t border-[var(--rule)] bg-[var(--surface-console)]">
+      <div className="grid border-b border-[var(--rule)] bg-[rgba(0,0,0,0.24)] md:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="flex min-w-0 items-center gap-3 px-4 py-3">
+          <span className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
+            <span className="h-2.5 w-2.5 border border-[rgba(237,70,9,0.68)] bg-[rgba(237,70,9,0.16)]" />
+            <span className="h-2.5 w-2.5 border border-[rgba(245,158,11,0.62)] bg-[rgba(245,158,11,0.14)]" />
+            <span className="h-2.5 w-2.5 border border-[rgba(209,255,0,0.62)] bg-[rgba(209,255,0,0.13)]" />
+          </span>
+          <span className="min-w-0 truncate text-[10px] uppercase tracking-[0.14em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
+            Terminal · linhas de comando
+          </span>
+        </div>
+        <div
+          className="flex min-w-0 items-center justify-between gap-4 border-t border-[var(--rule-soft)] px-4 py-3 text-[10px] uppercase tracking-[0.14em] text-[var(--ink-dim)] md:border-l md:border-t-0"
+          style={{ fontFamily: MONO_FONT }}
+        >
+          <span className={cn("truncate", hasErrors && "text-[var(--danger-ink)]")}>{hasErrors ? "stderr detectado" : "stream limpo"}</span>
+          <span className="shrink-0">{formatRunTime(run.updatedAt)}</span>
+        </div>
+      </div>
+
+      <div className="border-b border-[var(--rule-soft)] px-4 py-3">
+        <p className="flex min-w-0 items-center gap-2 text-[11px] leading-none text-[var(--ink-2)]" style={{ fontFamily: MONO_FONT }}>
+          <span className="text-[var(--lime-ink)]">{prompt}</span>
+          <span className="text-[var(--ink-dim)]">:</span>
+          <span className="min-w-0 truncate text-[var(--ink-3)]">docs/research/{run.outputSlug}</span>
+          <span className="ml-1 h-3 w-1 animate-pulse bg-[var(--lime-ink)]" aria-hidden="true" />
+        </p>
+      </div>
+
+      <div className="max-h-[34vh] min-h-48 overflow-auto py-3" role="log" aria-label="Saída do processo">
+        {visibleLines.map((line, index) => (
+          <div
+            key={`${index}-${line.kind}-${line.text}`}
+            className="grid min-w-full grid-cols-[48px_86px_minmax(0,1fr)] items-start gap-3 px-4 py-0.5 text-[11px] leading-[1.55] hover:bg-[rgba(245,244,231,0.035)]"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            <span className="select-none text-right text-[var(--ink-dim)]">{String(index + 1).padStart(2, "0")}</span>
+            <span
+              className={cn(
+                "select-none uppercase tracking-[0.12em]",
+                line.kind === "local" && "text-[var(--lime-ink)]",
+                line.kind === "stdout" && "text-[var(--blue-ink)]",
+                line.kind === "stderr" && "text-[var(--danger-ink)]",
+                line.kind === "plain" && "text-[var(--ink-dim)]",
+              )}
+            >
+              {terminalLineLabel(line.kind)}
+            </span>
+            <span
+              className={cn(
+                "whitespace-pre-wrap break-words",
+                line.kind === "stderr" ? "text-[var(--danger-ink)]" : "text-[var(--ink-2)]",
+                line.kind === "local" && "text-[var(--ink-3)]",
+              )}
+            >
+              {line.text || " "}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -1386,10 +1587,18 @@ function RuntimePipeline({
   liveLabel: string
   run: ResearchRunState
 }) {
+  const doneCount = steps.filter((step) => step.state === "done").length
+  const hasActive = steps.some((step) => step.state === "active" || step.state === "failed")
+  const fillRatio = steps.length > 1 ? (hasActive ? doneCount : steps.length - 1) / (steps.length - 1) : 1
+  const trackStyle = {
+    gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))`,
+    "--pipeline-fill": `calc((100% - 100% / ${steps.length}) * ${fillRatio})`,
+  } as CSSProperties
+
   return (
-    <div className="bg-[var(--surface)] px-4 py-5">
+    <div className="bg-[var(--surface)] px-6 py-6">
       <div
-        className="mb-5 flex flex-wrap items-center justify-between gap-3 text-[10px] uppercase tracking-[0.14em] text-[var(--ink-dim)]"
+        className="mb-6 flex flex-wrap items-center justify-between gap-3 text-[10px] uppercase tracking-[0.14em] text-[var(--ink-dim)]"
         style={{ fontFamily: MONO_FONT }}
       >
         <span>
@@ -1410,15 +1619,16 @@ function RuntimePipeline({
         </span>
       </div>
 
-      <div className="relative grid gap-2" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
-        <span className="absolute left-[7%] right-[7%] top-3 h-px bg-[var(--rule)]" />
+      <div className="relative grid gap-2" style={trackStyle}>
+        <span className="absolute left-[calc(100%/14)] right-[calc(100%/14)] top-3 h-px bg-[var(--rule)]" />
+        <span className="absolute left-[calc(100%/14)] top-3 h-px w-[var(--pipeline-fill)] bg-[var(--blue-ink)] shadow-[0_0_8px_rgba(0,153,255,0.18)]" />
         {steps.map((step) => (
           <div key={step.id} className="relative z-10 grid justify-items-center gap-2 text-center">
             <span
               className={cn(
                 "grid h-7 w-7 place-items-center border bg-[var(--paper-deep)] text-[10px] font-bold",
-                step.state === "done" && "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black",
-                step.state === "active" && "border-[var(--lime-ink)] text-[var(--lime-ink)] shadow-[0_0_0_4px_rgba(209,255,0,0.08)]",
+                step.state === "done" && "border-[var(--ink)] bg-[var(--ink)] text-black",
+                step.state === "active" && "border-[var(--lime-ink)] text-[var(--lime-ink)] shadow-[0_0_0_4px_rgba(209,255,0,0.08),0_0_18px_rgba(209,255,0,0.22)]",
                 step.state === "failed" && "border-[var(--danger-ink)] text-[var(--danger-ink)]",
                 step.state === "pending" && "border-[var(--rule)] text-[var(--ink-dim)]",
               )}
@@ -1445,12 +1655,20 @@ function RuntimePipeline({
   )
 }
 
-function RuntimeStepRow({ step }: { step: RuntimeDetailStep }) {
+function RuntimeStepRow({
+  step,
+  retrying,
+  onRetry,
+}: {
+  step: RuntimeDetailStep
+  retrying?: boolean
+  onRetry?: () => void
+}) {
   return (
     <article
       className={cn(
-        "grid gap-0 border-b border-[var(--rule-soft)] last:border-b-0 lg:grid-cols-[64px_36px_minmax(0,1fr)_minmax(180px,240px)_96px]",
-        step.state === "active" && "border-l-2 border-l-[var(--lime-ink)]",
+        "relative grid gap-0 border-b border-[var(--rule-soft)] last:border-b-0 lg:grid-cols-[76px_36px_minmax(0,1fr)_minmax(190px,260px)_108px]",
+        step.state === "active" && "border-l-2 border-l-[var(--lime-ink)] bg-[rgba(209,255,0,0.025)]",
         step.state === "failed" && "border-l-2 border-l-[var(--danger-ink)]",
       )}
     >
@@ -1501,9 +1719,27 @@ function RuntimeStepRow({ step }: { step: RuntimeDetailStep }) {
             <span className="truncate">{substep}</span>
           </span>
         ))}
+        {step.state === "active" ? (
+          <span className="mt-2 h-[3px] overflow-hidden bg-[var(--paper-deep)]">
+            <span className="block h-full w-1/3 animate-pulse bg-[var(--lime-ink)] shadow-[0_0_8px_rgba(209,255,0,0.35)]" />
+          </span>
+        ) : null}
       </div>
       <div className="flex items-center justify-between gap-3 border-t border-[var(--rule-soft)] px-4 py-3 lg:flex-col lg:items-end lg:justify-center lg:border-l lg:border-t-0 lg:border-[var(--rule-soft)]">
         <RuntimeStepBadge state={step.state} />
+        {onRetry ? (
+          <button
+            type="button"
+            onClick={onRetry}
+            disabled={retrying}
+            title="Tentar de Novo"
+            className="inline-flex min-h-8 items-center justify-center gap-2 border border-[var(--danger-ink)] px-2 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--danger-ink)] transition-colors hover:bg-[rgba(239,68,68,0.10)] disabled:opacity-60"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            <RefreshCcw size={11} className={cn(retrying && "animate-spin")} />
+            {retrying ? "Tentando" : "Tentar de Novo"}
+          </button>
+        ) : null}
         <span className="text-[10px] tracking-[0.08em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
           {step.meta}
         </span>
@@ -1660,6 +1896,17 @@ function sessionHeadline(runs: ResearchRunState[], consolidationRun: ResearchRun
   return "restauração"
 }
 
+function runtimeSummaryLabel(run: ResearchRunState) {
+  const steps = buildRuntimeDetailSteps(run)
+  const done = steps.filter((step) => step.state === "done").length
+  const active = steps.filter((step) => step.state === "active").length
+  const failed = steps.filter((step) => step.state === "failed").length
+  const pending = steps.filter((step) => step.state === "pending").length
+  if (failed > 0) return `${steps.length} steps · ${done} concluídos · ${failed} falhou · ${pending} pendentes`
+  if (run.status === "completed") return `${steps.length} steps · todos concluídos · total ${formatElapsed(run.startedAt, run.updatedAt)}`
+  return `${steps.length} steps · ${done} concluídos · ${active} em curso · ${pending} pendentes`
+}
+
 function buildRuntimeDetailSteps(run: ResearchRunState): RuntimeDetailStep[] {
   const progress = runProgress(run)
   const logLines = meaningfulLogLines(run.log)
@@ -1763,39 +2010,6 @@ function runtimeStepMeta(run: ResearchRunState, index: number) {
   return "pendente"
 }
 
-function buildPipelineSteps({
-  hasRuns,
-  activeCount,
-  completedCount,
-  canConsolidate,
-  consolidationRun,
-}: {
-  hasRuns: boolean
-  activeCount: number
-  completedCount: number
-  canConsolidate: boolean
-  consolidationRun: ResearchRunState | null
-}): Array<{ id: string; label: string; state: PipelineStepState }> {
-  const allParallelDone = hasRuns && activeCount === 0
-  const consolidationState: PipelineStepState = consolidationRun
-    ? consolidationRun.status === "completed"
-      ? "done"
-      : consolidationRun.status === "failed"
-        ? "failed"
-        : "active"
-    : canConsolidate
-      ? "active"
-      : "pending"
-
-  return [
-    { id: "prompt", label: "Prompt", state: hasRuns ? "done" : "active" },
-    { id: "parallel", label: "Runtimes", state: activeCount > 0 ? "active" : hasRuns ? "done" : "pending" },
-    { id: "evidence", label: "Evidência", state: completedCount > 0 ? (allParallelDone ? "done" : "active") : "pending" },
-    { id: "artifacts", label: "Artefatos", state: allParallelDone && completedCount > 0 ? "done" : completedCount > 0 ? "active" : "pending" },
-    { id: "consensus", label: "Consenso", state: consolidationState },
-  ]
-}
-
 function runProgress(run: ResearchRunState) {
   const lines = meaningfulLogLines(run.log).length
   if (run.status === "completed") return { done: RUNTIME_STEP_TOTAL, label: "07 de 07" }
@@ -1820,7 +2034,7 @@ function lastMeaningfulLine(log: string) {
 
 function compactLogLine(line: string) {
   return line
-    .replace(/^\[(stdout|stderr|dash)\]\s*/i, "")
+    .replace(/^\[(stdout|stderr|dash|localhost)\]\s*/i, "")
     .replace(/\s+/g, " ")
     .trim()
 }
@@ -1869,6 +2083,33 @@ function runIssueLines(log: string, includeAnyStderr = false) {
     .slice(-8)
 }
 
+function parseTerminalLines(log: string): TerminalLine[] {
+  return log.split("\n").flatMap((rawLine): TerminalLine[] => {
+    const line = rawLine.trimEnd()
+    if (!line.trim()) return []
+
+    const match = line.match(/^\[(stdout|stderr|dash|localhost)\]\s*(.*)$/i)
+    if (!match) return [{ kind: "plain", text: line }]
+
+    const source = match[1]?.toLowerCase()
+    const text = match[2] ?? ""
+    if (source === "stderr") return [{ kind: "stderr", text }]
+    if (source === "stdout") return [{ kind: "stdout", text }]
+    return [{ kind: "local", text }]
+  })
+}
+
+function terminalLineLabel(kind: TerminalLineKind) {
+  if (kind === "local") return "local"
+  if (kind === "stdout") return "stdout"
+  if (kind === "stderr") return "erro"
+  return "shell"
+}
+
+function terminalPrompt() {
+  return "alan@Mac-Studio-de-Alan"
+}
+
 function cliLabel(cliId: ResearchCliId) {
   if (cliId === "claude") return "Claude Code"
   if (cliId === "codex") return "Codex CLI"
@@ -1891,13 +2132,38 @@ function formatRunTime(value: string) {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
 }
 
+function formatElapsed(start: string, end: string) {
+  const startTime = new Date(start).getTime()
+  const endTime = new Date(end).getTime()
+  if (Number.isNaN(startTime) || Number.isNaN(endTime) || endTime < startTime) return "0s"
+  const seconds = Math.round((endTime - startTime) / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  return `${minutes}m${String(rest).padStart(2, "0")}s`
+}
+
 function datedResearchSlug(baseSlug: string) {
-  if (/^\d{4}-\d{2}-\d{2}-/.test(baseSlug)) return baseSlug
+  const match = baseSlug.match(/^(\d{4}-\d{2}-\d{2})-(.+)$/)
+  if (match) return `${match[1]}-${truncateSlug(match[2] ?? "", MAX_RESEARCH_TOPIC_SLUG_LENGTH) || "research-run"}`
+  const compactSlug = truncateSlug(baseSlug, MAX_RESEARCH_TOPIC_SLUG_LENGTH)
   const now = new Date()
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, "0")
   const day = String(now.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}-${baseSlug}`
+  return `${year}-${month}-${day}-${compactSlug || "research-run"}`
+}
+
+function truncateSlug(slug: string, maxLength: number) {
+  if (slug.length <= maxLength) return slug
+  const parts = slug.split("-")
+  const kept: string[] = []
+  for (const part of parts) {
+    const next = [...kept, part].join("-")
+    if (next.length > maxLength) break
+    kept.push(part)
+  }
+  return kept.length > 0 ? kept.join("-") : slug.slice(0, maxLength).replace(/-+$/g, "")
 }
 
 async function fetchRunState(runId: string) {

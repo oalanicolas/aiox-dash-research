@@ -59,8 +59,16 @@ export type ResearchCliStatus = {
   launchSupported: boolean
   version: string | null
   path: string | null
+  candidates: ResearchCliCandidateStatus[]
   installHint: string
   launchHint: string
+}
+
+export type ResearchCliCandidateStatus = {
+  path: string
+  ok: boolean
+  version: string | null
+  error: string | null
 }
 
 export type ResearchCliDiscovery = {
@@ -131,6 +139,8 @@ const TECH_RESEARCH_OUTPUT_ATOMS = [
   "`research-graph.json`",
 ] as const
 
+const MAX_RESEARCH_TOPIC_SLUG_LENGTH = 44
+
 export function methodById(methodId: string): (typeof RESEARCH_METHODS)[number] {
   return RESEARCH_METHODS.find((method) => method.id === methodId) ?? RESEARCH_METHODS[0]
 }
@@ -142,9 +152,8 @@ export function slugifyResearchTopic(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 72)
 
-  return normalized || "research-run"
+  return truncateSlug(normalized, MAX_RESEARCH_TOPIC_SLUG_LENGTH) || "research-run"
 }
 
 export function normalizeResearchRunRequest(input: Partial<ResearchRunRequest>): ResearchRunRequest {
@@ -212,6 +221,7 @@ export function buildResearchWorkbenchPrompt(request: ResearchRunRequest) {
     "Contrato de persistência:",
     "- Existe UMA pasta por pesquisa. Não crie pastas irmãs com sufixo de CLI/LLM.",
     `- Grave os artefatos desta execução em \`${runtimeDir}/\`.`,
+    `- Se \`${runtimeDir}/\` já contiver artefatos de uma tentativa anterior, leia-os primeiro e continue do primeiro passo incompleto ou inconsistente; não recomece do zero sem necessidade.`,
     "- Não sobrescreva artefatos de outros runtimes.",
     "- O AIOX Research materializa arquivos raiz para indexação; a consolidação final deve reconciliar tudo no diretório raiz.",
     "",
@@ -334,7 +344,19 @@ function normalizeResearchByokConfig(input: unknown): ResearchByokConfig | null 
 }
 
 function normalizeDatedResearchSlug(slug: string) {
-  const normalized = slugifyResearchTopic(slug)
-  if (/^\d{4}-\d{2}-\d{2}-/.test(normalized)) return normalized
-  return `${new Date().toISOString().slice(0, 10)}-${normalized}`
+  const match = slug.match(/^(\d{4}-\d{2}-\d{2})-(.+)$/)
+  if (match) return `${match[1]}-${slugifyResearchTopic(match[2] ?? "")}`
+  return `${new Date().toISOString().slice(0, 10)}-${slugifyResearchTopic(slug)}`
+}
+
+function truncateSlug(slug: string, maxLength: number) {
+  if (slug.length <= maxLength) return slug
+  const parts = slug.split("-")
+  const kept: string[] = []
+  for (const part of parts) {
+    const next = [...kept, part].join("-")
+    if (next.length > maxLength) break
+    kept.push(part)
+  }
+  return kept.length > 0 ? kept.join("-") : slug.slice(0, maxLength).replace(/-+$/g, "")
 }

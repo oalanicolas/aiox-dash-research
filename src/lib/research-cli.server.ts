@@ -14,6 +14,7 @@ import {
   buildResearchWorkbenchPrompt,
   normalizeResearchConsolidationRunRequest,
   normalizeResearchRunRequest,
+  type ResearchCliCandidateStatus,
   type ResearchCliDiscovery,
   type ResearchCliId,
   type ResearchCliStatus,
@@ -77,6 +78,19 @@ const CLI_DEFINITIONS: CliDefinition[] = [
 type ProbeResult = {
   path: string | null
   version: string | null
+  candidates: ResearchCliCandidateStatus[]
+}
+
+type VersionProbeResult = {
+  version: string | null
+  error: string | null
+}
+
+type CliInvocation = {
+  command: string
+  args: string[]
+  env: Record<string, string>
+  shell?: boolean
 }
 
 type PersistedRunState = Omit<ResearchRunState, "log"> & {
@@ -84,6 +98,7 @@ type PersistedRunState = Omit<ResearchRunState, "log"> & {
 }
 
 const RUNS_DIR = path.join(getDashWorkspaceRoot(), ".tmp", "aiox-research-runs")
+const LOCAL_LOG_PREFIX = "[localhost]"
 const stateWriteQueues = new Map<string, Promise<void>>()
 
 export async function getResearchCliDiscovery(): Promise<ResearchCliDiscovery> {
@@ -194,10 +209,10 @@ async function startCliBackedRun(input: CliBackedRunInput): Promise<ResearchRunS
     updatedAt: now,
     exitCode: null,
     log: [
-      `[dash] ${now} iniciando ${input.logLabel} com ${cli.name}`,
-      `[dash] workspace: ${discovery.workspaceRoot}`,
-      `[dash] diretório da pesquisa: ${researchDir}`,
-      `[dash] runtime dir: ${path.join(researchDir, "runtimes", input.cliId)}`,
+      `${LOCAL_LOG_PREFIX} ${now} iniciando ${input.logLabel} com ${cli.name}`,
+      `${LOCAL_LOG_PREFIX} workspace: ${discovery.workspaceRoot}`,
+      `${LOCAL_LOG_PREFIX} diretório da pesquisa: ${researchDir}`,
+      `${LOCAL_LOG_PREFIX} runtime dir: ${path.join(researchDir, "runtimes", input.cliId)}`,
       "",
     ].join("\n"),
     logPath,
@@ -207,6 +222,7 @@ async function startCliBackedRun(input: CliBackedRunInput): Promise<ResearchRunS
   const invocation = buildInvocation(input.cliId, cli.path, discovery.workspaceRoot)
   const child = spawn(invocation.command, invocation.args, {
     cwd: discovery.workspaceRoot,
+    shell: invocation.shell,
     env: {
       ...process.env,
       ...invocation.env,
@@ -268,11 +284,11 @@ async function startByokBackedRun(input: ByokBackedRunInput): Promise<ResearchRu
     updatedAt: now,
     exitCode: null,
     log: [
-      `[dash] ${now} iniciando ${input.logLabel} com BYOK`,
-      `[dash] provider: ${providerLabel}`,
-      `[dash] model: ${input.byok.model}`,
-      `[dash] diretório da pesquisa: ${researchDir}`,
-      `[dash] runtime dir: ${path.join(researchDir, "runtimes", "byok")}`,
+      `${LOCAL_LOG_PREFIX} ${now} iniciando ${input.logLabel} com BYOK`,
+      `${LOCAL_LOG_PREFIX} provider: ${providerLabel}`,
+      `${LOCAL_LOG_PREFIX} model: ${input.byok.model}`,
+      `${LOCAL_LOG_PREFIX} diretório da pesquisa: ${researchDir}`,
+      `${LOCAL_LOG_PREFIX} runtime dir: ${path.join(researchDir, "runtimes", "byok")}`,
       "",
     ].join("\n"),
     logPath,
@@ -287,7 +303,7 @@ async function startByokBackedRun(input: ByokBackedRunInput): Promise<ResearchRu
 async function executeByokRun(statePath: string, input: ByokBackedRunInput) {
   try {
     const chatUrl = await resolveByokChatUrl(input.byok.baseUrl)
-    await appendRunLog(statePath, `[dash] ${new Date().toISOString()} conectando ao endpoint BYOK\n`)
+    await appendRunLog(statePath, `${LOCAL_LOG_PREFIX} ${new Date().toISOString()} conectando ao endpoint BYOK\n`)
 
     const response = await fetch(chatUrl, {
       method: "POST",
@@ -317,7 +333,7 @@ async function executeByokRun(statePath: string, input: ByokBackedRunInput) {
     const answer = extractOpenAICompatibleAnswer(parsed)
     if (!answer.trim()) throw new Error("O provider BYOK respondeu sem conteúdo textual.")
 
-    const usage = parsed.usage?.total_tokens ? `\n[dash] tokens totais reportados: ${parsed.usage.total_tokens}` : ""
+    const usage = parsed.usage?.total_tokens ? `\n${LOCAL_LOG_PREFIX} tokens totais reportados: ${parsed.usage.total_tokens}` : ""
     await appendRunLog(statePath, `[stdout] ${answer}${usage}\n`)
     await markRunFinished(statePath, "completed", 0, "processo BYOK finalizado com sucesso")
   } catch (error) {
@@ -568,12 +584,31 @@ export async function getResearchRunState(runId: string): Promise<ResearchRunSta
 }
 
 async function probeCliDefinition(definition: CliDefinition): Promise<ResearchCliStatus> {
-  const resolvedPath = resolveFirstBin([definition.bin, ...(definition.fallbackBins ?? [])])
-  if (!resolvedPath) {
-    return toCliStatus(definition, { path: null, version: null })
+  const candidates = resolveBinCandidates([definition.bin, ...(definition.fallbackBins ?? [])])
+  const candidateStatuses: ResearchCliCandidateStatus[] = []
+  for (const candidate of candidates) {
+    const probe = await probeVersion(candidate, definition.versionArgs)
+    const candidateStatus = {
+      path: candidate,
+      ok: Boolean(probe.version),
+      version: probe.version,
+      error: probe.error,
+    }
+    candidateStatuses.push(candidateStatus)
+    if (probe.version) {
+      return toCliStatus(definition, {
+        path: candidate,
+        version: probe.version,
+        candidates: candidateStatuses,
+      })
+    }
   }
-  const version = await probeVersion(resolvedPath, definition.versionArgs)
-  return toCliStatus(definition, { path: resolvedPath, version })
+
+  if (candidates.length === 0) {
+    return toCliStatus(definition, { path: null, version: null, candidates: [] })
+  }
+
+  return toCliStatus(definition, { path: null, version: null, candidates: candidateStatuses })
 }
 
 function toCliStatus(definition: CliDefinition, probe: ProbeResult): ResearchCliStatus {
@@ -585,17 +620,23 @@ function toCliStatus(definition: CliDefinition, probe: ProbeResult): ResearchCli
     launchSupported: definition.launchSupported,
     version: probe.version,
     path: probe.path,
+    candidates: probe.candidates,
     installHint: definition.installHint,
     launchHint: definition.launchHint,
   }
 }
 
-function resolveFirstBin(bins: string[]) {
+function resolveBinCandidates(bins: string[]) {
+  const candidates: string[] = []
+  const seen = new Set<string>()
   for (const bin of bins) {
-    const resolved = resolveOnPath(bin)
-    if (resolved) return resolved
+    for (const resolved of resolveOnPath(bin)) {
+      if (seen.has(resolved)) continue
+      seen.add(resolved)
+      candidates.push(resolved)
+    }
   }
-  return null
+  return candidates
 }
 
 function resolveOnPath(bin: string) {
@@ -609,16 +650,34 @@ function resolveOnPath(bin: string) {
     return true
   })
 
+  const matches: string[] = []
   for (const dir of candidates) {
-    const candidate = path.join(dir, bin)
-    if (isExecutable(candidate)) return candidate
+    for (const candidate of executableCandidates(dir, bin)) {
+      if (isExecutable(candidate)) matches.push(candidate)
+    }
   }
-  return null
+  return matches
+}
+
+function executableCandidates(dir: string, bin: string) {
+  const explicitExtension = Boolean(path.extname(bin))
+  if (process.platform !== "win32" || explicitExtension) return [path.join(dir, bin)]
+
+  return windowsExecutableExtensions().map((extension) => path.join(dir, `${bin}${extension}`))
+}
+
+function windowsExecutableExtensions() {
+  const raw = process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD"
+  const extensions = raw
+    .split(";")
+    .map((extension) => extension.trim().toLowerCase())
+    .filter(Boolean)
+  return ["", ...extensions]
 }
 
 function wellKnownCliDirs() {
   const home = os.homedir()
-  return [
+  const dirs = [
     "/opt/homebrew/bin",
     "/usr/local/bin",
     "/usr/bin",
@@ -628,10 +687,19 @@ function wellKnownCliDirs() {
     path.join(home, ".bun", "bin"),
     path.join(home, ".cargo", "bin"),
   ]
+  if (process.platform === "win32") {
+    dirs.push(
+      path.join(home, "AppData", "Roaming", "npm"),
+      path.join(home, ".bun", "bin"),
+      path.join(home, "scoop", "shims"),
+    )
+  }
+  return dirs
 }
 
 function isExecutable(candidate: string) {
   try {
+    if (process.platform === "win32") return existsSync(candidate)
     accessSync(candidate, constants.X_OK)
     return true
   } catch {
@@ -640,24 +708,43 @@ function isExecutable(candidate: string) {
 }
 
 async function probeVersion(command: string, args: string[]) {
-  return new Promise<string | null>((resolve) => {
-    execFile(command, args, { timeout: 3000, maxBuffer: 256 * 1024 }, (error, stdout) => {
+  return new Promise<VersionProbeResult>((resolve) => {
+    execFile(command, args, { timeout: 3000, maxBuffer: 256 * 1024, shell: shouldUseShell(command) }, (error, stdout, stderr) => {
+      const output = `${stdout}${stderr}`.trim()
       if (error) {
-        resolve(null)
+        resolve({ version: null, error: compactProbeError(error, output, command) })
         return
       }
-      const version = String(stdout).trim().split("\n")[0]?.trim()
-      resolve(version || null)
+      const version = output.split("\n")[0]?.trim()
+      resolve(version ? { version, error: null } : { version: null, error: "Probe não retornou versão." })
     })
   })
 }
 
-function buildInvocation(cliId: ResearchCliId, command: string, workspaceRoot: string) {
+function compactProbeError(error: unknown, output: string, command: string) {
+  const errnoMatch = output.match(/spawn\s+(.+?)\s+ENOENT/i)
+  if (errnoMatch) return `ENOENT: ${errnoMatch[1]}`
+
+  const typedError = error as NodeJS.ErrnoException & { code?: string | number }
+  if (typedError.code === "ENOENT") return `ENOENT: ${typedError.path ?? command}`
+  if (typedError.code) return `Probe falhou (${typedError.code}).`
+
+  const message = error instanceof Error ? error.message : String(error)
+  const detail = output.split("\n").map((line) => line.trim()).filter(Boolean)[0]
+  return detail ? `${message}: ${detail}` : message
+}
+
+function shouldUseShell(command: string) {
+  return process.platform === "win32" && /\.(bat|cmd)$/i.test(command)
+}
+
+function buildInvocation(cliId: ResearchCliId, command: string, workspaceRoot: string): CliInvocation {
   if (cliId === "claude") {
     return {
       command,
       args: ["-p", "--permission-mode", "bypassPermissions"],
       env: {},
+      shell: shouldUseShell(command),
     }
   }
   if (cliId === "codex") {
@@ -674,6 +761,7 @@ function buildInvocation(cliId: ResearchCliId, command: string, workspaceRoot: s
         workspaceRoot,
       ],
       env: {},
+      shell: shouldUseShell(command),
     }
   }
   if (cliId === "gemini") {
@@ -681,6 +769,7 @@ function buildInvocation(cliId: ResearchCliId, command: string, workspaceRoot: s
       command,
       args: ["--yolo"],
       env: { GEMINI_CLI_TRUST_WORKSPACE: "true" },
+      shell: shouldUseShell(command),
     }
   }
   throw new Error(`Adapter sem launcher: ${cliId}`)
@@ -793,7 +882,7 @@ async function markRunFinished(
       status,
       exitCode,
       updatedAt,
-      log: `${state.log}\n[dash] ${updatedAt} ${message}\n`,
+      log: `${state.log}\n${LOCAL_LOG_PREFIX} ${updatedAt} ${message}\n`,
     }
     await persistRunState(statePath, updated)
     await persistRuntimeCompletionArtifacts(updated, message)
@@ -975,7 +1064,7 @@ function extractRuntimeSignal(log: string) {
 }
 
 function safeId(value: string) {
-  return sanitizeId(value).slice(0, 140)
+  return sanitizeId(value).slice(0, 72).replace(/-+$/g, "")
 }
 
 function sanitizeId(value: string) {
