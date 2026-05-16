@@ -4,82 +4,267 @@ Dashboard local-first para visualizar artefatos operacionais de Research, Bench 
 
 O app foi pensado para funcionar em instalações locais e parciais. Se uma instalação não tiver `docs/` ou `outputs/`, a fonte correspondente simplesmente não aparece no menu. O `Demo` sempre fica disponível para onboarding.
 
-## Para Quem Está Instalando Pela Primeira Vez
+---
 
-Você pode rodar o app sem nenhum dado próprio:
+## TL;DR para AIOX DevOps
 
 ```bash
+# Dentro de sinkra-hub (apps/dash é submodule)
+git submodule update --init --recursive apps/dash
+
+cd apps/dash
 npm install
+cp .env.example .env.local           # opcional, só se for apontar para dados reais
 npm run dev -- --port 3001
+# Abrir: http://localhost:3001/observatory/demo
 ```
 
-Abra:
+Sem dados reais o app abre normalmente em `/observatory/demo`. Se a instalação for limpa e o Demo carregar, a instalação está saudável.
 
-```txt
-http://localhost:3001/observatory/demo
+---
+
+## Stack & Prerequisites
+
+| Item | Versão | Observação |
+|---|---|---|
+| Node.js | 18.18+ ou 20+ | Requerido pelo Next 16 |
+| npm | 9+ | Vem com Node 18.18+ |
+| OS | Linux / macOS / Windows | Windows funciona via PowerShell ou WSL |
+| Memória build | ~1 GB livre | Next 16 + webpack |
+| Disco | ~500 MB | `node_modules` + `.next` |
+
+Sem `engines` declarado no `package.json` (decisão consciente). Versões abaixo do mínimo do Next 16 vão falhar no `next dev` com erro claro.
+
+Stack interno (todas instaladas via `npm install`, não precisam ser provisionadas):
+
+- Next.js 16.2.6 (App Router, webpack explícito via flag `--webpack`)
+- React 19.2.3
+- Tailwind v4 (`@tailwindcss/postcss`)
+- TypeScript 5 (strict)
+- `react-markdown`, `remark-gfm`, `yaml`, `lucide-react`
+
+Sem banco de dados. Sem autenticação. Sem dependências externas em runtime — o app só lê o filesystem que você apontar.
+
+---
+
+## Submodule Note (Hub Sinkra)
+
+`apps/dash` é um **git submodule** apontando para `https://github.com/oalanicolas/aiox-dash-research.git`.
+
+Quando o Hub é clonado sem `--recurse-submodules`, o diretório `apps/dash` fica vazio e o app não roda. Sempre rode:
+
+```bash
+git submodule update --init --recursive apps/dash
 ```
 
-Quando quiser apontar para uma pasta de trabalho com dados reais, crie `.env.local`:
+Para atualizar a versão pinada do dash dentro do Hub:
+
+```bash
+cd apps/dash
+git fetch origin
+git checkout <commit-ou-tag>
+cd ../..
+git add apps/dash
+git commit -m "chore(dash): bump submodule to <ref>"
+```
+
+Push do bump no Hub deve ser feito por `@devops` (Constitution Article II).
+
+---
+
+## Instalação (passo a passo)
+
+### 1. Obter o código
+
+```bash
+# Opção A — fresh clone do Hub
+git clone --recurse-submodules https://github.com/<owner>/sinkra-hub.git
+cd sinkra-hub
+
+# Opção B — Hub já clonado, faltando submodules
+git submodule update --init --recursive apps/dash
+
+# Opção C — standalone (fora do Hub)
+git clone https://github.com/oalanicolas/aiox-dash-research.git apps/dash
+cd apps/dash
+```
+
+### 2. Instalar dependências
+
+```bash
+cd apps/dash
+npm install
+```
+
+Em monorepo npm workspaces, force escopo local:
+
+```bash
+npm install --workspaces=false
+```
+
+### 3. Configurar ambiente (opcional)
 
 ```bash
 cp .env.example .env.local
 ```
 
-Edite:
+Sem `.env.local` o app continua funcionando: o loader detecta o root automaticamente ou cai no Demo.
 
-```txt
-AIOX_DASH_ROOT=/caminho/absoluto/para/seu/workspace
+### 4. Subir o app
+
+```bash
+# Dev (hot reload)
+npm run dev -- --port 3001
+
+# Produção
+npm run build
+npm run start -- --port 3001
 ```
 
-Esse workspace pode conter qualquer combinação destas pastas:
+Validação de tipos (não é build):
 
-```txt
-docs/research
-docs/bench
-outputs/sinkra-squad
+```bash
+npm run typecheck
 ```
 
-## Fontes Suportadas
+> **Ordem importa em instalação limpa:** rode `build` antes de `typecheck`. O Next gera `.next/types/`, referenciado pelo `tsconfig.json`.
+
+---
+
+## Variáveis de Ambiente
+
+Todas as variáveis ficam em `.env.local` (gitignored). O template oficial é `.env.example`.
+
+| Variável | Obrigatória | Default | Descrição |
+|---|---|---|---|
+| `AIOX_DASH_ROOT` | não | auto-detect | Caminho **absoluto** para a pasta que contém `docs/research`, `docs/bench` e/ou `outputs/sinkra-squad`. Se omitida, o app caminha para cima a partir do cwd procurando uma das três pastas. |
+| `PORT` | não | `3000` | Porta HTTP. Sobrescrita pela flag CLI `--port`. |
+| `HOSTNAME` | não | `0.0.0.0` | Interface de bind do `next start`. Use `127.0.0.1` para restringir a localhost. |
+| `NODE_ENV` | não | `development` em `dev`, `production` em `start` | Setado automaticamente pelos scripts. Não sobrescrever. |
+
+Exemplo de `.env.local` para apontar a uma instalação AIOX típica:
+
+```dotenv
+AIOX_DASH_ROOT=/srv/aiox/workspace
+```
+
+`AIOX_DASH_ROOT` deve apontar **apenas** para o diretório cujo conteúdo o app está autorizado a ler. Não aponte para `/` nem para a raiz home do usuário.
+
+---
+
+## Fontes de Dados Suportadas
+
+O app descobre estas pastas dentro de `AIOX_DASH_ROOT` em cada request:
 
 | Fonte | Pasta esperada | Rota | Comportamento |
 |---|---|---|---|
-| Demo | nenhuma | `/observatory/demo` | Exemplo completo para onboarding, incluindo Map, Slides, Roadmap, Evidências, Matriz, Duelo, Score, Personas, TCO e Decisão |
-| Research | `docs/research` | `/observatory/research` | Leitor de pesquisas em Markdown/YAML/JSON estruturado |
-| Bench | `docs/bench` | `/observatory/bench` | Relatórios comparativos, matriz, score, personas, TCO e decisão |
-| SINKRA Maps | `outputs/sinkra-squad` | `/observatory/sinkra-maps` | Mapas visuais de processo, fluxo, automação, governança, RACI, gaps e evidências |
+| Demo | nenhuma | `/observatory/demo` | Exemplo completo de onboarding (Map, Slides, Roadmap, Evidências, Matriz, Duelo, Score, Personas, TCO, Decisão) |
+| Research | `docs/research/<slug>/` | `/observatory/research` | Leitor de pesquisas Markdown/YAML/JSON estruturado |
+| Bench | `docs/bench/<slug>/` | `/observatory/bench` | Relatórios comparativos, matriz, score, personas, TCO e decisão |
+| SINKRA Maps | `outputs/sinkra-squad/<group>/map/<slug>/` | `/observatory/sinkra-maps` | Mapas visuais de processo, fluxo, automação, governança, RACI, gaps e evidências |
 
-## Descoberta Automática
-
-Na inicialização de cada request, o app verifica estas pastas dentro de `AIOX_DASH_ROOT`. Se `AIOX_DASH_ROOT` não estiver definido, o app tenta detectar o root local automaticamente:
-
-```txt
-docs/research
-docs/bench
-outputs/sinkra-squad
-```
-
-Regras:
+Regras de descoberta:
 
 - `Demo` sempre aparece e não depende de filesystem externo.
 - Se uma pasta não existir, a fonte não aparece no menu superior.
-- Se uma rota direta for aberta para uma fonte inexistente, o app retorna `404`.
+- Rota direta para fonte inexistente retorna `404`.
 - `/observatory` redireciona para a primeira fonte disponível.
-- Em instalações sem `docs/` e sem `outputs/`, `/observatory/demo` continua funcionando como experiência inicial.
+- Instalações sem `docs/` e sem `outputs/` continuam abrindo em `/observatory/demo`.
 
-## Rodando Localmente
+---
+
+## Health Check / Smoke Test
+
+Após `npm run dev` ou `npm run start`, valide nesta ordem:
+
+| Verificação | URL | Esperado |
+|---|---|---|
+| Demo carrega | `http://localhost:3001/observatory/demo` | Página com Map/Slides/Evidências renderizada |
+| Index do observatório | `http://localhost:3001/observatory` | Redireciona para Demo ou primeira fonte presente |
+| Tipos passam | `npm run typecheck` | Exit code 0, zero `error TS` |
+| Build limpo | `npm run build` | Exit code 0, `.next/` criado |
+
+Smoke test mínimo via curl:
 
 ```bash
-npm install
-npm run dev -- --port 3001
+curl -fsS -o /dev/null -w "%{http_code}\n" http://localhost:3001/observatory/demo
+# Esperado: 200
 ```
 
-Abra:
+---
 
-```txt
-http://localhost:3001/observatory
+## Produção & Process Management
+
+O app não embute Dockerfile, configuração Vercel/Railway nem CI/CD nesta versão. Deploy é manual e baseado em `next start`.
+
+Padrões aceitos para AIOX:
+
+- **systemd** (recomendado em VMs): unit `aiox-dash.service` rodando `npm run start -- --port 3001` com `WorkingDirectory=/srv/aiox/sinkra-hub/apps/dash` e `Environment=AIOX_DASH_ROOT=/srv/aiox/workspace`.
+- **pm2**: `pm2 start npm --name aiox-dash -- run start -- --port 3001`.
+- **Reverse proxy obrigatório se exposto à rede**: nginx/Caddy na frente, terminando TLS e adicionando autenticação (Basic Auth, OAuth-proxy, Cloudflare Access). O app **não** tem auth.
+
+Restart policy: o app é stateless. Pode reiniciar livremente, não há cache persistente em disco. Caches de listagem e payload são em memória, TTL 5 min.
+
+---
+
+## Performance e Caches
+
+SINKRA Maps pode ter muitos arquivos em `outputs/`. Para reduzir latência:
+
+- Índice de mapeamentos em cache em memória por 5 min.
+- Payload estruturado do mapeamento selecionado em cache em memória por 5 min.
+- Payload carregado por aba — `map`, `flow`, `automation`, `governance`, `accountability`, `gaps`, `evidence`, `score`, `document` leem apenas os YAML/JSON necessários.
+- YAML/JSON estruturados da aba ativa carregados em paralelo.
+- Conteúdo bruto de documentos carregado sob demanda.
+- Views pesadas via `next/dynamic` (code splitting).
+
+Próximo passo recomendado pelo pipeline: materializar `_index.json` e `observatory_payload.json` no gerador dos mapeamentos. Evita varredura de filesystem e parse de YAML em runtime.
+
+---
+
+## Troubleshooting
+
+| Sintoma | Causa provável | Ação |
+|---|---|---|
+| `apps/dash` está vazio após clone | Submodule não inicializado | `git submodule update --init --recursive apps/dash` |
+| `Cannot find module 'next'` | `npm install` não rodou | `cd apps/dash && npm install` |
+| `npm run typecheck` falha em instalação limpa | `.next/types/` ainda não existe | Rodar `npm run build` primeiro |
+| `EADDRINUSE :3001` | Porta ocupada | `npm run dev -- --port 3002` (ou matar processo na 3001) |
+| `/observatory/research` retorna 404 | `docs/research/` não existe no `AIOX_DASH_ROOT` | Criar a pasta com pelo menos um slug, ou usar `/observatory/demo` |
+| Menu superior só mostra Demo | `AIOX_DASH_ROOT` não aponta para pasta com `docs/` ou `outputs/` | Conferir `.env.local`, conferir caminho absoluto, conferir permissão de leitura |
+| Build trava com `out of memory` | Heap padrão insuficiente em CI | `NODE_OPTIONS=--max-old-space-size=4096 npm run build` |
+| Mudou YAML mas dashboard não atualiza | Cache de 5 min em memória | Reiniciar processo (`npm run start` ou systemd restart) |
+| Tailwind não aplica estilos após upgrade | Cache antigo do Next | `rm -rf .next && npm run dev` |
+| Submodule preso em commit antigo | `git pull` não atualiza submodules | `git submodule update --remote apps/dash` |
+
+---
+
+## Atualizando o Submodule a Partir do Hub
+
+```bash
+# Buscar últimas refs do remote do dash
+cd apps/dash
+git fetch origin
+git checkout main          # ou um commit/tag específico
+git pull origin main
+
+# Registrar o novo pointer no Hub
+cd ../..
+git status                 # apps/dash deve aparecer como modified
+git add apps/dash
+git commit -m "chore(dash): bump submodule to <ref>"
+# Push pelo @devops
 ```
 
-## Estrutura Recomendada Dos Dados
+Para reverter para o pointer registrado no Hub:
+
+```bash
+git submodule update --init apps/dash
+```
+
+---
+
+## Estrutura Recomendada dos Dados
 
 ### Research
 
@@ -203,50 +388,50 @@ outputs/sinkra-squad/<group>/map/<slug>/
 
 Nenhum arquivo individual é obrigatório. Quanto mais artefatos estruturados existirem, mais visual e completo fica o relatório.
 
-## Performance
+---
 
-O SINKRA Maps pode ter muitos arquivos em `outputs/`. Para reduzir latência:
+## Segurança
 
-- o índice de mapeamentos fica em cache em memória por 5 minutos;
-- o payload estruturado do mapeamento selecionado fica em cache em memória por 5 minutos;
-- o payload estruturado é carregado por aba: `map`, `flow`, `automation`, `governance`, `accountability`, `gaps`, `evidence`, `score` e `document` leem apenas os YAML/JSON necessários para aquela visualização;
-- YAML/JSON estruturados da aba ativa são lidos em paralelo;
-- o conteúdo bruto de documentos é carregado sob demanda apenas para o arquivo selecionado;
-- views pesadas são carregadas com code splitting via `next/dynamic`.
-
-Próximo passo recomendado: materializar um `_index.json` e um `observatory_payload.json` no pipeline que gera os mapeamentos. Isso evita varredura de filesystem e parse de YAML em runtime.
-
-## Build
-
-```bash
-npm run build
-npm run typecheck
-```
-
-Em uma instalação limpa, rode `build` antes de `typecheck`: o Next gera `.next/types`, que faz parte do `tsconfig.json`.
-
-Se estiver rodando este app dentro de um monorepo npm workspaces, use:
-
-```bash
-npm run build --workspaces=false
-npm run typecheck --workspaces=false
-```
-
-## Adaptação Para Outras Instalações
-
-Para usar o app fora deste repositório:
-
-1. Clone ou copie este app.
-2. Rode `npm install`.
-3. Opcionalmente configure `AIOX_DASH_ROOT` em `.env.local`.
-4. Crie apenas as fontes necessárias. Exemplo: se só quiser SINKRA Maps, crie apenas `outputs/sinkra-squad`.
-5. Rode `/observatory`; o menu será montado automaticamente com base no que existir.
-
-Instalações sem `docs/` e sem `outputs/` continuam abrindo normalmente: o app expõe `Demo` como experiência inicial em vez de quebrar no loader.
-
-## Segurança Local
-
-- O app é read-only: ele lê arquivos locais e renderiza os relatórios.
-- Não há autenticação embutida; rode em `localhost` ou atrás de um reverse proxy com autenticação se for expor na rede.
+- O app é **read-only**: lê arquivos locais e renderiza relatórios.
+- **Sem autenticação embutida**. Em rede aberta, sempre atrás de reverse proxy com auth.
+- `AIOX_DASH_ROOT` deve apontar apenas para a pasta autorizada. Nunca raiz do disco nem `$HOME`.
 - Não publique workspaces com dados sensíveis em repositórios abertos.
-- `AIOX_DASH_ROOT` deve apontar apenas para a pasta que você quer permitir que o app leia.
+- `.env.local` está em `.gitignore`. Não comitar.
+
+---
+
+## Limitações Conhecidas
+
+- Sem Dockerfile / vercel.json / railway.json — deploy é manual via `next start` + supervisor (systemd/pm2).
+- Sem lint script no `package.json` (use `npm run typecheck` como gate de qualidade).
+- Sem testes automatizados nesta versão.
+- Sem CI/CD configurado para o submodule.
+- Hot reload do Next ignora `node_modules`, `.git`, `.claude`, `outputs/`, `squads/` — mudanças nesses paths não disparam rebuild (intencional para performance).
+
+---
+
+## Referência Rápida de Comandos
+
+```bash
+# Submodule
+git submodule update --init --recursive apps/dash
+git submodule update --remote apps/dash
+
+# Dev
+npm install
+npm run dev -- --port 3001
+
+# Prod
+npm run build
+npm run start -- --port 3001
+
+# QA
+npm run typecheck
+
+# Smoke
+curl -fsS -o /dev/null -w "%{http_code}\n" http://localhost:3001/observatory/demo
+```
+
+---
+
+*AIOX Dash — local-first observatory · stack Next 16 / React 19 / Tailwind v4 · sem dependências externas em runtime*
