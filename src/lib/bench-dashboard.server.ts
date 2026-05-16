@@ -2,6 +2,7 @@ import "server-only"
 
 import { readdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
+import { EmptyObservatorySourceError } from "./observatory.server"
 import { resolveDashPath } from "./workspace-root.server"
 
 export type BenchDocument = {
@@ -1331,15 +1332,16 @@ async function buildDocuments(benchPath: string, files: string[]): Promise<Bench
 export async function getBenchDashboardData(slugParam?: string, fileParam?: string): Promise<BenchDashboardData> {
   const benchRoot = resolveDashPath("docs", "bench")
   const entries = await readdir(benchRoot, { withFileTypes: true })
-  const slugs = entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort()
+  const slugs = entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_") && !entry.name.startsWith("."))
+    .map((entry) => entry.name)
+    .sort()
   const summaries = await Promise.all(slugs.map((slug) => buildSummary(path.join(benchRoot, slug), slug)))
   summaries.sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title))
 
-  const selectedSlug = slugParam && summaries.some((run) => run.slug === slugParam) ? slugParam : summaries[0]?.slug
+  if (summaries.length === 0) throw new EmptyObservatorySourceError("bench")
+  const selectedSlug = slugParam && summaries.some((run) => run.slug === slugParam) ? slugParam : summaries[0].slug
   const selectedRun = summaries.find((run) => run.slug === selectedSlug) ?? summaries[0]
-  if (!selectedRun) {
-    throw new Error("No benchmark folders found in docs/bench")
-  }
   selectedRun.active = true
 
   const selectedPath = path.join(benchRoot, selectedRun.slug)

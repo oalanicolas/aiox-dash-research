@@ -20,7 +20,7 @@ export function Footer({
         >
           X
         </span>
-        <span className="shrink-0">AIOX Dash · {sourceLabel}</span>
+        <span className="shrink-0">AIOX Research · {sourceLabel}</span>
       </div>
       <div className="hidden sm:block">Local-first · read-only</div>
       <div className="hidden truncate text-[var(--ink-dim)] lg:block">{sourceRoot} · unified shell</div>

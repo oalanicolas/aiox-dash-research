@@ -15,7 +15,7 @@
  * If none of these carry signal we skip silently — extraction-no-fallbacks.
  *
  * The emitted JSON matches the schema consumed by
- * `apps/dash/src/lib/bench-dashboard.server.ts`.
+ * `apps/research/src/lib/bench-dashboard.server.ts`.
  */
 
 import path from "node:path"

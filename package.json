@@ -1,8 +1,8 @@
 {
-  "name": "aiox-dash",
+  "name": "aiox-research",
   "version": "0.1.0",
   "private": false,
-  "description": "Local-first dashboards for research, benchmark and operational mapping artifacts.",
+  "description": "Local-first Open Research workbench and observatory for research artifacts.",
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",

@@ -4,6 +4,7 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import YAML from "yaml"
 import type { ReaderMode } from "@/components/observatory/foundations/types"
+import { EmptyObservatorySourceError } from "./observatory.server"
 import { resolveDashPath } from "./workspace-root.server"
 
 export type SinkraMapDocument = {
@@ -343,8 +344,10 @@ export type SinkraMapsObservatoryData = {
 }
 
 const CONTENT_LIMIT = 50000
-const INDEX_CACHE_TTL_MS = 5 * 60_000
-const RUN_CACHE_TTL_MS = 5 * 60_000
+// Dev: short TTL so YAML edits show up fast. Prod: 5min to keep filesystem walk cheap.
+const LONG_CACHE_TTL_MS = process.env.NODE_ENV === "production" ? 5 * 60_000 : 5_000
+const INDEX_CACHE_TTL_MS = LONG_CACHE_TTL_MS
+const RUN_CACHE_TTL_MS = LONG_CACHE_TTL_MS
 const INDEX_BUILD_CONCURRENCY = 24
 const KEY_FILES = [
   ["observatory_map.yaml", "Observatory"],
@@ -466,6 +469,12 @@ async function listFiles(dir: string) {
     .sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))
 }
 
+function isReservedDirName(name: string) {
+  // Skip metadata/archive dirs: `_smoke-fixture`, `_archived`, `_baseline`,
+  // `_v1-pre-*`, `.cache`, etc. Only artifact-bearing run dirs should surface.
+  return name.startsWith("_") || name.startsWith(".")
+}
+
 async function listRunDirs(root: string, rel = "", depth = 0): Promise<string[]> {
   if (depth > 4) return []
   const full = path.join(root, rel)
@@ -474,7 +483,7 @@ async function listRunDirs(root: string, rel = "", depth = 0): Promise<string[]>
   const hasSignal = KEY_FILES.some(([file]) => fileNames.includes(file)) ||
     fileNames.includes("sinkra-output.yaml") ||
     fileNames.includes("mission-output.yaml")
-  const dirs = entries.filter((entry) => entry.isDirectory())
+  const dirs = entries.filter((entry) => entry.isDirectory() && !isReservedDirName(entry.name))
   const nested = (await Promise.all(dirs.map((entry) => listRunDirs(root, path.join(rel, entry.name), depth + 1)))).flat()
   return hasSignal && rel ? [rel, ...nested] : nested
 }
@@ -1362,8 +1371,9 @@ async function getSinkraMapIndex(root: string): Promise<{
 export async function getSinkraMapsObservatoryData(slug?: string, file?: string, view?: ReaderMode): Promise<SinkraMapsObservatoryData> {
   const root = resolveDashPath("outputs", "sinkra-squad")
   const { slugs, summaries } = await getSinkraMapIndex(root)
+  if (summaries.length === 0) throw new EmptyObservatorySourceError("sinkra-maps")
   const selectedSlug = slug && slugs.includes(slug) ? slug : chooseDefaultSlug(summaries)
-  if (!selectedSlug) throw new Error("No SINKRA map outputs found")
+  if (!selectedSlug) throw new EmptyObservatorySourceError("sinkra-maps")
 
   const runs = summaries
     .map((summary) => ({ ...summary, active: summary.slug === selectedSlug }))

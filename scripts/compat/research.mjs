@@ -2,7 +2,7 @@
  * Research compatibility module.
  *
  * Port of the legacy Hub-level shim `scripts/research-observatory-compat.mjs`
- * relocated into apps/dash and aligned with the init-observatory pipeline.
+ * relocated into apps/research and aligned with the init-observatory pipeline.
  *
  * For each `docs/research/<slug>/` directory present in the workspace we
  * derive — only when supporting signal exists — the following companion

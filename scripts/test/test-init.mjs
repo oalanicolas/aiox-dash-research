@@ -3,7 +3,7 @@
  * Minimal test runner for init-observatory.
  *
  * Sets up a temporary workspace from `scripts/__fixtures__/`, points
- * AIOX_DASH_ROOT at it, runs each compat module, and asserts on the
+ * AIOX_RESEARCH_ROOT at it, runs each compat module, and asserts on the
  * artifacts produced. No external test framework — kept honest with the
  * "no new dependencies" constraint.
  */

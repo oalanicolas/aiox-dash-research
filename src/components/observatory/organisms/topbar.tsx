@@ -70,7 +70,7 @@ export function Topbar({
               className="truncate text-[12px] font-black uppercase leading-none tracking-[0.02em] text-[var(--top-ink)]"
               style={{ fontFamily: DISPLAY_FONT }}
             >
-              Dash
+              Research
             </h1>
             <span
               className="mt-0.5 hidden truncate text-[8px] uppercase tracking-[0.18em] text-[var(--top-ink-3)] sm:block"
@@ -111,7 +111,7 @@ export function Topbar({
           <button
             type="button"
             onClick={onCopyNew}
-            title={`Copiar comando CLI: ${newActionLabel}`}
+            title={source === "research" ? "Abrir nova pesquisa" : `Copiar comando CLI: ${newActionLabel}`}
             className={cn(
               "inline-flex min-h-11 cursor-pointer items-center gap-2 whitespace-nowrap border-l border-[var(--top-rule)] px-3 text-[9px] uppercase tracking-[0.12em] transition-colors sm:px-4",
               copiedNew

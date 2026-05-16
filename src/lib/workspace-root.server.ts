@@ -14,7 +14,7 @@ function hasWorkspaceMarker(candidate: string) {
 }
 
 export function getDashWorkspaceRoot(startPath = process.cwd()) {
-  const configuredRoot = process.env.AIOX_DASH_ROOT?.trim()
+  const configuredRoot = process.env.AIOX_RESEARCH_ROOT?.trim() || process.env.AIOX_DASH_ROOT?.trim()
   if (configuredRoot) return normalizeRoot(configuredRoot)
 
   let cursor = normalizeRoot(startPath)

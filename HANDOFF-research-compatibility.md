@@ -5,11 +5,11 @@ scope: intra_processo
 from: Codex / aiox-dev  
 to: Agent:next-session  
 date: 2026-05-14  
-project: apps/dash — Research Observatory
+project: apps/research — Research Observatory
 
 ## Critical Context
 
-O `apps/dash` agora renderiza pesquisas como uma narrativa visual (`Map`, `Ações`, `Evidências`, `Waves`, `Fontes`, `Players`, `Perguntas`, `Doc`), mas a maioria das pastas em `docs/research/<slug>/` ainda não possui todos os artefatos estruturados necessários para preencher essas abas com clareza.
+O `apps/research` agora renderiza pesquisas como uma narrativa visual (`Map`, `Ações`, `Evidências`, `Waves`, `Fontes`, `Players`, `Perguntas`, `Doc`), mas a maioria das pastas em `docs/research/<slug>/` ainda não possui todos os artefatos estruturados necessários para preencher essas abas com clareza.
 
 ## Objetivo do Próximo Agente
 
@@ -19,14 +19,14 @@ Padronizar todas as pesquisas existentes em `docs/research/**` para que sejam 10
 
 Implementado no app:
 
-- `apps/dash/src/lib/research-observatory.server.ts`
+- `apps/research/src/lib/research-observatory.server.ts`
   - Descobre runs em `docs/research`.
   - Lê artefatos por aba para reduzir carga.
   - Usa `2026-05-11-visual-deep-research-apps` como demo preferida.
-- `apps/dash/src/components/observatory/adapters/research.ts`
+- `apps/research/src/components/observatory/adapters/research.ts`
   - Monta abas conforme artefatos presentes.
   - Aba `Evidências` existe quando há `sources.yaml` ou `research-graph.json`.
-- `apps/dash/src/components/observatory/organisms/reader-body.tsx`
+- `apps/research/src/components/observatory/organisms/reader-body.tsx`
   - `Map`: narrativa executiva.
   - `Ações`: decisão, checklist, quick wins, roadmap, riscos.
   - `Evidências`: confiança de fontes, grafo, sinais, arquivos.
@@ -67,10 +67,10 @@ Nem todo arquivo precisa existir para toda pesquisa, mas o processo de compatibi
 
 Leia nesta ordem:
 
-1. `apps/dash/README.md`
-2. `apps/dash/src/lib/research-observatory.server.ts`
-3. `apps/dash/src/components/observatory/adapters/research.ts`
-4. `apps/dash/src/components/observatory/organisms/reader-body.tsx`
+1. `apps/research/README.md`
+2. `apps/research/src/lib/research-observatory.server.ts`
+3. `apps/research/src/components/observatory/adapters/research.ts`
+4. `apps/research/src/components/observatory/organisms/reader-body.tsx`
 5. `docs/research/2026-05-11-visual-deep-research-apps/`
 6. Uma pesquisa antiga/incompleta em `docs/research/**` para comparar gaps
 
@@ -136,7 +136,7 @@ Para uma pesquisa legada com `README.md` e `report.md`:
 - `Map` mantém leitura executiva.
 - `Evidências` sempre explica fonte/confiança/grafo quando artefatos existem.
 - `Ações` sempre mostra decisão/checklist/roadmap quando há recomendações.
-- `npm run build --workspaces=false` passa em `apps/dash`.
+- `npm run build --workspaces=false` passa em `apps/research`.
 - `npm run typecheck --workspaces=false` passa depois do build.
 
 ## Glossário

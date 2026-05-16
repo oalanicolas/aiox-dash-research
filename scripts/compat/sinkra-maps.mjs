@@ -13,7 +13,7 @@
  *
  * A run directory is any non-reserved sub-tree (max 4 deep) that contains at
  * least one of the canonical KEY_FILES recognized by
- * `apps/dash/src/lib/sinkra-maps-observatory.server.ts`, or a
+ * `apps/research/src/lib/sinkra-maps-observatory.server.ts`, or a
  * `sinkra-output.yaml` / `mission-output.yaml`.
  *
  * Extraction discipline: when a file is absent the corresponding payload

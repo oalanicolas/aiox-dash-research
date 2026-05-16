@@ -4,6 +4,8 @@
 .next/
 node_modules/
 out/
+.synapse/
+**/.synapse/
 
 *.tsbuildinfo
 npm-debug.log*

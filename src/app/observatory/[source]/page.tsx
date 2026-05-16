@@ -3,20 +3,21 @@ import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import { Observatory } from "@/components/observatory/observatory"
 import {
+  EmptyObservatorySourceError,
   getAvailableObservatorySources,
   getObservatoryData,
   isObservatorySourceAvailable,
   type ObservatorySource,
 } from "@/lib/observatory.server"
-import type { ReaderMode } from "@/components/observatory/foundations/types"
+import type { ObservatoryData, ReaderMode } from "@/components/observatory/foundations/types"
 
 const VALID_SOURCES: ObservatorySource[] = ["research", "bench", "sinkra-maps", "demo"]
 
 const SOURCE_TITLES: Partial<Record<ObservatorySource, string>> = {
-  research: "Research · AIOX Dash",
-  bench: "Bench · AIOX Dash",
-  "sinkra-maps": "SINKRA Maps · AIOX Dash",
-  demo: "Demo · AIOX Dash",
+  research: "Research · AIOX Research",
+  bench: "Bench · AIOX Research",
+  "sinkra-maps": "SINKRA Maps · AIOX Research",
+  demo: "Demo · AIOX Research",
 }
 
 const SOURCE_DESCRIPTIONS: Partial<Record<ObservatorySource, string>> = {
@@ -43,11 +44,11 @@ type ObservatoryPageProps = {
 export async function generateMetadata({ params }: ObservatoryPageProps): Promise<Metadata> {
   const { source } = await params
   if (!VALID_SOURCES.includes(source as ObservatorySource)) {
-    return { title: "AIOX Dash" }
+    return { title: "AIOX Research" }
   }
   const key = source as ObservatorySource
   return {
-    title: SOURCE_TITLES[key] ?? "AIOX Dash",
+    title: SOURCE_TITLES[key] ?? "AIOX Research",
     description: SOURCE_DESCRIPTIONS[key],
   }
 }
@@ -59,12 +60,19 @@ export default async function ObservatoryPage({ params, searchParams }: Observat
   }
   const sp = await searchParams
   const availableSources = getAvailableObservatorySources()
-  const { data } = await getObservatoryData({
-    source: source as ObservatorySource,
-    slug: sp?.slug,
-    file: sp?.file,
-    view: sp?.view as ReaderMode | undefined,
-  })
+  let data: ObservatoryData
+  try {
+    const result = await getObservatoryData({
+      source: source as ObservatorySource,
+      slug: sp?.slug,
+      file: sp?.file,
+      view: sp?.view as ReaderMode | undefined,
+    })
+    data = result.data
+  } catch (error) {
+    if (error instanceof EmptyObservatorySourceError) notFound()
+    throw error
+  }
 
   return (
     <div>

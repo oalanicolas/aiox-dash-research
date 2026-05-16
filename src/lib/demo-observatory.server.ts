@@ -28,7 +28,7 @@ const run: ObservatoryRunSummary = {
   sources: 18,
   active: true,
   extras: {
-    subjects: ["AIOX Dash", "Legacy BI", "Notion Stack", "Spreadsheet OS"],
+    subjects: ["AIOX Research", "Legacy BI", "Notion Stack", "Spreadsheet OS"],
     hasMetadata: true,
     hasScorecard: true,
     hasDeep: true,
@@ -38,7 +38,7 @@ const run: ObservatoryRunSummary = {
 }
 
 const players: ObservatoryPlayerProfile[] = [
-  { key: "aiox-dash", name: "AIOX Dash", category: "operational intelligence", type: "dashboard", license: "private", origin: "Sinkra", years: 1, techScore: 92, neutralScore: 89, color: "#d1ff00", letter: "A", tag: "recommended" },
+  { key: "aiox-research", name: "AIOX Research", category: "operational intelligence", type: "dashboard", license: "private", origin: "Sinkra", years: 1, techScore: 92, neutralScore: 89, color: "#d1ff00", letter: "A", tag: "recommended" },
   { key: "legacy-bi", name: "Legacy BI", category: "analytics", type: "warehouse", license: "enterprise", origin: "incumbent", years: 8, techScore: 74, neutralScore: 77, color: "#70a7ff", letter: "B", tag: "stable" },
   { key: "notion-stack", name: "Notion Stack", category: "workspace", type: "manual ops", license: "saas", origin: "operator", years: 3, techScore: 68, neutralScore: 71, color: "#f5b340", letter: "N", tag: "manual" },
   { key: "spreadsheet-os", name: "Spreadsheet OS", category: "spreadsheet", type: "ad hoc", license: "office", origin: "ops", years: 12, techScore: 53, neutralScore: 58, color: "#ef4444", letter: "S", tag: "legacy" },
@@ -48,7 +48,7 @@ const matrix: ObservatoryMatrix = {
   players: players.map((player) => player.key),
   method: "Demo weighted operational benchmark",
   totals: [
-    { player: "aiox-dash", score: 92 },
+    { player: "aiox-research", score: 92 },
     { player: "legacy-bi", score: 78 },
     { player: "notion-stack", score: 72 },
     { player: "spreadsheet-os", score: 58 },
@@ -68,7 +68,7 @@ const matrix: ObservatoryMatrix = {
 const scoreDimensions: ObservatoryScoreDimension[] = matrix.rows.map((item) => ({
   name: item.label,
   weight: `${item.weight}%`,
-  winner: "AIOX Dash",
+  winner: "AIOX Research",
   delta: String(Math.round(Math.max(...item.cells.map((cell) => cell.score)) - item.cells[1].score)),
   evidence: item.cells[0]?.notes ?? "",
   scores: item.cells.map((cell) => ({ label: cell.player, value: String(cell.score) })),
@@ -82,9 +82,9 @@ const gapItems: ObservatoryGapItem[] = [
 ]
 
 const personas: ObservatoryPersona[] = [
-  persona("exec", "C-Level", "Precisa decidir rápido, com risco e custo explícitos.", [35, 25, 20, 20], "aiox-dash", "legacy-bi", 14),
-  persona("ops", "Operações", "Precisa transformar comparação em backlog e dono.", [20, 35, 30, 15], "aiox-dash", "notion-stack", 18),
-  persona("finance", "Financeiro", "Precisa entender custo total e risco de retrabalho.", [20, 20, 20, 40], "aiox-dash", "spreadsheet-os", 10),
+  persona("exec", "C-Level", "Precisa decidir rápido, com risco e custo explícitos.", [35, 25, 20, 20], "aiox-research", "legacy-bi", 14),
+  persona("ops", "Operações", "Precisa transformar comparação em backlog e dono.", [20, 35, 30, 15], "aiox-research", "notion-stack", 18),
+  persona("finance", "Financeiro", "Precisa entender custo total e risco de retrabalho.", [20, 20, 20, 40], "aiox-research", "spreadsheet-os", 10),
 ]
 
 const tco: ObservatoryTco = {
@@ -96,7 +96,7 @@ const tco: ObservatoryTco = {
       label: "Operador solo",
       unit: "mês",
       rows: [
-        { player: "aiox-dash", setup: "CLI + dashboard", low: 120, high: 280, baseline: false },
+        { player: "aiox-research", setup: "CLI + dashboard", low: 120, high: 280, baseline: false },
         { player: "legacy-bi", setup: "BI + manutenção", low: 600, high: 1600, baseline: true },
         { player: "notion-stack", setup: "manual workspace", low: 80, high: 420, baseline: false },
         { player: "spreadsheet-os", setup: "planilhas", low: 20, high: 900, baseline: false },
@@ -108,7 +108,7 @@ const tco: ObservatoryTco = {
 const documents: ObservatoryDocument[] = [
   doc("README.md", "doc", "# Demo Bench\n\nEste é um benchmark demonstrativo completo para instalações sem dados reais."),
   doc("bench-output-dash.json", "dados", "{ \"demo\": true, \"matrix\": \"rich\", \"slides\": true }"),
-  doc("scorecard.md", "score", "# Scorecard\n\nAIOX Dash vence por clareza executiva, evidência e capacidade de gerar ação."),
+  doc("scorecard.md", "score", "# Scorecard\n\nAIOX Research vence por clareza executiva, evidência e capacidade de gerar ação."),
   doc("roadmap.md", "roadmap", "# Roadmap\n\n1. Onboarding guiado\n2. Contratos de dados\n3. Exportação futura\n4. Presets por tipo de decisão"),
   doc("evidence.md", "evidence", "# Evidências\n\nDemo contém matriz, gaps, personas, TCO, cliffs e slides."),
 ]
@@ -124,7 +124,7 @@ export const demoAdapterMeta: ObservatoryAdapterMeta = {
   },
   formatCoverage: (item) => item.coverage,
   buildDeepenCommand: () =>
-    `claude && /spy *bench "AIOX Dash" "Legacy BI" "Gere um bench real com matrix, gaps, roadmap, evidências, personas, TCO e slides."`,
+    `claude && /spy *bench "AIOX Research" "Legacy BI" "Gere um bench real com matrix, gaps, roadmap, evidências, personas, TCO e slides."`,
 }
 
 export function getDemoObservatoryData(): ObservatoryData {
@@ -148,21 +148,21 @@ export function getDemoObservatoryData(): ObservatoryData {
     personas,
     tco,
     tiebreakers: [
-      { id: "T1", q: "Precisa apresentar para stakeholder?", yes: "AIOX Dash", no: "Notion Stack" },
-      { id: "T2", q: "Precisa rastrear evidência?", yes: "AIOX Dash", no: "Legacy BI" },
+      { id: "T1", q: "Precisa apresentar para stakeholder?", yes: "AIOX Research", no: "Notion Stack" },
+      { id: "T2", q: "Precisa rastrear evidência?", yes: "AIOX Research", no: "Legacy BI" },
     ],
     cliffs: [
       { player: "spreadsheet-os", trigger: "mais de 2 squads consumindo o dado", impact: "coordenação manual vira gargalo e aumenta risco de decisão desatualizada." },
       { player: "notion-stack", trigger: "precisa de matriz comparativa viva", impact: "bom para escrita, fraco para score, roadmap e slides automáticos." },
     ],
     decisionTree: [
-      { q: "A decisão precisa virar ação?", yes: "AIOX Dash", no: "Notion Stack" },
+      { q: "A decisão precisa virar ação?", yes: "AIOX Research", no: "Notion Stack" },
       { q: "A audiência é executiva?", yes: "Slides + Map", no: "Doc + Matrix" },
     ],
     categorical: [
-      { dimension: "Slides executivos", winner: "aiox-dash", loser: "legacy-bi", note: "Modo apresentação reduz tempo de leitura." },
-      { dimension: "Custo inicial", winner: "spreadsheet-os", loser: "aiox-dash", note: "Planilha custa menos, mas não escala governança." },
-      { dimension: "Evidência", winner: "aiox-dash", loser: "notion-stack", note: "O painel liga evidência à decisão." },
+      { dimension: "Slides executivos", winner: "aiox-research", loser: "legacy-bi", note: "Modo apresentação reduz tempo de leitura." },
+      { dimension: "Custo inicial", winner: "spreadsheet-os", loser: "aiox-research", note: "Planilha custa menos, mas não escala governança." },
+      { dimension: "Evidência", winner: "aiox-research", loser: "notion-stack", note: "O painel liga evidência à decisão." },
     ],
     gapItems,
     metadataMetrics: [
@@ -175,7 +175,7 @@ export function getDemoObservatoryData(): ObservatoryData {
     ],
     editorsNote: {
       title: "Por que este demo existe",
-      byline: "AIOX Dash",
+      byline: "AIOX Research",
       date: "2026-05-14",
       paragraphs: ["Este demo mostra o destino visual esperado antes de qualquer instalação ter research, bench ou mapeamentos próprios."],
     },
@@ -190,7 +190,7 @@ export function getDemoObservatoryData(): ObservatoryData {
 }
 
 function row(id: string, label: string, weight: number, scores: [number, number, number, number], notes: string) {
-  const keys = ["aiox-dash", "legacy-bi", "notion-stack", "spreadsheet-os"]
+  const keys = ["aiox-research", "legacy-bi", "notion-stack", "spreadsheet-os"]
   return {
     id,
     label,

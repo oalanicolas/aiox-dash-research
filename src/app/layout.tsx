@@ -4,7 +4,7 @@ import { GeistMono } from "geist/font/mono"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "AIOX Dash",
+  title: "AIOX Research",
   description: "Operational dashboards for SINKRA maps, benchmarks and research artifacts.",
 }
 
@@ -15,7 +15,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <body className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
+      <body suppressHydrationWarning className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
         {children}
       </body>
     </html>

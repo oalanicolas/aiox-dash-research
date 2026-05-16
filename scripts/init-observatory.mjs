@@ -3,8 +3,8 @@
  * init-observatory — materialize derived observatory artifacts for legacy
  * AIOX workspaces.
  *
- * Discovery rules (matching apps/dash/src/lib/workspace-root.server.ts):
- *   1. honor AIOX_DASH_ROOT env when set
+ * Discovery rules (matching apps/research/src/lib/workspace-root.server.ts):
+ *   1. honor AIOX_RESEARCH_ROOT env when set, with legacy AIOX_DASH_ROOT fallback
  *   2. otherwise walk up from cwd looking for `docs/` / `outputs/` / `apps/`
  *
  * Sources processed when present:
@@ -69,7 +69,7 @@ async function main() {
     logErr(`    - ${researchRoot}`)
     logErr(`    - ${benchRoot}`)
     logErr(`    - ${sinkraSquadRoot}`)
-    logErr("  Set AIOX_DASH_ROOT to a workspace populated by AIOX Pro/Enterprise pipelines,")
+    logErr("  Set AIOX_RESEARCH_ROOT to a workspace populated by AIOX Pro/Enterprise pipelines,")
     logErr("  or run this command from inside such a workspace.")
     logErr("  Visitor tier (Demo only) does not require init-observatory.")
     process.exit(2)

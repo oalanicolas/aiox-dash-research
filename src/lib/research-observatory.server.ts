@@ -2,7 +2,9 @@ import "server-only"
 
 import { readdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
+import YAML from "yaml"
 import type { ReaderMode } from "@/components/observatory/foundations/types"
+import { EmptyObservatorySourceError } from "./observatory.server"
 import { resolveDashPath } from "./workspace-root.server"
 
 export type ResearchDocument = {
@@ -289,11 +291,25 @@ async function readIndex(researchRoot: string) {
 }
 
 async function listRunFiles(runPath: string) {
-  const entries = await readdir(runPath, { withFileTypes: true })
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b))
+  const files: string[] = []
+
+  async function walk(currentPath: string, prefix: string, depth: number) {
+    const entries = await readdir(currentPath, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || entry.name.startsWith("_")) continue
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isFile()) {
+        files.push(relativePath)
+        continue
+      }
+      if (entry.isDirectory() && depth < 3) {
+        await walk(path.join(currentPath, entry.name), relativePath, depth + 1)
+      }
+    }
+  }
+
+  await walk(runPath, "", 0)
+  return files.sort((a, b) => a.localeCompare(b))
 }
 
 async function buildRunSummary(runPath: string, slug: string, indexEntry?: IndexEntry): Promise<ResearchRunSummary> {
@@ -351,12 +367,13 @@ async function buildRunSummary(runPath: string, slug: string, indexEntry?: Index
 async function readFreshnessRatio(sourcesYamlPath: string): Promise<string> {
   try {
     const raw = await readFile(sourcesYamlPath, "utf8")
-    // Minimal YAML scrape — avoid hard dep on js-yaml in this server module.
-    // sources_extractor emits `date_coverage_ratio: 0.775` near totals block.
-    const match = raw.match(/date_coverage_ratio:\s*([0-9.]+)/)
-    if (!match) return "--"
-    const ratio = parseFloat(match[1])
-    if (Number.isNaN(ratio)) return "--"
+    const parsed = YAML.parse(raw)
+    const totals = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>).totals : null
+    const ratio =
+      totals && typeof totals === "object"
+        ? Number((totals as Record<string, unknown>).date_coverage_ratio)
+        : NaN
+    if (!Number.isFinite(ratio)) return "--"
     return `${Math.round(ratio * 100)}%`
   } catch {
     return "--"
@@ -381,100 +398,38 @@ async function readTopSources(sourcesYamlPath: string, limit = 30): Promise<Sour
   }
 }
 
-// Minimal scanner for sources.yaml shape emitted by tech-research/scripts/sources_extractor.py.
-// Returns ordered entries; no external YAML parser required.
+// Parses sources.yaml shape emitted by tech-research/scripts/sources_extractor.py.
 function parseSourcesYaml(raw: string): SourceEntry[] {
-  const lines = raw.split("\n")
-  const entries: SourceEntry[] = []
-  let current: Partial<SourceEntry> | null = null
-  let inSources = false
-  let inFlags = false
+  const parsed = YAML.parse(raw)
+  const rawSources = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>).sources : null
+  if (!Array.isArray(rawSources)) return []
 
-  const unquote = (val: string): string => {
-    const trimmed = val.trim()
-    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
-      return trimmed.slice(1, -1)
-    }
-    return trimmed
-  }
-
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/\r$/, "")
-    if (line.startsWith("sources:")) {
-      inSources = true
-      continue
-    }
-    if (inSources && line.startsWith("totals:")) {
-      if (current && current.id) entries.push(current as SourceEntry)
-      current = null
-      break
-    }
-    if (!inSources) continue
-
-    if (line.startsWith("  - id:")) {
-      if (current && current.id) entries.push(current as SourceEntry)
-      current = { flags: [] }
-      const val = unquote(line.slice("  - id:".length))
-      current.id = val
-      inFlags = false
-      continue
-    }
-
-    if (!current) continue
-
-    if (line.startsWith("    flags:")) {
-      const rest = line.slice("    flags:".length).trim()
-      if (rest === "[]") {
-        current.flags = []
-        inFlags = false
-      } else {
-        inFlags = true
+  return rawSources
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object"))
+    .map((entry) => {
+      const credibilityRaw = String(entry.credibility ?? "").toUpperCase()
+      const credibility: SourceEntry["credibility"] =
+        credibilityRaw === "HIGH" || credibilityRaw === "MEDIUM" || credibilityRaw === "LOW"
+          ? credibilityRaw
+          : "LOW"
+      const multiplierValue = entry.multiplier
+      const multiplier =
+        typeof multiplierValue === "number"
+          ? multiplierValue
+          : Number.isFinite(Number(multiplierValue))
+            ? Number(multiplierValue)
+            : 1
+      return {
+        id: String(entry.id ?? ""),
+        url: String(entry.url ?? ""),
+        title: String(entry.title ?? ""),
+        date: String(entry.date ?? ""),
+        credibility,
+        multiplier,
+        flags: Array.isArray(entry.flags) ? entry.flags.map((flag) => String(flag)) : [],
       }
-      continue
-    }
-
-    if (inFlags && line.startsWith("      - ")) {
-      const flag = unquote(line.slice("      - ".length))
-      current.flags = [...(current.flags ?? []), flag]
-      continue
-    }
-
-    if (line.startsWith("      ") && inFlags) continue
-    inFlags = false
-
-    const fieldMatch = line.match(/^ {4}([a-z_]+):\s*(.*)$/)
-    if (!fieldMatch) continue
-
-    const [, key, value] = fieldMatch
-    const clean = unquote(value)
-
-    switch (key) {
-      case "url":
-        current.url = clean
-        break
-      case "title":
-        current.title = clean
-        break
-      case "date":
-        current.date = clean
-        break
-      case "credibility":
-        if (clean === "HIGH" || clean === "MEDIUM" || clean === "LOW") {
-          current.credibility = clean
-        }
-        break
-      case "multiplier": {
-        const n = parseFloat(clean)
-        if (!Number.isNaN(n)) current.multiplier = n
-        break
-      }
-      default:
-        break
-    }
-  }
-
-  if (current && current.id) entries.push(current as SourceEntry)
-  return entries
+    })
+    .filter((entry) => entry.id)
 }
 
 async function readPlayers(playersYamlPath: string): Promise<PlayerEntry[]> {
@@ -491,136 +446,42 @@ async function readPlayers(playersYamlPath: string): Promise<PlayerEntry[]> {
   }
 }
 
-// Minimal scanner for players.yaml shape emitted by tech-research/scripts/players_extractor.py.
-// Skips `additional_sources:` block to avoid recursing; ignores `totals:` section.
+// Parses players.yaml shape emitted by tech-research/scripts/players_extractor.py.
 function parsePlayersYaml(raw: string): PlayerEntry[] {
-  const lines = raw.split("\n")
-  const entries: PlayerEntry[] = []
-  let current: Partial<PlayerEntry> | null = null
-  let inPlayers = false
-  let inAdditionalSources = false
+  const parsed = YAML.parse(raw)
+  const rawPlayers = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>).players : null
+  if (!Array.isArray(rawPlayers)) return []
 
-  const unquote = (val: string): string => {
-    const trimmed = val.trim()
-    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
-      return trimmed.slice(1, -1).replace(/\\"/g, '"').replace(/\\n/g, " ")
-    }
-    return trimmed
+  const nullable = (value: unknown): string | null => {
+    if (value === null || value === undefined) return null
+    const str = String(value).trim()
+    return str === "" || str === "null" ? null : str
   }
 
-  const nullable = (val: string): string | null => {
-    const clean = unquote(val)
-    return clean === "null" || clean === "" ? null : clean
-  }
-
-  const finalize = () => {
-    if (current && current.id && current.name) {
-      entries.push({
-        id: current.id,
-        number: current.number ?? "",
-        name: current.name,
-        tier: current.tier ?? null,
-        category: current.category ?? null,
-        whatItDoes: current.whatItDoes ?? null,
-        whatItDoesNot: current.whatItDoesNot ?? null,
-        insight: current.insight ?? null,
-        sourceTitle: current.sourceTitle ?? null,
-        sourceUrl: current.sourceUrl ?? null,
-        sourceDate: current.sourceDate ?? null,
-        excluded: current.excluded ?? false,
-        exclusionReason: current.exclusionReason ?? null,
-        section: current.section ?? null,
-      })
-    }
-  }
-
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/\r$/, "")
-    if (line.startsWith("players:")) {
-      inPlayers = true
-      continue
-    }
-    if (inPlayers && line.startsWith("totals:")) {
-      finalize()
-      current = null
-      break
-    }
-    if (!inPlayers) continue
-
-    if (line.startsWith("  - id:")) {
-      finalize()
-      current = {}
-      current.id = unquote(line.slice("  - id:".length))
-      inAdditionalSources = false
-      continue
-    }
-
-    if (!current) continue
-
-    if (line.startsWith("    additional_sources:")) {
-      inAdditionalSources = true
-      continue
-    }
-    if (inAdditionalSources) {
-      // Skip nested entries until next top-level player field (indent of 4 spaces, not 6+).
-      if (line.startsWith("      ") || line.startsWith("    -")) continue
-      inAdditionalSources = false
-    }
-
-    const fieldMatch = line.match(/^ {4}([a-z_]+):\s*(.*)$/)
-    if (!fieldMatch) continue
-
-    const [, key, value] = fieldMatch
-
-    switch (key) {
-      case "number":
-        current.number = unquote(value)
-        break
-      case "name":
-        current.name = unquote(value)
-        break
-      case "tier": {
-        const n = parseInt(unquote(value), 10)
-        if (n === 1 || n === 2 || n === 3) current.tier = n
-        break
+  return rawPlayers
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object"))
+    .filter((entry) => entry.id && entry.name)
+    .map((entry) => {
+      const tierValue = Number(entry.tier)
+      const tier: PlayerEntry["tier"] =
+        tierValue === 1 || tierValue === 2 || tierValue === 3 ? tierValue : null
+      return {
+        id: String(entry.id),
+        number: String(entry.number ?? ""),
+        name: String(entry.name),
+        tier,
+        category: nullable(entry.category),
+        whatItDoes: nullable(entry.what_it_does),
+        whatItDoesNot: nullable(entry.what_it_does_not),
+        insight: nullable(entry.insight),
+        sourceTitle: nullable(entry.source_title),
+        sourceUrl: nullable(entry.source_url),
+        sourceDate: nullable(entry.source_date),
+        excluded: Boolean(entry.excluded),
+        exclusionReason: nullable(entry.exclusion_reason),
+        section: nullable(entry.section),
       }
-      case "category":
-        current.category = nullable(value)
-        break
-      case "what_it_does":
-        current.whatItDoes = nullable(value)
-        break
-      case "what_it_does_not":
-        current.whatItDoesNot = nullable(value)
-        break
-      case "insight":
-        current.insight = nullable(value)
-        break
-      case "source_title":
-        current.sourceTitle = nullable(value)
-        break
-      case "source_url":
-        current.sourceUrl = nullable(value)
-        break
-      case "source_date":
-        current.sourceDate = nullable(value)
-        break
-      case "excluded":
-        current.excluded = unquote(value) === "true"
-        break
-      case "exclusion_reason":
-        current.exclusionReason = nullable(value)
-        break
-      case "section":
-        current.section = nullable(value)
-        break
-      default:
-        break
-    }
-  }
-
-  finalize()
-  return entries
+    })
 }
 
 function filesForView(view?: ReaderMode, selectedFile?: string) {
@@ -705,7 +566,7 @@ async function getCachedRunSummaries(researchRoot: string, index: Map<string, In
 
   const entries = await readdir(researchRoot, { withFileTypes: true })
   const runSlugs = entries
-    .filter((entry) => entry.isDirectory())
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_") && !entry.name.startsWith("."))
     .map((entry) => entry.name)
     .sort((a, b) => b.localeCompare(a))
   const summaries = await Promise.all(
@@ -723,22 +584,30 @@ export async function getResearchObservatoryData(selectedSlug?: string, selected
   const researchRoot = resolveDashPath("docs", "research")
   const index = await readIndex(researchRoot)
   const summaries = await getCachedRunSummaries(researchRoot, index)
+  if (summaries.length === 0) throw new EmptyObservatorySourceError("research")
   const preferredSlug = selectedSlug && summaries.some((run) => run.slug === selectedSlug)
     ? selectedSlug
-    : summaries.find((run) => run.slug === "2026-05-11-visual-deep-research-apps")?.slug ?? summaries[0]?.slug
+    : summaries.find((run) => run.slug === "2026-05-11-visual-deep-research-apps")?.slug ?? summaries[0].slug
   const runs = summaries.map((run) => ({ ...run, active: run.slug === preferredSlug }))
   const selectedRun = runs.find((run) => run.slug === preferredSlug) ?? runs[0]
-  const documents = selectedRun ? await buildDocuments(path.join(researchRoot, selectedRun.slug), view, selectedFile) : []
+  const documents = await buildDocuments(path.join(researchRoot, selectedRun.slug), view, selectedFile)
   const selectedDocument = documents.find((doc) => doc.file === selectedFile)
     ?? documents.find((doc) => doc.file === "README.md")
     ?? documents.find((doc) => doc.file === "02-research-report.md")
     ?? documents[0]
-  const topSources = selectedRun?.hasSources
+    ?? {
+      id: "empty",
+      file: "README.md",
+      phase: "overview",
+      status: "missing" as const,
+      bytes: 0,
+      content: "",
+      truncated: false,
+    }
+  const topSources = selectedRun.hasSources
     ? await readTopSources(path.join(researchRoot, selectedRun.slug, "sources.yaml"))
     : []
-  const players = selectedRun
-    ? await readPlayers(path.join(researchRoot, selectedRun.slug, "players.yaml"))
-    : []
+  const players = await readPlayers(path.join(researchRoot, selectedRun.slug, "players.yaml"))
 
   return {
     stats: {
@@ -754,13 +623,13 @@ export async function getResearchObservatoryData(selectedSlug?: string, selected
     documents,
     selectedDocument,
     sourceSummary: [
-      `${selectedRun?.sources ?? "--"} fontes indexadas`,
+      `${selectedRun.sources} fontes indexadas`,
       `${documents.length} artefatos legíveis`,
-      selectedRun?.hasMetrics ? "metrics.yaml presente" : "metrics.yaml ausente",
-      selectedRun?.hasState ? "pipeline-state.yaml presente" : "pipeline-state.yaml ausente",
-      selectedRun?.hasLog ? "execution-log.jsonl presente" : "execution-log.jsonl ausente",
-      selectedRun?.hasSources ? "sources.yaml presente" : "sources.yaml ausente",
-      `${selectedRun?.waves ?? 0} waves detectadas`,
+      selectedRun.hasMetrics ? "metrics.yaml presente" : "metrics.yaml ausente",
+      selectedRun.hasState ? "pipeline-state.yaml presente" : "pipeline-state.yaml ausente",
+      selectedRun.hasLog ? "execution-log.jsonl presente" : "execution-log.jsonl ausente",
+      selectedRun.hasSources ? "sources.yaml presente" : "sources.yaml ausente",
+      `${selectedRun.waves} waves detectadas`,
     ],
     topSources,
     players,

@@ -16,7 +16,7 @@ export default function ObservatoryRootPage() {
     >
       <section className="max-w-[560px] border border-[var(--rule)] bg-[var(--paper-alt)] p-8">
         <p className="mb-3 text-[10px] uppercase tracking-[0.16em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-          AIOX Dash
+          AIOX Research
         </p>
         <h1 className="text-[28px] font-black tracking-[-0.04em]">Nenhuma fonte encontrada</h1>
         <p className="mt-3 text-[14px] leading-[1.6] text-[var(--ink-2)]">

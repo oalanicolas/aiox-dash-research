@@ -122,11 +122,12 @@ export function safeRead(absPath) {
 
 /**
  * Resolve the workspace root the same way the Next.js adapter does — env var
- * AIOX_DASH_ROOT wins, otherwise walk up from `start` looking for one of the
+ * AIOX_RESEARCH_ROOT wins, then legacy AIOX_DASH_ROOT, otherwise walk up from
+ * `start` looking for one of the
  * marker directories.
  */
 export function resolveWorkspaceRoot(start = process.cwd()) {
-  const configured = process.env.AIOX_DASH_ROOT?.trim()
+  const configured = process.env.AIOX_RESEARCH_ROOT?.trim() || process.env.AIOX_DASH_ROOT?.trim()
   if (configured) return path.resolve(configured)
 
   const markers = ["docs", "outputs", "apps"]
