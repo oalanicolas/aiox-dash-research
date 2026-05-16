@@ -10,7 +10,7 @@ type RunStreamRouteProps = {
 }
 
 const STREAM_INTERVAL_MS = 900
-const MAX_STREAM_MS = 5 * 60 * 1000
+const MAX_STREAM_MS = 60 * 60 * 1000
 
 export async function GET(request: NextRequest, { params }: RunStreamRouteProps) {
   const { runId } = await params

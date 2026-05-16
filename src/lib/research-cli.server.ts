@@ -3,7 +3,7 @@ import "server-only"
 import { execFile, spawn } from "node:child_process"
 import { lookup } from "node:dns/promises"
 import { accessSync, constants, existsSync } from "node:fs"
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { isIP } from "node:net"
 import { delimiter } from "node:path"
 import os from "node:os"
@@ -84,6 +84,7 @@ type PersistedRunState = Omit<ResearchRunState, "log"> & {
 }
 
 const RUNS_DIR = path.join(getDashWorkspaceRoot(), ".tmp", "aiox-research-runs")
+const stateWriteQueues = new Map<string, Promise<void>>()
 
 export async function getResearchCliDiscovery(): Promise<ResearchCliDiscovery> {
   const clis = await Promise.all(CLI_DEFINITIONS.map(probeCliDefinition))
@@ -219,16 +220,16 @@ async function startCliBackedRun(input: CliBackedRunInput): Promise<ResearchRunS
   child.stderr.setEncoding("utf8")
 
   child.stdout.on("data", (chunk: string) => {
-    void appendRunLog(statePath, `[stdout] ${chunk}`)
+    void appendRunLog(statePath, formatProcessChunk("stdout", chunk)).catch(() => undefined)
   })
   child.stderr.on("data", (chunk: string) => {
-    void appendRunLog(statePath, `[stderr] ${chunk}`)
+    void appendRunLog(statePath, formatProcessChunk("stderr", chunk)).catch(() => undefined)
   })
   child.on("error", (error) => {
-    void markRunFinished(statePath, "failed", null, error.message)
+    void markRunFinished(statePath, "failed", null, error.message).catch(() => undefined)
   })
   child.on("close", (code) => {
-    void markRunFinished(statePath, code === 0 ? "completed" : "failed", code, `processo finalizado com código ${code ?? "n/a"}`)
+    void markRunFinished(statePath, code === 0 ? "completed" : "failed", code, `processo finalizado com código ${code ?? "n/a"}`).catch(() => undefined)
   })
 
   child.stdin.write(input.prompt)
@@ -550,11 +551,16 @@ function escapeYaml(value: string) {
 }
 
 export async function getResearchRunState(runId: string): Promise<ResearchRunState | null> {
-  const id = safeId(runId)
+  const id = sanitizeId(runId)
   if (id !== runId) return null
   const statePath = path.join(RUNS_DIR, `${id}.json`)
   if (!existsSync(statePath)) return null
-  const state = await readState(statePath)
+  let state: PersistedRunState
+  try {
+    state = await readState(statePath)
+  } catch {
+    return null
+  }
   return {
     ...state,
     log: tail(state.log, 24_000),
@@ -682,22 +688,95 @@ function buildInvocation(cliId: ResearchCliId, command: string, workspaceRoot: s
 
 async function readState(statePath: string): Promise<PersistedRunState> {
   const raw = await readFile(statePath, "utf8")
-  return JSON.parse(raw) as PersistedRunState
+  const parsed = parsePersistedState(raw) as PersistedRunState
+  return hydrateStateLogFromSidecar(parsed, statePath)
+}
+
+function parsePersistedState(raw: string) {
+  try {
+    return JSON.parse(raw)
+  } catch (error) {
+    const firstObject = extractFirstJsonObject(raw)
+    if (!firstObject) throw error
+    return JSON.parse(firstObject)
+  }
+}
+
+async function hydrateStateLogFromSidecar(state: PersistedRunState, statePath: string): Promise<PersistedRunState> {
+  const fallbackLogPath = path.join(path.dirname(statePath), `${path.basename(statePath, ".json")}.log`)
+  const logPath = typeof state.logPath === "string" && state.logPath ? state.logPath : fallbackLogPath
+  if (!existsSync(logPath)) return { ...state, logPath, log: typeof state.log === "string" ? state.log : "" }
+
+  try {
+    const sidecarLog = await readFile(logPath, "utf8")
+    const stateLog = typeof state.log === "string" ? state.log : ""
+    return {
+      ...state,
+      logPath,
+      log: sidecarLog.length >= stateLog.length ? sidecarLog : stateLog,
+    }
+  } catch {
+    return { ...state, logPath, log: typeof state.log === "string" ? state.log : "" }
+  }
+}
+
+function extractFirstJsonObject(raw: string) {
+  let start = -1
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index]
+    if (start === -1) {
+      if (char === "{") {
+        start = index
+        depth = 1
+      }
+      continue
+    }
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === "\"") {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === "\"") {
+      inString = true
+    } else if (char === "{") {
+      depth += 1
+    } else if (char === "}") {
+      depth -= 1
+      if (depth === 0) return raw.slice(start, index + 1)
+    }
+  }
+
+  return null
 }
 
 async function persistRunState(statePath: string, state: ResearchRunState) {
   await writeFile(state.logPath, state.log, "utf8")
-  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8")
+  const tmpPath = `${statePath}.${process.pid}.tmp`
+  await writeFile(tmpPath, JSON.stringify(state, null, 2), "utf8")
+  await rename(tmpPath, statePath)
 }
 
 async function appendRunLog(statePath: string, chunk: string) {
-  const state = await readState(statePath)
-  const updated: ResearchRunState = {
-    ...state,
-    log: `${state.log}${chunk}`,
-    updatedAt: new Date().toISOString(),
-  }
-  await persistRunState(statePath, updated)
+  await enqueueRunStateWrite(statePath, async () => {
+    const state = await readState(statePath)
+    const updated: ResearchRunState = {
+      ...state,
+      log: `${state.log}${chunk}`,
+      updatedAt: new Date().toISOString(),
+    }
+    await persistRunState(statePath, updated)
+  })
 }
 
 async function markRunFinished(
@@ -706,17 +785,31 @@ async function markRunFinished(
   exitCode: number | null,
   message: string,
 ) {
-  const state = await readState(statePath)
-  const updatedAt = new Date().toISOString()
-  const updated: ResearchRunState = {
-    ...state,
-    status,
-    exitCode,
-    updatedAt,
-    log: `${state.log}\n[dash] ${updatedAt} ${message}\n`,
-  }
-  await persistRunState(statePath, updated)
-  await persistRuntimeCompletionArtifacts(updated, message)
+  await enqueueRunStateWrite(statePath, async () => {
+    const state = await readState(statePath)
+    const updatedAt = new Date().toISOString()
+    const updated: ResearchRunState = {
+      ...state,
+      status,
+      exitCode,
+      updatedAt,
+      log: `${state.log}\n[dash] ${updatedAt} ${message}\n`,
+    }
+    await persistRunState(statePath, updated)
+    await persistRuntimeCompletionArtifacts(updated, message)
+  })
+}
+
+function enqueueRunStateWrite(statePath: string, operation: () => Promise<void>) {
+  const previous = stateWriteQueues.get(statePath) ?? Promise.resolve()
+  const next = previous.catch(() => undefined).then(operation)
+  stateWriteQueues.set(statePath, next)
+  void next
+    .finally(() => {
+      if (stateWriteQueues.get(statePath) === next) stateWriteQueues.delete(statePath)
+    })
+    .catch(() => undefined)
+  return next
 }
 
 type OpenAIMessageContentPart = string | { text?: unknown; type?: unknown }
@@ -882,7 +975,29 @@ function extractRuntimeSignal(log: string) {
 }
 
 function safeId(value: string) {
-  return value.replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 140)
+  return sanitizeId(value).slice(0, 140)
+}
+
+function sanitizeId(value: string) {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "-")
+}
+
+function formatProcessChunk(stream: "stdout" | "stderr", chunk: string) {
+  const normalized = stripAnsi(chunk).replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  if (!normalized) return ""
+  const hasTrailingNewline = normalized.endsWith("\n")
+  const lines = normalized.split("\n")
+  if (hasTrailingNewline) lines.pop()
+  const prefixed = lines.map((line) => `[${stream}] ${line}`).join("\n")
+  return `${prefixed}${hasTrailingNewline ? "\n" : ""}`
+}
+
+function stripAnsi(value: string) {
+  return value.replace(
+    // eslint-disable-next-line no-control-regex
+    /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g,
+    "",
+  )
 }
 
 function tail(value: string, maxLength: number) {

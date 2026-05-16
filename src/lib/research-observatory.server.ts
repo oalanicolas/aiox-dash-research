@@ -158,6 +158,7 @@ const CORE_FILES = ["README.md", "00-query-original.md", "01-deep-research-promp
 const CONTENT_LIMIT = 30000
 const DISPLAY_TITLE_MAX = 60
 const RESEARCH_CACHE_TTL_MS = 5_000
+const LEGACY_PARALLEL_SUFFIX = /-(claude|codex|gemini|opencode|byok|consolidado)$/
 
 let summaryCache:
   | {
@@ -177,6 +178,15 @@ function prettifySlug(slug: string) {
     .filter(Boolean)
     .map((part) => part.toUpperCase() === "AIOX" ? "AIOX" : part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ")
+}
+
+function canonicalParallelSlug(slug: string) {
+  return slug.replace(LEGACY_PARALLEL_SUFFIX, "")
+}
+
+function shouldHideLegacyParallelSlug(slug: string, slugs: Set<string>) {
+  const canonical = canonicalParallelSlug(slug)
+  return canonical !== slug && slugs.has(canonical)
 }
 
 function extractHeading(markdown: string) {
@@ -565,9 +575,12 @@ async function getCachedRunSummaries(researchRoot: string, index: Map<string, In
   }
 
   const entries = await readdir(researchRoot, { withFileTypes: true })
-  const runSlugs = entries
+  const allSlugs = entries
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_") && !entry.name.startsWith("."))
     .map((entry) => entry.name)
+  const slugSet = new Set(allSlugs)
+  const runSlugs = allSlugs
+    .filter((slug) => !shouldHideLegacyParallelSlug(slug, slugSet))
     .sort((a, b) => b.localeCompare(a))
   const summaries = await Promise.all(
     runSlugs.map((slug) => buildRunSummary(path.join(researchRoot, slug), slug, index.get(slug))),

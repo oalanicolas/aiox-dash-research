@@ -9,7 +9,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "init": "node scripts/init-observatory.mjs",
-    "init:test": "node scripts/test/test-init.mjs"
+    "init:test": "node scripts/test/test-init.mjs",
+    "repair:legacy": "node scripts/repair-legacy-research-runs.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",

@@ -142,7 +142,8 @@ export function ResearchWorkbench({
   const runnableSelectedClis = selectedClis.filter((cli) => cli.available && cli.launchSupported)
   const byokReady = Boolean(byokConfig.apiKey.trim() && byokConfig.baseUrl.trim() && byokConfig.model.trim())
   const completedRuns = runs.filter((run) => run.status === "completed")
-  const canConsolidate = completedRuns.length >= 2 && !isConsolidating && consolidationRun?.status !== "running"
+  const allRunsFinished = runs.length > 0 && runs.every((run) => run.status === "completed" || run.status === "failed")
+  const canConsolidate = allRunsFinished && completedRuns.length >= 2 && !isConsolidating && consolidationRun?.status !== "running"
   const initialRunIdsKey = initialRunIds.join(",")
   const hasUrlScopedSession = initialRunIds.length > 0 || Boolean(initialConsolidationRunId)
   const hasResearchSession = hasUrlScopedSession || runs.length > 0 || Boolean(consolidationRun)
@@ -1036,6 +1037,8 @@ function BatchStatus({
   const completedRuns = runs.filter((run) => run.status === "completed")
   const activeRuns = runs.filter((run) => run.status === "running" || run.status === "queued")
   const failedRuns = runs.filter((run) => run.status === "failed")
+  const allParallelRunsFinished = runs.length > 0 && activeRuns.length === 0
+  const showConsolidationPanel = allParallelRunsFinished || Boolean(consolidationRun)
   const focusedRun = visibleRuns.find((run) => run.runId === focusedRunId) ?? visibleRuns[0] ?? null
   const pipelineSteps = buildPipelineSteps({
     hasRuns: runs.length > 0,
@@ -1073,19 +1076,21 @@ function BatchStatus({
         ))}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid gap-5">
         {focusedRun ? (
           <FocusedRunConsole run={focusedRun} onOpen={() => onOpen(focusedRun)} />
         ) : null}
-        <ConsolidationPanel
-          completedCount={completedRuns.length}
-          totalCount={runs.length}
-          canConsolidate={canConsolidate}
-          isConsolidating={isConsolidating}
-          consolidationRun={consolidationRun}
-          onConsolidate={onConsolidate}
-          onFocusConsolidation={() => consolidationRun && onFocus(consolidationRun.runId)}
-        />
+        {showConsolidationPanel ? (
+          <ConsolidationPanel
+            completedCount={completedRuns.length}
+            totalCount={runs.length}
+            canConsolidate={canConsolidate}
+            isConsolidating={isConsolidating}
+            consolidationRun={consolidationRun}
+            onConsolidate={onConsolidate}
+            onFocusConsolidation={() => consolidationRun && onFocus(consolidationRun.runId)}
+          />
+        ) : null}
       </div>
     </div>
   )
@@ -1191,6 +1196,9 @@ function RuntimeRunCard({
 }) {
   const progress = runProgress(run)
   const lastLine = lastMeaningfulLine(run.log)
+  const issueLines = runIssueLines(run.log, run.status === "failed")
+  const hasLiveIssue = issueLines.length > 0 && run.status !== "completed"
+  const displayLine = hasLiveIssue ? issueLines.at(-1) ?? lastLine : lastLine
   return (
     <button
       type="button"
@@ -1199,6 +1207,8 @@ function RuntimeRunCard({
       className={cn(
         "relative grid min-h-44 content-between gap-4 bg-[var(--paper-deep)] p-4 text-left transition-colors hover:bg-[var(--surface-hover)]",
         selected && "bg-[rgba(209,255,0,0.05)]",
+        hasLiveIssue && run.status !== "failed" && "border-l-2 border-l-[var(--warning-ink)]",
+        run.status === "failed" && "border-l-2 border-l-[var(--danger-ink)]",
       )}
     >
       {selected && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-[var(--lime-ink)] shadow-[0_0_14px_rgba(209,255,0,0.45)]" />}
@@ -1222,7 +1232,7 @@ function RuntimeRunCard({
             {statusLabel(run.status)} · {run.methodId}
           </span>
         </span>
-        <StatusBadge status={run.status} exitCode={run.exitCode} />
+        <StatusBadge status={run.status} exitCode={run.exitCode} hasIssue={hasLiveIssue} />
       </span>
 
       <span className="grid gap-2">
@@ -1246,7 +1256,7 @@ function RuntimeRunCard({
       </span>
 
       <span className="line-clamp-2 text-[11px] leading-[1.45] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-        {lastLine || "Aguardando saída do processo..."}
+        {displayLine || "Aguardando saída do processo..."}
       </span>
     </button>
   )
@@ -1267,11 +1277,15 @@ function FocusedRunConsole({ run, onOpen }: { run: ResearchRunState; onOpen: () 
   const steps = buildRuntimeDetailSteps(run)
   const activeStep = steps.find((step) => step.state === "active" || step.state === "failed") ?? steps.at(-1)
   const doneCount = steps.filter((step) => step.state === "done").length
+  const issueLines = runIssueLines(run.log, run.status === "failed")
+  const hasLiveIssue = issueLines.length > 0 && run.status !== "completed"
   const liveLabel =
     run.status === "completed"
       ? "CONCLUÍDO"
       : run.status === "failed"
         ? "FALHA"
+        : hasLiveIssue
+          ? "ATENÇÃO · STDERR"
         : `EM EXECUÇÃO · ${activeStep?.num ?? "01"} DE ${String(RUNTIME_STEP_TOTAL).padStart(2, "0")}`
 
   return (
@@ -1286,8 +1300,10 @@ function FocusedRunConsole({ run, onOpen }: { run: ResearchRunState; onOpen: () 
             {doneCount} steps concluídos · docs/research/*-{run.outputSlug}
           </p>
         </div>
-        <StatusBadge status={run.status} exitCode={run.exitCode} />
+        <StatusBadge status={run.status} exitCode={run.exitCode} hasIssue={hasLiveIssue} />
       </div>
+
+      {issueLines.length > 0 ? <RuntimeIssuePanel run={run} lines={issueLines} /> : null}
 
       <RuntimePipeline steps={steps} liveLabel={liveLabel} run={run} />
 
@@ -1324,6 +1340,43 @@ function FocusedRunConsole({ run, onOpen }: { run: ResearchRunState; onOpen: () 
   )
 }
 
+function RuntimeIssuePanel({ run, lines }: { run: ResearchRunState; lines: string[] }) {
+  const failed = run.status === "failed"
+  return (
+    <div
+      className={cn(
+        "border-b border-[var(--rule)] px-4 py-3",
+        failed ? "bg-[rgba(239,68,68,0.08)]" : "bg-[rgba(245,158,11,0.08)]",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <AlertTriangle
+          size={17}
+          className={cn("mt-0.5 shrink-0", failed ? "text-[var(--danger-ink)]" : "text-[var(--warning-ink)]")}
+        />
+        <div className="min-w-0 flex-1">
+          <p
+            className={cn(
+              "text-[10px] font-bold uppercase tracking-[0.14em]",
+              failed ? "text-[var(--danger-ink)]" : "text-[var(--warning-ink)]",
+            )}
+            style={{ fontFamily: MONO_FONT }}
+          >
+            {failed ? "Falha do runtime" : "Atenção do runtime"}
+          </p>
+          <div className="mt-2 grid gap-1">
+            {lines.slice(-4).map((line, index) => (
+              <p key={`${line}-${index}`} className="text-[11px] leading-[1.45] text-[var(--ink-2)]" style={{ fontFamily: MONO_FONT }}>
+                {line}
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function RuntimePipeline({
   steps,
   liveLabel,
@@ -1345,7 +1398,11 @@ function RuntimePipeline({
         <span
           className={cn(
             "inline-flex items-center gap-2",
-            run.status === "failed" ? "text-[var(--danger-ink)]" : "text-[var(--lime-ink)]",
+            run.status === "failed"
+              ? "text-[var(--danger-ink)]"
+              : liveLabel.startsWith("ATENÇÃO")
+                ? "text-[var(--warning-ink)]"
+                : "text-[var(--lime-ink)]",
           )}
         >
           {run.status === "running" || run.status === "queued" ? <span className="h-1.5 w-1.5 animate-pulse bg-[var(--lime-ink)]" /> : null}
@@ -1509,7 +1566,7 @@ function ConsolidationPanel({
         : `${completedCount}/${Math.max(totalCount, 2)} concluídas`
 
   return (
-    <aside className="grid content-start gap-3 border border-[var(--rule)] bg-[var(--paper-deep)] p-4">
+    <section className="grid gap-4 border border-[var(--rule)] bg-[var(--paper-deep)] p-4 md:grid-cols-[minmax(0,1fr)_260px] md:items-end">
       <div>
         <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
           Consenso
@@ -1522,54 +1579,67 @@ function ConsolidationPanel({
         </p>
       </div>
 
-      <div className="grid gap-[1px] bg-[var(--rule)]">
-        <MetricCell label="Estado" value={readyLabel} />
-      </div>
+      <div className="grid gap-3">
+        <div className="grid gap-[1px] bg-[var(--rule)]">
+          <MetricCell label="Estado" value={readyLabel} />
+        </div>
 
-      <button
-        type="button"
-        onClick={onConsolidate}
-        disabled={!canConsolidate}
-        className={cn(
-          "inline-flex min-h-11 items-center justify-center gap-2 px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors",
-          canConsolidate
-            ? "bg-[var(--lime-ink)] text-black hover:brightness-95"
-            : "bg-[var(--ink-faint)] text-[var(--ink-dim)]",
-        )}
-        style={{ fontFamily: MONO_FONT }}
-      >
-        <FileText size={14} />
-        {isConsolidating ? "Consolidando" : "Consolidar pesquisas"}
-      </button>
-
-      {consolidationRun && (
         <button
           type="button"
-          onClick={onFocusConsolidation}
-          className="inline-flex min-h-10 items-center justify-center border border-[var(--rule)] px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)] transition-colors hover:border-[var(--lime-ink)] hover:text-[var(--ink)]"
+          onClick={onConsolidate}
+          disabled={!canConsolidate}
+          className={cn(
+            "inline-flex min-h-11 items-center justify-center gap-2 px-3 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors",
+            canConsolidate
+              ? "bg-[var(--lime-ink)] text-black hover:brightness-95"
+              : "bg-[var(--ink-faint)] text-[var(--ink-dim)]",
+          )}
           style={{ fontFamily: MONO_FONT }}
         >
-          Ver consolidação
+          <FileText size={14} />
+          {isConsolidating ? "Consolidando" : "Consolidar pesquisas"}
         </button>
-      )}
-    </aside>
+
+        {consolidationRun && (
+          <button
+            type="button"
+            onClick={onFocusConsolidation}
+            className="inline-flex min-h-10 items-center justify-center border border-[var(--rule)] px-3 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)] transition-colors hover:border-[var(--lime-ink)] hover:text-[var(--ink)]"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            Ver consolidação
+          </button>
+        )}
+      </div>
+    </section>
   )
 }
 
-function StatusBadge({ status, exitCode }: { status: ResearchRunState["status"]; exitCode: number | null }) {
+function StatusBadge({
+  status,
+  exitCode,
+  hasIssue = false,
+}: {
+  status: ResearchRunState["status"]
+  exitCode: number | null
+  hasIssue?: boolean
+}) {
   const done = status === "completed"
   const failed = status === "failed"
+  const warning = hasIssue && !done && !failed
+  const label = done ? "ok" : failed ? (exitCode === null ? "falha" : `exit ${exitCode}`) : warning ? "atenção" : "ativo"
   return (
     <span
       className={cn(
         "inline-flex h-8 items-center border px-2 text-[9px] uppercase tracking-[0.14em]",
         done && "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black",
         failed && "border-[var(--danger-ink)] text-[var(--danger-ink)]",
-        !done && !failed && "border-[var(--rule)] text-[var(--ink-3)]",
+        warning && "border-[var(--warning-ink)] text-[var(--warning-ink)]",
+        !done && !failed && !warning && "border-[var(--rule)] text-[var(--ink-3)]",
       )}
       style={{ fontFamily: MONO_FONT }}
     >
-      {exitCode === null ? "ativo" : `exit ${exitCode}`}
+      {label}
     </span>
   )
 }
@@ -1596,6 +1666,8 @@ function buildRuntimeDetailSteps(run: ResearchRunState): RuntimeDetailStep[] {
   const latest = lastMeaningfulLine(run.log)
   const stdoutCount = logLines.filter((line) => line.startsWith("[stdout]")).length
   const stderrCount = logLines.filter((line) => line.startsWith("[stderr]")).length
+  const issueLines = runIssueLines(run.log, run.status === "failed")
+  const latestIssue = issueLines.at(-1)
   const finalLine = logLines.findLast((line) => line.includes("processo finalizado"))
 
   const templates = [
@@ -1624,11 +1696,15 @@ function buildRuntimeDetailSteps(run: ResearchRunState): RuntimeDetailStep[] {
       id: "evidence",
       short: "Evidência",
       name: "Investigar fontes e claims",
-      desc: latest ? `Último sinal recebido: ${latest}` : "Aguardando os primeiros eventos do runtime.",
+      desc: latestIssue
+        ? `Último alerta recebido: ${latestIssue}`
+        : latest
+          ? `Último sinal recebido: ${latest}`
+          : "Aguardando os primeiros eventos do runtime.",
       substeps: [
         stdoutCount > 0 ? `stdout · ${stdoutCount} evento${stdoutCount === 1 ? "" : "s"}` : "stdout · aguardando",
         stderrCount > 0 ? `stderr · ${stderrCount} evento${stderrCount === 1 ? "" : "s"}` : "stderr · limpo até agora",
-        `Log · ${logLines.length} linha${logLines.length === 1 ? "" : "s"}`,
+        issueLines.length > 0 ? `alertas · ${issueLines.length}` : `Log · ${logLines.length} linha${logLines.length === 1 ? "" : "s"}`,
       ],
     },
     {
@@ -1739,9 +1815,58 @@ function meaningfulLogLines(log: string) {
 function lastMeaningfulLine(log: string) {
   const lines = meaningfulLogLines(log)
   const last = lines.at(-1) ?? ""
-  return last
+  return compactLogLine(last)
+}
+
+function compactLogLine(line: string) {
+  return line
     .replace(/^\[(stdout|stderr|dash)\]\s*/i, "")
     .replace(/\s+/g, " ")
+    .trim()
+}
+
+function runIssueLines(log: string, includeAnyStderr = false) {
+  const issuePatterns = [
+    /attempt\s+\d+\s+failed/i,
+    /exhausted your capacity/i,
+    /\bquota\b/i,
+    /\brate\s*limit/i,
+    /\b429\b/i,
+    /\berror\b/i,
+    /\berro\b/i,
+    /\bfailed\b/i,
+    /\bfalh/i,
+    /exception/i,
+    /timeout/i,
+    /timed out/i,
+    /permission denied/i,
+    /unauthorized/i,
+    /forbidden/i,
+  ]
+
+  let currentStream: "stdout" | "stderr" | null = null
+  return meaningfulLogLines(log)
+    .flatMap((rawLine) => {
+      const streamMatch = rawLine.match(/^\[(stdout|stderr)\]\s*(.*)$/i)
+      const bracketMatch = rawLine.match(/^\[([a-z]+)\]\s*(.*)$/i)
+      let line = rawLine
+
+      if (streamMatch) {
+        currentStream = streamMatch[1]?.toLowerCase() === "stderr" ? "stderr" : "stdout"
+        line = streamMatch[2] ?? ""
+      } else if (bracketMatch) {
+        currentStream = null
+        line = bracketMatch[2] ?? rawLine
+      }
+
+      const compacted = compactLogLine(line)
+      if (!compacted) return []
+
+      const matchesIssue = issuePatterns.some((pattern) => pattern.test(compacted)) && currentStream !== "stdout"
+      if (matchesIssue || (includeAnyStderr && currentStream === "stderr")) return [compacted]
+      return []
+    })
+    .slice(-8)
 }
 
 function cliLabel(cliId: ResearchCliId) {
