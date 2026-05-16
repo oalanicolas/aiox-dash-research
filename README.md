@@ -1,8 +1,44 @@
 # AIOX Dash
 
+> **⚠️ Requer acesso AIOX Enterprise ou AIOX Pro.**
+> O código é open (Elastic License v2) para transparência, auditoria e onboarding via Demo.
+> Os modos **Research**, **Bench** e **SINKRA Maps** consomem artefatos gerados por pipelines internos disponíveis apenas em workspaces **AIOX Enterprise** e **AIOX Pro**.
+> Sem um workspace AIOX provisionado, só o `/observatory/demo` carrega.
+
 Dashboard local-first para visualizar artefatos operacionais de Research, Bench e SINKRA Maps.
 
 O app foi pensado para funcionar em instalações locais e parciais. Se uma instalação não tiver `docs/` ou `outputs/`, a fonte correspondente simplesmente não aparece no menu. O `Demo` sempre fica disponível para onboarding.
+
+---
+
+## Quem Pode Usar Este App
+
+| Tier | Acesso | O que funciona |
+|---|---|---|
+| **Visitante público** | Clone o repo, `npm install`, `npm run dev` | Apenas `/observatory/demo` (dataset embutido) |
+| **AIOX Pro** | Workspace AIOX provisionado com pipelines Research/Bench/SINKRA Maps | Demo + Research + Bench + SINKRA Maps apontando para seu workspace |
+| **AIOX Enterprise** | Workspace AIOX completo + suporte dedicado + integrações | Tudo do Pro + integrações com ServiceBus, ClickUp, Google Workspace, ETL |
+
+Os modos Research/Bench/SINKRA Maps **não funcionam sem um workspace AIOX populado**. Eles esperam estruturas específicas de pastas (`docs/research/`, `docs/bench/`, `outputs/sinkra-squad/`) geradas por pipelines proprietários AIOX. Apontar `AIOX_DASH_ROOT` para um diretório vazio ou para um projeto não-AIOX vai resultar apenas no Demo aparecendo no menu.
+
+**Como obter AIOX Pro ou Enterprise:**
+- Site: [alanicolas.com](https://alanicolas.com) (em breve aiox.com.br)
+- Email: alan@alanicolas.com
+
+---
+
+## Licença
+
+Este software é licenciado sob a **[Elastic License v2](./LICENSE)** (source-available, não open source no sentido OSI).
+
+Resumo das permissões e restrições:
+
+- ✅ **Permitido:** clonar, modificar, distribuir, usar internamente (incluindo uso comercial dentro da sua empresa).
+- ❌ **Proibido:** oferecer o software como serviço gerenciado/hospedado para terceiros (SaaS competidor).
+- ❌ **Proibido:** remover ou contornar funcionalidade de licenciamento ou marcas AIOX.
+- ❌ **Proibido:** remover, alterar ou ocultar avisos de copyright/licença/marca.
+
+Em caso de dúvida sobre o que sua organização pode ou não fazer, contate alan@alanicolas.com antes de prosseguir.
 
 ---
 
