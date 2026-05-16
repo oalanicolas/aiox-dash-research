@@ -229,6 +229,34 @@ curl -fsS -o /dev/null -w "%{http_code}\n" http://localhost:3001/observatory/dem
 
 ---
 
+## Compatibilizar Projetos Legacy
+
+> Disponível para workspaces **AIOX Pro** e **AIOX Enterprise**. Visitantes públicos com apenas o Demo não precisam rodar — não há artefatos para materializar.
+
+Se o app cair em um workspace AIOX onde algum slug ficou sem os artefatos derivados esperados (`metrics.yaml`, `sources.yaml`, `bench-output-dash.json`, `_index.json`, `observatory_payload.json`), rode o inicializador:
+
+```bash
+npm run init
+```
+
+O script descobre `docs/research`, `docs/bench` e `outputs/sinkra-squad` dentro de `AIOX_DASH_ROOT` (ou via walk-up do cwd) e materializa apenas artefatos derivados de sinal real existente. Não inventa dados. Não sobrescreve arquivos humanos. Slug sem sinal é skip silencioso.
+
+```bash
+npm run init        # processa todas as fontes detectadas
+npm run init:test   # roda fixtures de teste
+```
+
+Saída idempotente em conteúdo semântico: rodar duas vezes seguidas não muda nada além de timestamps (`generated_at`) em arquivos com a marca `generated_by`. A política `KNOWN_GENERATORS` em `scripts/compat/shared.mjs` reconhece artefatos criados pelo `scripts/init-observatory.mjs` e pelo shim legado `scripts/research-observatory-compat.mjs` (Hub) — ambos são considerados gerados e podem ser sobrescritos. Arquivos sem essa marca são tratados como autorias humanas e nunca tocados.
+
+Exit codes:
+- `0` — sucesso (mesmo quando algum slug é skipped por ausência de sinal)
+- `1` — erro de runtime (filesystem, parse)
+- `2` — nenhuma fonte detectada (defina `AIOX_DASH_ROOT` ou rode dentro de pasta com `docs/research`, `docs/bench` ou `outputs/sinkra-squad`)
+
+Em instalações de Visitante público (sem workspace AIOX), o init retorna exit 2 com mensagem clara — não é um erro do app, é a indicação de que o tier não tem artefatos para materializar.
+
+---
+
 ## Produção & Process Management
 
 O app não embute Dockerfile, configuração Vercel/Railway nem CI/CD nesta versão. Deploy é manual e baseado em `next start`.

@@ -1,0 +1,18 @@
+{
+  "absorption_gaps": [
+    {
+      "id": "G1",
+      "description": "Framework A lacks streaming support",
+      "priority": "HIGH",
+      "absorption_complexity": "MEDIUM",
+      "rationale": "Required for live agent feedback"
+    },
+    {
+      "id": "G2",
+      "description": "Framework B has no built-in retry policy",
+      "priority": "MEDIUM",
+      "absorption_complexity": "LOW",
+      "rationale": "Easy to add as wrapper"
+    }
+  ]
+}

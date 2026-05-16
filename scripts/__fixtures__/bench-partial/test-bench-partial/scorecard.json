@@ -1,0 +1,79 @@
+{
+  "scorecard": {
+    "title": "Framework A vs Framework B — Weighted Scorecard",
+    "dimensions": [
+      {
+        "id": "D1",
+        "name": "API Ergonomics",
+        "weight": 14,
+        "framework-a": 8,
+        "framework-b": 6,
+        "winner": "framework-a",
+        "evidence": "Type safety + fluent builder"
+      },
+      {
+        "id": "D2",
+        "name": "Composability",
+        "weight": 12,
+        "framework-a": 7,
+        "framework-b": 7,
+        "winner": "mixed",
+        "evidence": "Tie on composition primitives"
+      },
+      {
+        "id": "D3",
+        "name": "Runtime Footprint",
+        "weight": 10,
+        "framework-a": 6,
+        "framework-b": 8,
+        "winner": "framework-b",
+        "evidence": "Smaller bundle"
+      }
+    ],
+    "dimension_labels": {
+      "D1": "API Ergonomics",
+      "D2": "Composability",
+      "D3": "Runtime Footprint"
+    },
+    "weights_neutral": {
+      "D1": 14,
+      "D2": 12,
+      "D3": 10
+    },
+    "matrix": {
+      "framework-a": {
+        "D1": { "score": 8, "confidence": "HIGH", "notes": "Strong type safety", "source": "code-review" },
+        "D2": { "score": 7, "confidence": "MEDIUM", "notes": "Solid composition", "source": "doc-review" },
+        "D3": { "score": 6, "confidence": "HIGH", "notes": "Slightly heavier", "source": "bundle-analyzer" }
+      },
+      "framework-b": {
+        "D1": { "score": 6, "confidence": "MEDIUM", "notes": "Less ergonomic", "source": "code-review" },
+        "D2": { "score": 7, "confidence": "MEDIUM", "notes": "Solid composition", "source": "doc-review" },
+        "D3": { "score": 8, "confidence": "HIGH", "notes": "Slim runtime", "source": "bundle-analyzer" }
+      }
+    },
+    "totals_neutral": {
+      "framework-a": 78,
+      "framework-b": 74
+    },
+    "weighted_totals": {
+      "framework-a": 78,
+      "framework-b": 74
+    },
+    "method": "weighted-scorecard-v1",
+    "personas": {
+      "performance-first": {
+        "label": "Performance-First Engineer",
+        "sub": "low-latency, slim runtime",
+        "weights": { "D1": 0.2, "D2": 0.2, "D3": 0.6 },
+        "totals": { "framework-a": 70, "framework-b": 80 },
+        "ranking": [
+          { "rank": 1, "player": "framework-b", "score": 80, "delta_to_leader": "0" },
+          { "rank": 2, "player": "framework-a", "score": 70, "delta_to_leader": "-10" }
+        ],
+        "winner": "framework-b",
+        "verdict": "framework-b wins for perf-first"
+      }
+    }
+  }
+}

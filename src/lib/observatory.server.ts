@@ -38,6 +38,13 @@ import { getDashWorkspaceRoot } from "./workspace-root.server"
      3. Registering the source below.
    ────────────────────────────────────────────────────────────────────── */
 
+export class EmptyObservatorySourceError extends Error {
+  constructor(public source: string) {
+    super(`Observatory source has no runs: ${source}`)
+    this.name = "EmptyObservatorySourceError"
+  }
+}
+
 export type ObservatorySource = "research" | "bench" | "sinkra-maps" | "demo"
 
 export const OBSERVATORY_SOURCE_LABELS: Array<[ObservatorySource, string]> = [

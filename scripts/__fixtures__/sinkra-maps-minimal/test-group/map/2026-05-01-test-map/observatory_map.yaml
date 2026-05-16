@@ -1,0 +1,35 @@
+schema: sinkra-observatory-map/v1
+identity:
+  slug: test-map-fixture
+  display_name: Test Map Fixture
+  short_name: Test Map
+  kind: mapping
+executive_summary:
+  headline: Fixture process used by init-observatory tests
+  narrative: Minimal observatory map exercising the sinkra-maps compat module
+  decision: Proceed with sandbox validation
+health:
+  readiness: green
+  label: Ready
+  tone: positive
+metrics:
+  workflows: 1
+  tasks: 3
+  gates: 2
+operational_lanes:
+  - id: lane_01
+    title: Test Lane
+    domain: testing
+    owner: fixture
+    summary: Single test lane
+    signal: green
+    risk: low
+    tasks:
+      - task_01
+risk_register: []
+next_actions: []
+readiness_bars: []
+executor_mix: []
+gate_board: []
+critical_path: []
+decision_matrix: []

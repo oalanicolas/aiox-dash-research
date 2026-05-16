@@ -1,0 +1,20 @@
+process_name: test-map-fixture
+version: 1.0.0
+type: process
+workflows:
+  - workflow_id: WF_01
+    name: Test Workflow
+    layer: execution
+    trigger: manual
+    frequency: on-demand
+    description: Single workflow exercising the compat module
+    steps:
+      - step_id: s_01
+        phase_id: P1
+        task_id: task_01
+        name: Validate fixture
+        executor_type: deterministic
+        outputs:
+          - validation-report
+        guardrails:
+          schema_check: true

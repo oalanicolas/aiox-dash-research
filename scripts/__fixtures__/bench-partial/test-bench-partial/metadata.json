@@ -1,0 +1,26 @@
+{
+  "benchmark": {
+    "title": "Test Bench Partial — Framework A vs Framework B",
+    "short_title": "A vs B",
+    "date": "2026-05-01",
+    "type": "codebase",
+    "depth": "deep",
+    "method": "weighted-scorecard",
+    "analyst": "test-fixture"
+  },
+  "subject_a": {
+    "name": "framework-a",
+    "category": "agent-framework",
+    "type": "library"
+  },
+  "subject_b": {
+    "name": "framework-b",
+    "category": "agent-framework",
+    "type": "library"
+  },
+  "summary": {
+    "winner": "framework-a",
+    "sources": 14,
+    "coverage": "complete"
+  }
+}
