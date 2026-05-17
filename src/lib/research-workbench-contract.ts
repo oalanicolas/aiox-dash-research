@@ -222,6 +222,9 @@ export type ResearchFilesystemSnapshot = {
     doneSteps: number
     totalSteps: number
     signals: string[]
+    phases?: ResearchPipelinePhaseProgress[]
+    currentPhaseId?: string | null
+    sourcePath?: string | null
   }
   latestFiles: Array<{
     path: string
@@ -229,6 +232,15 @@ export type ResearchFilesystemSnapshot = {
     size: number
   }>
   error?: string
+}
+
+export type ResearchPipelinePhaseProgress = {
+  id: string
+  phase: string
+  name: string
+  status: "pending" | "in_progress" | "completed" | "skipped" | "halted" | "failed" | "unknown"
+  checkpoint?: string | null
+  verdict?: string | null
 }
 
 export type TechResearchCanonicalPhase = {
@@ -450,7 +462,7 @@ export function slugifyResearchTopic(value: string) {
 export function normalizeResearchRunRequest(input: Partial<ResearchRunRequest>): ResearchRunRequest {
   const query = typeof input.query === "string" ? input.query.trim() : ""
   const cliId = isResearchCliId(input.cliId) ? input.cliId : "claude"
-  const methodId = normalizeResearchMethodId(input.methodId)
+  const methodId = resolveResearchMethodId(input.methodId, query)
   const depth = "deep"
   const outputSlug = typeof input.outputSlug === "string" ? input.outputSlug.trim() : ""
   const byok = normalizeResearchByokConfig(input.byok)
@@ -471,7 +483,7 @@ export function normalizeResearchConsolidationRunRequest(
 ): ResearchConsolidationRunRequest {
   const query = typeof input.query === "string" ? input.query.trim() : ""
   const cliId = isResearchCliId(input.cliId) ? input.cliId : "claude"
-  const methodId = normalizeResearchMethodId(input.methodId)
+  const methodId = resolveResearchMethodId(input.methodId, query)
   const depth = "deep"
   const sourceOutputSlugs = Array.isArray(input.sourceOutputSlugs)
     ? input.sourceOutputSlugs.filter((slug): slug is string => typeof slug === "string").map((slug) => slug.trim()).filter(Boolean)
@@ -494,7 +506,7 @@ export function normalizeResearchConsolidationRunRequest(
 
 export function buildResearchCliInput(request: ResearchRunRequest, workspaceRoot: string) {
   const outputSlug = normalizeDatedResearchSlug(request.outputSlug || slugifyResearchTopic(request.query))
-  const args = formatResearchSkillArgs(request)
+  const args = formatResearchSkillArgs(request, outputSlug)
   if (request.cliId === "claude") {
     return `${methodById(request.methodId).skill.invocation} ${args}`
   }
@@ -513,7 +525,7 @@ function buildMethodSkillInvocation(
 ) {
   const method = methodById(request.methodId)
   const skillPath = `${workspaceRoot.replace(/\/+$/g, "")}/${method.skill.path}`
-  const args = formatResearchSkillArgs(request)
+  const args = formatResearchSkillArgs(request, outputSlug)
   const runtimeDir = `docs/research/${outputSlug}/runtimes/${request.cliId}`
   const canonicalOutput = method.workflow.outputRoot.replace("{slug}", outputSlug)
   const invocationLine =
@@ -548,32 +560,38 @@ function buildMethodSkillInvocation(
     `- AIOX_RESEARCH_SKILL=${method.skill.name}`,
     `- AIOX_RESEARCH_WORKFLOW=${method.workflow.id}`,
     `- AIOX_RESEARCH_OUTPUT_SLUG=${outputSlug}`,
-    `- AIOX_RESEARCH_OUTPUT_DIR=docs/research/${outputSlug}`,
+    `- AIOX_RESEARCH_OUTPUT_DIR=${runtimeDir}`,
+    `- AIOX_RESEARCH_MONITOR_DIR=docs/research/${outputSlug}`,
     `- AIOX_RESEARCH_CANONICAL_OUTPUT_DIR=${canonicalOutput}`,
     `- AIOX_RESEARCH_RUNTIME_DIR=${runtimeDir}`,
   ].join("\n")
 }
 
-function formatResearchSkillArgs(request: ResearchRunRequest) {
+function formatResearchSkillArgs(request: ResearchRunRequest, outputSlug: string) {
   const flags = [
     request.methodId === "tech" && request.depth === "deep" ? "--deep" : "",
     request.methodId === "tech" ? "--yolo" : "",
   ].filter(Boolean)
 
-  return [JSON.stringify(buildModeScopedQuery(request)), ...flags].join(" ")
+  return [JSON.stringify(buildModeScopedQuery(request, outputSlug)), ...flags].join(" ")
 }
 
-function buildModeScopedQuery(request: ResearchRunRequest) {
+function buildModeScopedQuery(request: ResearchRunRequest, outputSlug: string) {
   const method = methodById(request.methodId)
+  const runtimeDir = `docs/research/${outputSlug}/runtimes/${request.cliId}`
+  const canonicalOutput = method.workflow.outputRoot.replace("{slug}", outputSlug)
   return [
     request.query,
     "",
     `Modo AIOX Research: ${method.label}.`,
     `Skill canônica: ${method.skill.name} (${method.skill.path}).`,
     `Workflow canônico: ${method.workflow.id} (${method.workflow.path}).`,
-    `Saída canônica esperada: ${method.workflow.outputRoot}.`,
+    `Saída canônica esperada: ${canonicalOutput}.`,
+    `Pasta de monitoramento do launcher: docs/research/${outputSlug}.`,
+    `Runtime desta CLI: ${runtimeDir}.`,
     `Agente primário: ${method.primaryAgent}.`,
     method.directive,
+    "Persistência: não crie placeholders no root da pesquisa. Escreva estado real desta CLI no runtime; o root só recebe artefatos consolidados ou artefatos reais após validação.",
     "Tarefas/contratos obrigatórios deste modo:",
     ...method.taskFiles.map((file) => `- ${file}`),
     "Artefatos obrigatórios deste modo:",
@@ -689,7 +707,7 @@ export function buildResearchFallbackPrompt(request: ResearchRunRequest) {
     ...(method.id === "benchmark" ? [`- Materialize também o pacote canônico em \`${method.workflow.outputRoot.replace("{slug}", outputSlug)}/\`.`] : []),
     `- Se \`${runtimeDir}/\` já contiver artefatos de uma tentativa anterior, leia-os primeiro e continue do primeiro passo incompleto ou inconsistente; não recomece do zero sem necessidade.`,
     "- Não sobrescreva artefatos de outros runtimes.",
-    "- O AIOX Research materializa arquivos raiz para indexação; a consolidação final deve reconciliar tudo no diretório raiz.",
+    "- O AIOX Research materializa apenas estado oculto em `.aiox-state/`; o root deve ficar reservado para consolidação ou artefatos reais confirmados.",
     "",
     buildTechResearchRuntimeProtocol(request.depth, runtimeDir, request.methodId),
     "",
@@ -851,6 +869,23 @@ function isResearchCliId(value: unknown): value is ResearchCliId {
 
 function isResearchMethodId(value: unknown): value is ResearchMethodId {
   return RESEARCH_METHODS.some((method) => method.id === value)
+}
+
+function resolveResearchMethodId(value: unknown, query: string): ResearchMethodId {
+  const normalized = normalizeResearchMethodId(value)
+  const explicit = typeof value === "string" && (isResearchMethodId(value) || value in LEGACY_RESEARCH_METHOD_IDS)
+  if (explicit && normalized !== "mapping") return normalized
+  return inferBenchmarkIntent(query) ? "benchmark" : normalized
+}
+
+function inferBenchmarkIntent(query: string) {
+  const normalized = query
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+
+  return /\b(bench|benchmark|comparativo|comparacao|comparar|versus|vs\.?|ranking|rankear|score|pontuacao)\b/.test(normalized) ||
+    /\btop\s*\d+\b/.test(normalized)
 }
 
 function normalizeResearchByokConfig(input: unknown): ResearchByokConfig | null {

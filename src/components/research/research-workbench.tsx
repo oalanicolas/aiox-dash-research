@@ -37,6 +37,7 @@ import {
   type ResearchCliId,
   type ResearchCliStatus,
   type ResearchMethodId,
+  type ResearchPipelinePhaseProgress,
   type ResearchRunRequest,
   type ResearchRunState,
 } from "@/lib/research-workbench-contract"
@@ -218,9 +219,10 @@ export function ResearchWorkbench({
 
   const runnableSelectedClis = selectedClis.filter((cli) => cli.available && cli.launchSupported)
   const byokReady = Boolean(byokConfig.apiKey.trim() && byokConfig.baseUrl.trim() && byokConfig.model.trim())
-  const completedRuns = runs.filter((run) => run.status === "completed")
+  const completedRuns = runs.filter(isWorkflowComplete)
   const visibleSessionRuns = consolidationRun ? [...runs, consolidationRun] : runs
-  const allRunsFinished = runs.length > 0 && runs.every((run) => run.status === "completed" || run.status === "failed")
+  const sessionMethodId = visibleSessionRuns[0]?.methodId ?? methodId
+  const allRunsFinished = runs.length > 0 && runs.every((run) => isWorkflowComplete(run) || isWorkflowFailed(run))
   const canConsolidate = allRunsFinished && completedRuns.length >= 2 && !isConsolidating && consolidationRun?.status !== "running"
   const initialRunIdsKey = initialRunIds.join(",")
   const hasUrlScopedSession = initialRunIds.length > 0 || Boolean(initialConsolidationRunId)
@@ -232,7 +234,7 @@ export function ResearchWorkbench({
     (executionMode === "byok" ? byokReady : runnableSelectedClis.length > 0)
   const activeStreamRunIdsKey = useMemo(() => {
     return visibleSessionRuns
-      .filter((run) => run.status !== "completed" && run.status !== "failed")
+      .filter(isWorkflowPending)
       .map((run) => run.runId)
       .sort()
       .join(",")
@@ -507,6 +509,7 @@ export function ResearchWorkbench({
         throw new Error(failedMessages[0] ?? "Falha ao iniciar pesquisas.")
       }
       setRuns(successfulRuns)
+      setMethodId(normalizeResearchMethodId(successfulRuns[0]?.methodId ?? methodId))
       setFocusedRunId(successfulRuns[0]?.runId ?? null)
       syncResearchUrl(successfulRuns, null)
       if (failedMessages.length > 0) setError(failedMessages.join(" "))
@@ -942,7 +945,7 @@ export function ResearchWorkbench({
                     className="flex min-h-12 items-center px-4 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-2)]"
                     style={{ fontFamily: MONO_FONT }}
                   >
-                    {researchMethodLabel(methodId)} · {researchDepthLabel(depth)}
+                    {researchMethodLabel(sessionMethodId)} · {researchDepthLabel(depth)}
                   </div>
                 </div>
               ) : null}
@@ -952,7 +955,7 @@ export function ResearchWorkbench({
                   query={query}
                   runs={runs}
                   consolidationRun={consolidationRun}
-                  methodId={methodId}
+                  methodId={sessionMethodId}
                   depth={depth}
                 />
               ) : (
@@ -2085,9 +2088,9 @@ function SessionPromptSummary({
     ? visibleRuns.map((run) => cliLabel(run.cliId)).join(" · ")
     : "Restaurando runtimes da URL"
   const completedReportRun =
-    consolidationRun?.status === "completed"
+    isWorkflowComplete(consolidationRun)
       ? consolidationRun
-      : runs.find((run) => run.status === "completed")
+      : runs.find(isWorkflowComplete)
   return (
     <div className="grid gap-0">
       <div className="bg-[var(--paper-deep)] px-5 py-5">
@@ -2205,9 +2208,9 @@ function BatchStatus({
   onOpen: (run: ResearchRunState) => void
 }) {
   const visibleRuns = consolidationRun ? [...runs, consolidationRun] : runs
-  const completedRuns = runs.filter((run) => run.status === "completed")
-  const activeRuns = runs.filter((run) => run.status === "running" || run.status === "queued")
-  const failedRuns = runs.filter((run) => run.status === "failed")
+  const completedRuns = runs.filter(isWorkflowComplete)
+  const activeRuns = runs.filter(isWorkflowPending)
+  const failedRuns = runs.filter(isWorkflowFailed)
   const allParallelRunsFinished = runs.length > 0 && activeRuns.length === 0
   const showConsolidationPanel = Boolean(consolidationRun) || (runs.length >= 2 && allParallelRunsFinished)
   const focusedRun = visibleRuns.find((run) => run.runId === focusedRunId) ?? visibleRuns[0] ?? null
@@ -2292,7 +2295,7 @@ function RunStatsStrip({
   failedCount: number
   consolidationRun: ResearchRunState | null
 }) {
-  const totalSteps = Math.max(1, runs.length * RUNTIME_STEP_TOTAL)
+  const totalSteps = Math.max(1, runs.reduce((total, run) => total + runStepTotal(run), 0))
   const doneSteps = runs.reduce((total, run) => total + runProgress(run).done, 0)
   const percent = Math.round((doneSteps / totalSteps) * 100)
   const newestRun = [...runs, consolidationRun]
@@ -2376,13 +2379,16 @@ function RuntimeRunCard({
   onFocus: () => void
 }) {
   const progress = runProgress(run)
+  const totalSteps = runStepTotal(run)
   const lastLine = lastMeaningfulLine(run.log)
   const issueLines = runIssueLines(run.log, run.status === "failed")
   const hasLiveIssue = issueLines.length > 0 && run.status !== "completed"
   const displayLine = hasLiveIssue ? issueLines.at(-1) ?? lastLine : lastLine
-  const percent = Math.round((progress.done / RUNTIME_STEP_TOTAL) * 100)
-  const currentStep = String(Math.min(RUNTIME_STEP_TOTAL, Math.max(1, progress.done + (run.status === "completed" ? 0 : 1)))).padStart(2, "0")
-  const cardStatus = run.status === "completed" ? "FINAL" : run.status === "failed" ? "FALHA" : `[${currentStep}] AGORA`
+  const percent = Math.round((progress.done / totalSteps) * 100)
+  const currentStep = String(Math.min(totalSteps, Math.max(1, progress.done + (run.status === "completed" ? 0 : 1)))).padStart(2, "0")
+  const workflowConfirmed = run.filesystem?.progress.status === "completed"
+  const workflowFailed = run.filesystem?.progress.status === "failed"
+  const cardStatus = run.status === "completed" ? (workflowConfirmed ? "FINAL" : workflowFailed ? "PIPELINE FALHA" : "PROCESSO OK") : run.status === "failed" ? "FALHA" : `[${currentStep}] AGORA`
   return (
     <button
       type="button"
@@ -2424,18 +2430,18 @@ function RuntimeRunCard({
           {String(progress.done).padStart(2, "0")}
         </span>
         <span className="min-w-0 text-[10.5px] uppercase tracking-[0.14em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-          <b className="block font-medium text-[var(--ink)]">de 07 steps</b>
-          {run.status === "completed" ? "concluído" : run.status === "failed" ? "interrompido" : `${percent}% concluído`}
+          <b className="block font-medium text-[var(--ink)]">de {String(totalSteps).padStart(2, "0")} steps</b>
+          {run.status === "completed" ? (workflowConfirmed ? "concluído" : workflowFailed ? "pipeline falhou" : "aguardando pipeline") : run.status === "failed" ? "interrompido" : `${percent}% concluído`}
         </span>
       </span>
 
       <span className="grid gap-2">
-        <span className="grid grid-cols-7 gap-1">
-          {Array.from({ length: RUNTIME_STEP_TOTAL }).map((_, index) => (
+        <span className="flex gap-1">
+          {Array.from({ length: totalSteps }).map((_, index) => (
             <span
               key={index}
               className={cn(
-                "h-1 bg-[rgba(245,244,231,0.08)]",
+                "h-1 flex-1 bg-[rgba(245,244,231,0.08)]",
                 index < progress.done && "bg-[var(--lime-ink)] shadow-[0_0_6px_rgba(209,255,0,0.32)]",
                 run.status === "running" && index === progress.done && "animate-pulse bg-[var(--lime-ink)]",
                 run.status === "failed" && index === progress.done && "bg-[var(--danger-ink)]",
@@ -2484,14 +2490,16 @@ function FocusedRunConsole({
   const doneCount = steps.filter((step) => step.state === "done").length
   const issueLines = runIssueLines(run.log, run.status === "failed")
   const hasLiveIssue = issueLines.length > 0 && run.status !== "completed"
+  const workflowConfirmed = run.filesystem?.progress.status === "completed"
+  const workflowFailed = run.filesystem?.progress.status === "failed"
   const liveLabel =
     run.status === "completed"
-      ? "CONCLUÍDO"
+      ? workflowConfirmed ? "CONCLUÍDO" : workflowFailed ? "PIPELINE FALHOU" : "PROCESSO OK · PIPELINE PENDENTE"
       : run.status === "failed"
         ? "FALHA"
         : hasLiveIssue
           ? "ATENÇÃO · STDERR"
-        : `EM EXECUÇÃO · ${activeStep?.num ?? "01"} DE ${String(RUNTIME_STEP_TOTAL).padStart(2, "0")}`
+        : `EM EXECUÇÃO · ${activeStep?.num ?? "01"} DE ${String(steps.length || RUNTIME_STEP_TOTAL).padStart(2, "0")}`
 
   return (
     <section className="border border-[var(--rule)] bg-[var(--paper-deep)]">
@@ -2994,6 +3002,20 @@ function statusLabel(status: ResearchRunState["status"]) {
   return "falhou"
 }
 
+function isWorkflowComplete(run: ResearchRunState | null | undefined) {
+  return Boolean(run && run.status === "completed" && run.filesystem?.progress.status === "completed")
+}
+
+function isWorkflowFailed(run: ResearchRunState | null | undefined) {
+  return Boolean(run && (run.status === "failed" || run.filesystem?.progress.status === "failed"))
+}
+
+function isWorkflowPending(run: ResearchRunState) {
+  if (isWorkflowFailed(run)) return false
+  if (run.status === "running" || run.status === "queued") return true
+  return run.status === "completed" && run.filesystem?.progress.status !== "completed"
+}
+
 function researchMethodLabel(methodId: string) {
   return methodById(methodId).label
 }
@@ -3020,10 +3042,10 @@ function compactCliLabel(cliId: ResearchCliId) {
 
 function sessionHeadline(runs: ResearchRunState[], consolidationRun: ResearchRunState | null) {
   if (consolidationRun?.status === "running" || consolidationRun?.status === "queued") return "consolidação"
-  if (runs.some((run) => run.status === "running" || run.status === "queued")) return "andamento"
-  if (consolidationRun?.status === "completed") return "consolidada"
-  if (runs.length > 0 && runs.every((run) => run.status === "completed")) return "concluída"
-  if (runs.length > 0 && runs.every((run) => run.status === "failed")) return "falha"
+  if (runs.some(isWorkflowPending)) return "andamento"
+  if (isWorkflowComplete(consolidationRun)) return "consolidada"
+  if (runs.length > 0 && runs.every(isWorkflowComplete)) return "concluída"
+  if (runs.length > 0 && runs.every(isWorkflowFailed)) return "falha"
   return "restauração"
 }
 
@@ -3034,11 +3056,15 @@ function runtimeSummaryLabel(run: ResearchRunState) {
   const failed = steps.filter((step) => step.state === "failed").length
   const pending = steps.filter((step) => step.state === "pending").length
   if (failed > 0) return `${steps.length} steps · ${done} concluídos · ${failed} falhou · ${pending} pendentes`
-  if (run.status === "completed") return `${steps.length} steps · todos concluídos · total ${formatElapsed(run.startedAt, run.updatedAt)}`
+  if (run.status === "completed" && pending === 0) return `${steps.length} steps · todos concluídos · total ${formatElapsed(run.startedAt, run.updatedAt)}`
+  if (run.status === "completed") return `${steps.length} steps · processo finalizado · ${pending} pendentes no pipeline`
   return `${steps.length} steps · ${done} concluídos · ${active} em curso · ${pending} pendentes`
 }
 
 function buildRuntimeDetailSteps(run: ResearchRunState): RuntimeDetailStep[] {
+  const phaseSteps = runtimePipelinePhaseSteps(run)
+  if (phaseSteps.length > 0) return phaseSteps
+
   const progress = runProgress(run)
   const logLines = meaningfulLogLines(run.log)
   const latest = lastMeaningfulLine(run.log)
@@ -3134,7 +3160,8 @@ function runtimeStepState(status: ResearchRunState["status"], completedSteps: nu
 
 function runtimeStepMeta(run: ResearchRunState, index: number) {
   const completedSteps = runProgress(run).done
-  if (run.status === "completed") return index === RUNTIME_STEP_TOTAL - 1 ? "final" : "ok"
+  const totalSteps = runStepTotal(run)
+  if (run.status === "completed") return index === totalSteps - 1 ? "final" : "ok"
   if (run.status === "failed" && index >= completedSteps) return index === completedSteps ? "erro" : "pendente"
   if (index < completedSteps) return "ok"
   if (index === completedSteps) return run.status === "queued" ? "fila" : "stream"
@@ -3142,15 +3169,79 @@ function runtimeStepMeta(run: ResearchRunState, index: number) {
 }
 
 function runProgress(run: ResearchRunState) {
+  const totalSteps = runStepTotal(run)
   const lines = meaningfulLogLines(run.log).length
-  const filesystemDone = Math.max(0, Math.min(RUNTIME_STEP_TOTAL, run.filesystem?.progress.doneSteps ?? 0))
-  if (run.status === "completed") return { done: RUNTIME_STEP_TOTAL, label: "07 de 07" }
-  if (run.status === "failed") return { done: Math.max(filesystemDone, Math.max(1, Math.min(6, Math.ceil(lines / 8)))), label: "interrompido" }
-  if (run.status === "queued") return { done: 0, label: "01 de 07" }
-  const activeStep = Math.max(2, Math.min(6, 2 + Math.floor(lines / 10)))
+  const filesystemDone = Math.max(0, Math.min(totalSteps, run.filesystem?.progress.doneSteps ?? 0))
+  if (run.status === "completed" && run.filesystem?.progress.status === "completed") {
+    return { done: totalSteps, label: `${String(totalSteps).padStart(2, "0")} de ${String(totalSteps).padStart(2, "0")}` }
+  }
+  if (run.status === "completed" && run.filesystem?.progress.status === "failed") return { done: filesystemDone, label: "pipeline falhou" }
+  if (run.status === "completed") return { done: Math.max(filesystemDone, Math.min(totalSteps - 1, 1)), label: "pipeline pendente" }
+  if (run.status === "failed") return { done: Math.max(filesystemDone, Math.max(1, Math.min(totalSteps - 1, Math.ceil(lines / 8)))), label: "interrompido" }
+  if (run.status === "queued") return { done: 0, label: `01 de ${String(totalSteps).padStart(2, "0")}` }
+  const activeStep = Math.max(2, Math.min(Math.max(2, totalSteps - 1), 2 + Math.floor(lines / 10)))
   const done = Math.max(filesystemDone, activeStep - 1)
-  const labelStep = Math.min(RUNTIME_STEP_TOTAL, Math.max(1, done + 1))
-  return { done, label: `${String(labelStep).padStart(2, "0")} de 07` }
+  const labelStep = Math.min(totalSteps, Math.max(1, done + 1))
+  return { done, label: `${String(labelStep).padStart(2, "0")} de ${String(totalSteps).padStart(2, "0")}` }
+}
+
+function runStepTotal(run: ResearchRunState) {
+  return Math.max(1, run.filesystem?.progress.totalSteps ?? RUNTIME_STEP_TOTAL)
+}
+
+function runtimePipelinePhaseSteps(run: ResearchRunState): RuntimeDetailStep[] {
+  const phases = run.filesystem?.progress.phases
+  if (!phases?.length) return []
+  const mapped = phases.map((phase, index) => {
+    const status = phase.status || "unknown"
+    return {
+      id: phase.id || `phase-${index}`,
+      num: String(index + 1).padStart(2, "0"),
+      short: phase.phase || String(index + 1).padStart(2, "0"),
+      name: phase.name || phase.id || "Fase do workflow",
+      desc: phaseDescription(phase, run),
+      state: phaseStepState(status),
+      substeps: phaseSubsteps(phase, run),
+      meta: phaseMeta(status),
+    } satisfies RuntimeDetailStep
+  })
+
+  if (run.status === "running" && !mapped.some((step) => step.state === "active" || step.state === "failed")) {
+    const firstPendingIndex = mapped.findIndex((step) => step.state === "pending")
+    if (firstPendingIndex >= 0) mapped[firstPendingIndex] = { ...mapped[firstPendingIndex], state: "active", meta: "stream" }
+  }
+
+  return mapped
+}
+
+function phaseStepState(status: ResearchPipelinePhaseProgress["status"]): PipelineStepState {
+  if (status === "completed" || status === "skipped") return "done"
+  if (status === "failed" || status === "halted") return "failed"
+  if (status === "in_progress") return "active"
+  return "pending"
+}
+
+function phaseDescription(phase: ResearchPipelinePhaseProgress, run: ResearchRunState) {
+  if (phase.status === "in_progress") return `Fase real em execução registrada em ${run.filesystem?.progress.sourcePath ?? "pipeline-state.yaml"}.`
+  if (phase.status === "completed") return "Fase real concluída pelo workflow."
+  if (phase.status === "failed" || phase.status === "halted") return "Workflow reportou bloqueio nesta fase."
+  if (phase.checkpoint) return `Checkpoint ${phase.checkpoint} aguardando verdict.`
+  return "Aguardando transição no pipeline-state.yaml real da skill."
+}
+
+function phaseSubsteps(phase: ResearchPipelinePhaseProgress, run: ResearchRunState) {
+  return [
+    `Status · ${phase.status}`,
+    phase.checkpoint ? `Checkpoint · ${phase.checkpoint}` : `Runtime · ${cliLabel(run.cliId)}`,
+    phase.verdict ? `Verdict · ${phase.verdict}` : `Fonte · ${run.filesystem?.progress.sourcePath ?? "pipeline-state.yaml"}`,
+  ]
+}
+
+function phaseMeta(status: ResearchPipelinePhaseProgress["status"]) {
+  if (status === "completed" || status === "skipped") return "ok"
+  if (status === "failed" || status === "halted") return "erro"
+  if (status === "in_progress") return "stream"
+  return "pendente"
 }
 
 function meaningfulLogLines(log: string) {

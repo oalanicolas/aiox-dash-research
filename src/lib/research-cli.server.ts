@@ -25,6 +25,7 @@ import {
   type ResearchConsolidationRunRequest,
   type ResearchFilesystemSnapshot,
   type ResearchMethodId,
+  type ResearchPipelinePhaseProgress,
   type TechResearchCanonicalPhase,
   type ResearchRunRequest,
   type ResearchRunState,
@@ -102,6 +103,10 @@ const FILESYSTEM_LATEST_FILE_LIMIT = 8
 const FILESYSTEM_SCAN_FILE_LIMIT = 900
 const RUNTIME_STEP_TOTAL = 7
 const stateWriteQueues = new Map<string, Promise<void>>()
+
+type PipelineProgressSource = ResearchFilesystemSnapshot["progress"] & {
+  sourcePath: string
+}
 
 export async function getResearchCliDiscovery(): Promise<ResearchCliDiscovery> {
   const clis = await Promise.all(CLI_DEFINITIONS.map(probeCliDefinition))
@@ -236,7 +241,8 @@ async function startCliBackedRun(input: CliBackedRunInput): Promise<ResearchRunS
       AIOX_RESEARCH_METHOD: method.id,
       AIOX_RESEARCH_SKILL: method.skill.name,
       AIOX_RESEARCH_WORKFLOW: method.workflow.id,
-      AIOX_RESEARCH_OUTPUT_DIR: shell.researchDir,
+      AIOX_RESEARCH_OUTPUT_DIR: shell.runtimeDir,
+      AIOX_RESEARCH_MONITOR_DIR: shell.researchDir,
       AIOX_RESEARCH_RUNTIME_DIR: shell.runtimeDir,
       AIOX_RESEARCH_CANONICAL_OUTPUT_DIR: method.workflow.outputRoot.replace("{slug}", input.outputSlug),
       AIOX_RESEARCH_LEARNING_LOG: shell.learningLogPath,
@@ -374,116 +380,41 @@ async function ensureResearchRunShell(input: ResearchShellInput): Promise<Resear
   const method = methodById(input.methodId)
   const researchDir = path.join(input.workspaceRoot, "docs", "research", input.outputSlug)
   const runtimeDir = path.join(researchDir, "runtimes", input.cliId)
+  const launcherStateDir = path.join(researchDir, ".aiox-state", "launcher")
+  const runtimeStateDir = path.join(runtimeDir, ".aiox-state")
   const learningLogDir = path.join(input.workspaceRoot, ".aiox", "learning", "logs", method.skill.name)
   const learningLogPath = path.join(learningLogDir, `${input.outputSlug}-${input.runId}.yaml`)
   const outputDir = `docs/research/${input.outputSlug}`
   const canonicalOutputDir = method.workflow.outputRoot.replace("{slug}", input.outputSlug)
   const runtimeRelativeDir = `${outputDir}/runtimes/${input.cliId}`
+  const launcherStateRelativeDir = `${outputDir}/.aiox-state/launcher`
   const now = new Date().toISOString()
 
   await mkdir(runtimeDir, { recursive: true })
+  await mkdir(launcherStateDir, { recursive: true })
+  await mkdir(runtimeStateDir, { recursive: true })
   await mkdir(learningLogDir, { recursive: true })
   await Promise.all([
     writeIfMissing(
-      path.join(researchDir, "README.md"),
+      path.join(launcherStateDir, "README.md"),
       [
-        `# ${input.query}`,
+        "# Estado do launcher AIOX Research",
         "",
-        "> Pesquisa em execução via AIOX Research.",
-        "",
-        "Esta pasta é a unidade de monitoramento da pesquisa. Saídas individuais de CLIs/LLMs ficam em `runtimes/<runtime>/`; os arquivos raiz são usados pelo Observatory e pela consolidação.",
-        "",
-        `O contrato de execução segue a skill canônica \`${method.skill.invocation}\` e o workflow \`${method.workflow.path}\`.`,
-        `Saída canônica do modo: \`${canonicalOutputDir}\`.`,
-        "",
-        "## Estado",
-        "",
-        "- Status: em execução",
-        `- Modo: ${method.label}`,
-        `- Slug: ${input.outputSlug}`,
-        `- Skill: ${method.skill.name}`,
+        `- Query: ${input.query}`,
+        `- Run ID: ${input.runId}`,
+        `- Runtime: ${input.cliId}`,
+        `- Método: ${method.id}`,
         `- Workflow: ${method.workflow.id}`,
+        `- Saída canônica do modo: ${canonicalOutputDir}`,
         "",
-        "## Runtimes",
-        "",
-        `- ${input.cliId}: \`runtimes/${input.cliId}/\``,
-        "",
-        "## Próximo passo",
-        "",
-        "Quando pelo menos dois runtimes terminarem, use a ação de consolidação no AIOX Research para reconciliar consenso, dissensos, lacunas e recomendações nos arquivos raiz.",
+        "Este diretório é oculto e não deve ser usado como evidência de progresso do workflow. Progresso real vem de `pipeline-state.yaml` criado pela skill no runtime ou no pacote canônico.",
         "",
       ].join("\n"),
     ),
-    writeIfMissing(path.join(researchDir, "00-query-original.md"), `# Pergunta original\n\n${input.query}\n`),
-    writeIfMissing(path.join(researchDir, "01-deep-research-prompt.md"), `# Contrato de execução\n\n\`\`\`txt\n${input.prompt}\n\`\`\`\n`),
+    writeIfMissing(path.join(launcherStateDir, "00-query-original.md"), `# Pergunta original\n\n${input.query}\n`),
+    writeIfMissing(path.join(launcherStateDir, "01-launcher-prompt.md"), `# Prompt enviado ao runtime\n\n\`\`\`txt\n${input.prompt}\n\`\`\`\n`),
     writeIfMissing(
-      path.join(researchDir, "02-research-report.md"),
-      [
-        "# Relatório em formação",
-        "",
-        "A consolidação final ainda não foi executada. Consulte as subpastas em `runtimes/` para as saídas individuais de cada runtime.",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(
-      path.join(researchDir, "03-recommendations.md"),
-      [
-        "# Recomendações em formação",
-        "",
-        "As recomendações consolidadas serão materializadas aqui após a comparação dos runtimes.",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(
-      path.join(researchDir, "quick-wins.md"),
-      [
-        "# Quick wins",
-        "",
-        "Aguardando consolidação dos runtimes.",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(
-      path.join(researchDir, "curiosity_queue.yaml"),
-      [
-        "schema: aiox-research-curiosity-v1",
-        "items:",
-        "  - question: \"Quais lacunas permaneceram após a execução paralela?\"",
-        "    status: pending",
-        "    source: dash-scaffold",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(
-      path.join(researchDir, "evolving_report.md"),
-      [
-        "# Evolving report",
-        "",
-        "Estado inicial criado pelo AIOX Research. Os runtimes devem atualizar seus próprios `runtimes/<runtime>/evolving_report.md`; a consolidação final reconcilia o arquivo raiz.",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(
-      path.join(researchDir, "metrics.yaml"),
-      [
-        "schema: aiox-research-metrics-v1",
-        "status: running",
-        `decision: ${escapeYaml("em execução")}`,
-        "coverage_score: 10",
-        "integrity_score: 0",
-        "confidence_score: 0",
-        "sources_total: 0",
-        "sources_high: 0",
-        "sources_medium: 0",
-        "inferred:",
-        "  coverage_score: true",
-        "  integrity_score: true",
-        "runtime_layout: parallel-runtimes-v1",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(
-      path.join(researchDir, "pipeline-state.yaml"),
+      path.join(launcherStateDir, "pipeline-state.yaml"),
       buildPipelineStateYaml({
         now,
         status: "running",
@@ -491,88 +422,32 @@ async function ensureResearchRunShell(input: ResearchShellInput): Promise<Resear
         runtimeDir: runtimeRelativeDir,
         runId: input.runId,
         runtime: input.cliId,
-        layout: "parallel-runtimes-v1",
-        scope: "root",
+        layout: "launcher-state-v1",
+        scope: "launcher",
         methodId: input.methodId,
       }),
     ),
     writeIfMissing(
-      path.join(researchDir, "sources.yaml"),
-      [
-        "schema: aiox-research-sources-v1",
-        "totals:",
-        "  total: 0",
-        "  high: 0",
-        "  medium: 0",
-        "  low: 0",
-        "  date_coverage_ratio: 0",
-        "sources: []",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(
-      path.join(researchDir, "players.yaml"),
-      [
-        "schema: aiox-research-players-v1",
-        "players: []",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(
-      path.join(researchDir, "ux-patterns.yaml"),
-      [
-        "schema: aiox-research-ux-patterns-v1",
-        "patterns: []",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(
-      path.join(researchDir, "matrices.yaml"),
-      [
-        "schema: aiox-research-matrices-v1",
-        "matrices: []",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(
-      path.join(researchDir, "research-graph.json"),
+      path.join(launcherStateDir, "launcher-state.json"),
       `${JSON.stringify(
         {
-          schema: "aiox-research-graph-v1",
+          schema: "aiox-research-launcher-state-v1",
           status: "running",
-          nodes: [
-            { id: "query", type: "query", label: input.query },
-            { id: "runtimes", type: "runtime_group", label: "Runtimes paralelos" },
-          ],
-          edges: [{ from: "query", to: "runtimes", type: "executes" }],
+          runId: input.runId,
+          query: input.query,
+          methodId: input.methodId,
+          runtime: input.cliId,
+          outputDir,
+          runtimeDir: runtimeRelativeDir,
+          canonicalOutputDir,
         },
         null,
         2,
       )}\n`,
     ),
+    writeIfMissing(path.join(runtimeStateDir, "runtime-input.md"), `# Entrada do runtime\n\n\`\`\`txt\n${input.prompt}\n\`\`\`\n`),
     writeIfMissing(
-      path.join(runtimeDir, "README.md"),
-      [
-        `# Runtime ${input.cliId}`,
-        "",
-        `- Run ID: ${input.runId}`,
-        `- Tipo: ${input.logLabel}`,
-        `- Início: ${now}`,
-        "",
-        "## Contrato",
-        "",
-        `- Seguir a skill \`${method.skill.invocation}\` via \`${method.workflow.path}\`.`,
-        `- Saída canônica do modo: \`${canonicalOutputDir}\`.`,
-        "- Carregar os YAMLs/prompts/templates/tarefas do squad na entrada de cada fase e registrar marcador `LOADED`.",
-        "- Atualizar `pipeline-state.yaml` e o learning log incremental em cada transição de fase.",
-        "- Gravar artefatos estruturados nesta pasta do runtime sem sobrescrever outros runtimes.",
-        "- Registrar limitações de ferramentas/fontes e reduzir confiança quando necessário.",
-        "",
-      ].join("\n"),
-    ),
-    writeIfMissing(path.join(runtimeDir, "runtime-input.md"), `# Entrada do runtime\n\n\`\`\`txt\n${input.prompt}\n\`\`\`\n`),
-    writeIfMissing(
-      path.join(runtimeDir, "pipeline-state.yaml"),
+      path.join(runtimeStateDir, "launcher-pipeline-state.yaml"),
       buildPipelineStateYaml({
         now,
         status: "running",
@@ -580,32 +455,20 @@ async function ensureResearchRunShell(input: ResearchShellInput): Promise<Resear
         runtimeDir: runtimeRelativeDir,
         runId: input.runId,
         runtime: input.cliId,
-        layout: "runtime-v1",
-        scope: "runtime",
+        layout: "launcher-runtime-state-v1",
+        scope: "launcher",
         methodId: input.methodId,
-      }),
-    ),
-    writeIfMissing(
-      learningLogPath,
-      buildLearningLogYaml({
-        now,
-        outputDir,
-        runtimeDir: runtimeRelativeDir,
-        runId: input.runId,
-        runtime: input.cliId,
-        query: input.query,
-        methodId: input.methodId,
-        degraded: input.cliId === "byok",
       }),
     ),
   ])
 
-  await appendExecutionEvent(path.join(researchDir, "execution-log.jsonl"), {
+  await appendExecutionEvent(path.join(launcherStateDir, "execution-log.jsonl"), {
     ts: now,
     event: "runtime.started",
     run_id: input.runId,
     runtime: input.cliId,
     runtime_dir: `runtimes/${input.cliId}`,
+    launcher_state_dir: launcherStateRelativeDir,
     kind: input.logLabel,
   })
 
@@ -633,7 +496,7 @@ function buildPipelineStateYaml(input: {
   runId: string
   runtime: ResearchCliId
   layout: string
-  scope: "root" | "runtime"
+  scope: "launcher" | "root" | "runtime"
   methodId: ResearchMethodId
 }) {
   const method = methodById(input.methodId)
@@ -656,6 +519,8 @@ function buildPipelineStateYaml(input: {
     `output_dir: ${escapeYaml(input.outputDir)}`,
     `runtime_dir: ${escapeYaml(input.runtimeDir)}`,
     `layout: ${escapeYaml(input.layout)}`,
+    "origin: \"aiox-research-launcher\"",
+    "state_kind: \"launcher_scaffold\"",
     `created_at: ${escapeYaml(input.now)}`,
     `method: ${escapeYaml(method.id)}`,
     `canonical_workflow: ${escapeYaml(method.workflow.path)}`,
@@ -664,59 +529,6 @@ function buildPipelineStateYaml(input: {
     "phase_status_values: [pending, in_progress, completed, skipped, halted, failed]",
     "phases:",
     ...phaseLines,
-    "",
-  ].join("\n")
-}
-
-function buildLearningLogYaml(input: {
-  now: string
-  outputDir: string
-  runtimeDir: string
-  runId: string
-  runtime: ResearchCliId
-  query: string
-  methodId: ResearchMethodId
-  degraded: boolean
-}) {
-  const method = methodById(input.methodId)
-  const phaseLines = workflowPhaseTemplates(input.methodId).flatMap((phase) => [
-    `  ${phase.id}:`,
-    `    phase: ${escapeYaml(phase.phase)}`,
-    `    name: ${escapeYaml(phase.name)}`,
-    `    status: ${phase.id === "p00c_learning_log" ? "completed" : "pending"}`,
-    ...(phase.id === "p00c_learning_log"
-      ? [`    started_at: ${escapeYaml(input.now)}`, `    completed_at: ${escapeYaml(input.now)}`, "    scaffolded_by: aiox-research-shell"]
-      : []),
-    ...(phase.checkpoint ? [`    checkpoint: ${escapeYaml(phase.checkpoint)}`, "    verdict: null"] : []),
-    ...(phase.conditional ? ["    conditional: true"] : []),
-  ])
-
-  return [
-    'schema_version: "1.0"',
-    `skill_id: ${escapeYaml(method.skill.name)}`,
-    `method: ${escapeYaml(method.id)}`,
-    `workflow_id: ${escapeYaml(method.workflow.id)}`,
-    `workflow_path: ${escapeYaml(method.workflow.path)}`,
-    `run_id: ${escapeYaml(input.runId)}`,
-    `timestamp_started: ${escapeYaml(input.now)}`,
-    `timestamp_updated: ${escapeYaml(input.now)}`,
-    "timestamp_completed: null",
-    "outcome: in_progress",
-    "scaffolded_by: aiox-research-shell",
-    `execution_capability: ${escapeYaml(input.degraded ? "degraded_byok_no_workspace_tools" : "local_cli_workspace_tools")}`,
-    "",
-    "inputs:",
-    `  query: ${escapeYaml(input.query)}`,
-    `  output_dir: ${escapeYaml(input.outputDir)}`,
-    `  runtime_dir: ${escapeYaml(input.runtimeDir)}`,
-    `  runtime: ${escapeYaml(input.runtime)}`,
-    "",
-    "phases:",
-    ...phaseLines,
-    "",
-    "artifacts:",
-    "  required: []",
-    "  optional: []",
     "",
   ].join("\n")
 }
@@ -979,7 +791,11 @@ async function hydrateStateLogFromSidecar(state: PersistedRunState, statePath: s
 }
 
 async function refreshFilesystemSnapshotIfNeeded(statePath: string, state: PersistedRunState): Promise<PersistedRunState> {
-  const active = state.status === "running" || state.status === "queued"
+  const waitingForWorkflow =
+    state.status === "completed" &&
+    state.filesystem?.progress.status !== "completed" &&
+    state.filesystem?.progress.status !== "failed"
+  const active = state.status === "running" || state.status === "queued" || waitingForWorkflow
   const lastCheckedAt = Date.parse(state.filesystem?.checkedAt ?? "")
   const shouldCheck =
     !state.filesystem ||
@@ -988,35 +804,49 @@ async function refreshFilesystemSnapshotIfNeeded(statePath: string, state: Persi
 
   if (!shouldCheck) return state
 
-  const filesystem = await scanResearchFilesystem(state.outputSlug, state.methodId)
+  const filesystem = await scanResearchFilesystem(state.outputSlug, state.methodId, state.cliId, state.runId)
   const previous = state.filesystem
   const hasFileProgress =
     previous?.latestActivityAt !== filesystem.latestActivityAt ||
     previous?.fileCount !== filesystem.fileCount ||
     previous?.totalBytes !== filesystem.totalBytes
+  const workflowCompleted = state.status !== "failed" && filesystem.progress.status === "completed"
+  const workflowFailed = state.status !== "failed" && filesystem.progress.status === "failed"
   const nextState: PersistedRunState = {
     ...state,
-    status: state.status !== "failed" && filesystem.progress.status === "completed" ? "completed" : state.status,
-    exitCode: state.exitCode ?? (state.status !== "failed" && filesystem.progress.status === "completed" ? 0 : null),
+    status: workflowFailed ? "failed" : workflowCompleted ? "completed" : state.status,
+    exitCode: state.exitCode ?? (workflowFailed ? 1 : workflowCompleted ? 0 : null),
     updatedAt: hasFileProgress && filesystem.latestActivityAt
       ? latestIsoTimestamp(state.updatedAt, filesystem.latestActivityAt)
-      : filesystem.progress.status === "completed"
+      : workflowCompleted || workflowFailed
         ? latestIsoTimestamp(state.updatedAt, filesystem.checkedAt)
         : state.updatedAt,
-    log: state.status !== "failed" && state.status !== "completed" && filesystem.progress.status === "completed"
-      ? `${state.log}\n${LOCAL_LOG_PREFIX} ${filesystem.checkedAt} workflow concluído detectado em docs/research/${state.outputSlug}/pipeline-state.yaml\n`
+    log: workflowCompleted && state.status !== "completed"
+      ? `${state.log}\n${LOCAL_LOG_PREFIX} ${filesystem.checkedAt} workflow concluído detectado em ${filesystem.progress.sourcePath ?? `docs/research/${state.outputSlug}/runtimes/${state.cliId}/pipeline-state.yaml`}\n`
+      : workflowFailed
+        ? `${state.log}\n${LOCAL_LOG_PREFIX} ${filesystem.checkedAt} workflow falhou em ${filesystem.progress.sourcePath ?? `docs/research/${state.outputSlug}/runtimes/${state.cliId}/pipeline-state.yaml`}\n`
       : state.log,
     filesystem,
   }
 
   await persistRunState(statePath, nextState)
-  if (state.status !== "failed" && state.status !== "completed" && nextState.status === "completed") {
-    await persistRuntimeCompletionArtifacts(nextState, "workflow concluído detectado pelos artefatos da pesquisa")
+  if (state.status !== "failed" && state.status !== "completed" && (nextState.status === "completed" || nextState.status === "failed")) {
+    await persistRuntimeCompletionArtifacts(
+      nextState,
+      nextState.status === "completed"
+        ? "workflow concluído detectado pelos artefatos da pesquisa"
+        : "workflow falhou nos artefatos reais da pesquisa",
+    )
   }
   return nextState
 }
 
-async function scanResearchFilesystem(outputSlug: string, methodId: ResearchMethodId): Promise<ResearchFilesystemSnapshot> {
+async function scanResearchFilesystem(
+  outputSlug: string,
+  methodId: ResearchMethodId,
+  cliId: ResearchCliId,
+  runId: string,
+): Promise<ResearchFilesystemSnapshot> {
   const checkedAt = new Date().toISOString()
   const safeSlug = sanitizeId(outputSlug)
   const workspaceRoot = getDashWorkspaceRoot()
@@ -1047,7 +877,7 @@ async function scanResearchFilesystem(outputSlug: string, methodId: ResearchMeth
       progress: {
         status: "pending",
         doneSteps: 0,
-        totalSteps: RUNTIME_STEP_TOTAL,
+        totalSteps: workflowPhaseTemplates(methodId).length || RUNTIME_STEP_TOTAL,
         signals: [],
       },
       latestFiles: [],
@@ -1061,7 +891,8 @@ async function scanResearchFilesystem(outputSlug: string, methodId: ResearchMeth
     canonicalDir: path.join(workspaceRoot, ...canonicalRoot.split("/")),
     outputSlug: safeSlug,
     methodId,
-    filePaths: files.map((file) => file.path),
+    cliId,
+    runId,
   })
   return {
     checkedAt,
@@ -1125,88 +956,281 @@ async function inferResearchFilesystemProgress(input: {
   canonicalDir: string
   outputSlug: string
   methodId: ResearchMethodId
-  filePaths: string[]
+  cliId: ResearchCliId
+  runId: string
 }): Promise<ResearchFilesystemSnapshot["progress"]> {
   const method = methodById(input.methodId)
-  const fileSet = new Set(input.filePaths.map((filePath) => filePath.replaceAll("\\", "/")))
-  const monitorStatus = await readPipelineCompletionStatus(path.join(input.researchDir, "pipeline-state.yaml"))
-  const canonicalStatus = await readPipelineCompletionStatus(path.join(input.canonicalDir, "pipeline-state.yaml"))
-  const status = combineFilesystemStatus(monitorStatus, canonicalStatus)
-  const methodSignals = inferMethodFilesystemSignals(method.id, fileSet, input.outputSlug)
+  const runtimeStatePath = path.join(input.researchDir, "runtimes", input.cliId, "pipeline-state.yaml")
+  const canonicalStatePath = path.join(input.canonicalDir, "pipeline-state.yaml")
+  const monitorStatePath = path.join(input.researchDir, "pipeline-state.yaml")
+  const runtimeProgress = await readPipelineProgress(runtimeStatePath, input.methodId, input.outputSlug)
+  const canonicalCandidatePaths = Array.from(new Set([canonicalStatePath, monitorStatePath]).values()).filter((filePath) => filePath !== runtimeStatePath)
+  const canonicalSources = (
+    await Promise.all(canonicalCandidatePaths.map((filePath) => readPipelineProgress(filePath, input.methodId, input.outputSlug)))
+  ).filter((progress): progress is PipelineProgressSource => Boolean(progress))
+  const learningLogProgress = await readLatestLearningLogProgress(method.skill.name, input.outputSlug, input.runId, input.methodId)
+  const runtimeSources = [runtimeProgress, learningLogProgress].filter((progress): progress is PipelineProgressSource => Boolean(progress))
+  const progress = selectBestPipelineProgress(runtimeSources.length > 0 ? runtimeSources : canonicalSources, input.methodId)
+
+  return progress
+}
+
+async function readPipelineProgress(
+  filePath: string,
+  methodId: ResearchMethodId,
+  outputSlug: string,
+): Promise<PipelineProgressSource | null> {
+  try {
+    const raw = await readFile(filePath, "utf8")
+    if (isLauncherStateYaml(raw)) return null
+    return parsePipelineProgress(raw, methodId, filePath, outputSlug)
+  } catch {
+    return null
+  }
+}
+
+async function readLatestLearningLogProgress(
+  skillName: string,
+  outputSlug: string,
+  runId: string,
+  methodId: ResearchMethodId,
+): Promise<PipelineProgressSource | null> {
+  const learningLogDir = path.join(getDashWorkspaceRoot(), ".aiox", "learning", "logs", skillName)
+  let entries
+  try {
+    entries = await readdir(learningLogDir, { withFileTypes: true })
+  } catch {
+    return null
+  }
+
+  const candidates: Array<{ filePath: string; mtimeMs: number }> = []
+  for (const entry of entries) {
+    if (!entry.isFile() || !/\.ya?ml$/i.test(entry.name)) continue
+    const filePath = path.join(learningLogDir, entry.name)
+    try {
+      const stat = await lstat(filePath)
+      const raw = await readFile(filePath, "utf8")
+      if (!raw.includes(outputSlug) && !raw.includes(runId)) continue
+      candidates.push({ filePath, mtimeMs: stat.mtimeMs })
+    } catch {
+      // Ignore unreadable learning logs; the runtime pipeline-state remains the stronger signal.
+    }
+  }
+
+  candidates.sort((left, right) => right.mtimeMs - left.mtimeMs)
+  const latest = candidates[0]
+  if (!latest) return null
+
+  try {
+    const raw = await readFile(latest.filePath, "utf8")
+    return parsePipelineProgress(raw, methodId, latest.filePath, outputSlug)
+  } catch {
+    return null
+  }
+}
+
+function parsePipelineProgress(
+  raw: string,
+  methodId: ResearchMethodId,
+  sourcePath: string,
+  outputSlug: string,
+): PipelineProgressSource {
+  const fallbackTotal = workflowPhaseTemplates(methodId).length || RUNTIME_STEP_TOTAL
+  const phases = parsePipelinePhases(raw)
+  const phaseStatus = inferStatusFromPhases(phases)
+  const topLevelStatus = readTopLevelPipelineStatus(raw)
+  const status = topLevelStatus === "unknown" ? phaseStatus : topLevelStatus
+  const totalSteps = phases.length || fallbackTotal
+  const doneSteps = status === "completed"
+    ? totalSteps
+    : phases.length > 0
+      ? phases.filter((phase) => phase.status === "completed" || phase.status === "skipped").length
+      : 0
+  const currentPhase = phases.find((phase) => phase.status === "in_progress") ??
+    phases.find((phase) => phase.status === "failed" || phase.status === "halted") ??
+    phases.find((phase) => phase.status === "pending") ??
+    phases.at(-1) ??
+    null
+  const relativeSource = path.relative(getDashWorkspaceRoot(), sourcePath).replaceAll("\\", "/")
   const signals = [
-    hasResearchFile(fileSet, input.outputSlug, ["00-query-original.md", "runtime-input.md"]) ? "prompt" : "",
-    hasResearchFile(fileSet, input.outputSlug, ["runtimes/claude/README.md", "runtimes/codex/README.md", "runtimes/byok/README.md", "pipeline-state.yaml"]) ? "boot" : "",
-    hasResearchFile(fileSet, input.outputSlug, ["01-deep-research-prompt.md", "pipeline-state.yaml"]) ? "context" : "",
-    methodSignals.evidence ? "evidence" : "",
-    methodSignals.artifacts ? "artifacts" : "",
-    methodSignals.validate ? "validate" : "",
-    status === "completed" || methodSignals.final ? "final" : "",
+    `pipeline:${relativeSource}`,
+    `slug:${outputSlug}`,
+    currentPhase ? `phase:${currentPhase.phase || currentPhase.id}` : "",
   ].filter(Boolean)
 
   return {
     status,
-    doneSteps: status === "completed" ? RUNTIME_STEP_TOTAL : Math.min(RUNTIME_STEP_TOTAL - 1, signals.length),
-    totalSteps: RUNTIME_STEP_TOTAL,
+    doneSteps: Math.max(0, Math.min(totalSteps, doneSteps)),
+    totalSteps,
     signals,
+    phases,
+    currentPhaseId: currentPhase?.id ?? null,
+    sourcePath: relativeSource,
   }
 }
 
-function combineFilesystemStatus(
-  left: ResearchFilesystemSnapshot["progress"]["status"],
-  right: ResearchFilesystemSnapshot["progress"]["status"],
-): ResearchFilesystemSnapshot["progress"]["status"] {
-  if (left === "completed" || right === "completed") return "completed"
-  if (left === "failed" || right === "failed") return "failed"
-  if (left === "running" || right === "running") return "running"
-  if (left === "unknown" || right === "unknown") return "unknown"
+function parsePipelinePhases(raw: string): ResearchPipelinePhaseProgress[] {
+  const phases: ResearchPipelinePhaseProgress[] = []
+  const lines = raw.split(/\r?\n/)
+  let inPhases = false
+  let current: Partial<ResearchPipelinePhaseProgress> | null = null
+
+  const flush = () => {
+    if (!current?.id) return
+    phases.push({
+      id: current.id,
+      phase: current.phase || current.id,
+      name: current.name || current.phase || current.id,
+      status: normalizePhaseStatus(current.status),
+      checkpoint: current.checkpoint ?? null,
+      verdict: current.verdict ?? null,
+    })
+    current = null
+  }
+
+  for (const line of lines) {
+    if (/^phases:\s*$/i.test(line)) {
+      inPhases = true
+      continue
+    }
+    if (!inPhases) continue
+    if (/^[A-Za-z_][A-Za-z0-9_-]*:\s*$/.test(line)) {
+      flush()
+      break
+    }
+
+    const listId = line.match(/^\s*-\s+id:\s*(.+?)\s*$/)
+    if (listId) {
+      flush()
+      current = { id: cleanYamlScalar(listId[1] ?? "") }
+      continue
+    }
+
+    const mapId = line.match(/^\s{2}([A-Za-z0-9_.-]+):\s*$/)
+    if (mapId) {
+      flush()
+      current = { id: cleanYamlScalar(mapId[1] ?? "") }
+      continue
+    }
+
+    if (!current) continue
+    const field = line.match(/^\s+(phase|name|status|checkpoint|verdict):\s*(.*?)\s*$/i)
+    if (!field) continue
+    const key = field[1]?.toLowerCase()
+    const value = cleanYamlScalar(field[2] ?? "")
+    if (key === "phase") current.phase = value
+    if (key === "name") current.name = value
+    if (key === "status") current.status = normalizePhaseStatus(value)
+    if (key === "checkpoint") current.checkpoint = value || null
+    if (key === "verdict") current.verdict = value || null
+  }
+
+  flush()
+  return phases
+}
+
+function readTopLevelPipelineStatus(raw: string): ResearchFilesystemSnapshot["progress"]["status"] {
+  const statusMatch = raw.match(/^status:\s*["']?([a-z_-]+)["']?/im)
+  const outcomeMatch = raw.match(/^outcome:\s*["']?([a-z_-]+)["']?/im)
+  return normalizePipelineStatus(statusMatch?.[1] ?? outcomeMatch?.[1] ?? "")
+}
+
+function inferStatusFromPhases(phases: ResearchPipelinePhaseProgress[]): ResearchFilesystemSnapshot["progress"]["status"] {
+  if (phases.length === 0) return "pending"
+  if (phases.some((phase) => phase.status === "failed" || phase.status === "halted")) return "failed"
+  if (phases.every((phase) => phase.status === "completed" || phase.status === "skipped")) return "completed"
+  if (phases.some((phase) => phase.status === "in_progress" || phase.status === "completed" || phase.status === "skipped")) return "running"
+  if (phases.some((phase) => phase.status === "unknown")) return "unknown"
   return "pending"
 }
 
-function inferMethodFilesystemSignals(methodId: ResearchMethodId, fileSet: Set<string>, outputSlug: string) {
-  if (methodId === "benchmark") {
+function selectBestPipelineProgress(
+  sources: PipelineProgressSource[],
+  methodId: ResearchMethodId,
+): ResearchFilesystemSnapshot["progress"] {
+  if (sources.length === 0) {
     return {
-      evidence: hasResearchFile(fileSet, outputSlug, ["metadata.json", "bench-matrix.md", "bench-matrix.json"]),
-      artifacts: hasResearchFile(fileSet, outputSlug, ["bench-output-dash.json", "bench-report.md", "bench-scores.md", "bench-scores.json"]),
-      validate: hasResearchFile(fileSet, outputSlug, ["gap-analysis.md", "battle-card.md", "pipeline-state.yaml"]),
-      final: hasResearchFile(fileSet, outputSlug, ["bench-output-dash.json", "bench-report.md"]),
+      status: "pending",
+      doneSteps: 0,
+      totalSteps: workflowPhaseTemplates(methodId).length || RUNTIME_STEP_TOTAL,
+      signals: [],
+      phases: workflowPhaseTemplates(methodId).map((phase) => ({
+        id: phase.id,
+        phase: phase.phase,
+        name: phase.name,
+        status: "pending",
+        checkpoint: phase.checkpoint ?? null,
+        verdict: null,
+      })),
+      currentPhaseId: null,
+      sourcePath: null,
     }
   }
 
-  return {
-    evidence: hasResearchFile(fileSet, outputSlug, ["sources.yaml", "players.yaml", "evolving_report.md"]),
-    artifacts: hasResearchFile(fileSet, outputSlug, ["02-research-report.md", "03-recommendations.md", "metrics.yaml", "matrices.yaml", "research-graph.json"]),
-    validate: hasResearchFile(fileSet, outputSlug, ["execution-log.jsonl", "research-graph.json", "metrics.yaml"]),
-    final: hasResearchFile(fileSet, outputSlug, ["README.md"]),
+  return [...sources].sort(comparePipelineProgressSources)[0] ?? sources[0]
+}
+
+function comparePipelineProgressSources(left: PipelineProgressSource, right: PipelineProgressSource) {
+  const rank = (status: ResearchFilesystemSnapshot["progress"]["status"]) => {
+    if (status === "completed") return 5
+    if (status === "running") return 4
+    if (status === "failed") return 3
+    if (status === "unknown") return 2
+    return 1
   }
+  const statusDelta = rank(right.status) - rank(left.status)
+  if (statusDelta !== 0) return statusDelta
+  const doneDelta = right.doneSteps - left.doneSteps
+  if (doneDelta !== 0) return doneDelta
+  return right.totalSteps - left.totalSteps
 }
 
-function hasResearchFile(fileSet: Set<string>, outputSlug: string, candidates: string[]) {
-  const prefix = path.posix.join("docs", "research", outputSlug)
-  const benchPrefix = path.posix.join("docs", "bench", outputSlug)
-  const filePaths = Array.from(fileSet)
-  return candidates.some((candidate) =>
-    filePaths.some(
-      (filePath) =>
-        filePath === path.posix.join(prefix, candidate) ||
-        filePath === path.posix.join(benchPrefix, candidate) ||
-        filePath.endsWith(`/${candidate}`),
-    ),
-  )
+function normalizePipelineStatus(value: string): ResearchFilesystemSnapshot["progress"]["status"] {
+  const normalized = value.toLowerCase()
+  if (normalized === "completed" || normalized === "complete" || normalized === "success") return "completed"
+  if (normalized === "failed" || normalized === "error" || normalized === "halted") return "failed"
+  if (normalized === "running" || normalized === "in_progress" || normalized === "in-progress") return "running"
+  if (normalized === "pending" || normalized === "queued") return "pending"
+  return "unknown"
 }
 
-async function readPipelineCompletionStatus(filePath: string): Promise<ResearchFilesystemSnapshot["progress"]["status"]> {
+function normalizePhaseStatus(value: unknown): ResearchPipelinePhaseProgress["status"] {
+  if (typeof value !== "string") return "pending"
+  const normalized = value.toLowerCase()
+  if (normalized === "in-progress") return "in_progress"
+  if (
+    normalized === "pending" ||
+    normalized === "in_progress" ||
+    normalized === "completed" ||
+    normalized === "skipped" ||
+    normalized === "halted" ||
+    normalized === "failed"
+  ) {
+    return normalized
+  }
+  return "unknown"
+}
+
+function cleanYamlScalar(value: string) {
+  const trimmed = value.trim()
+  if (trimmed === "null" || trimmed === "~") return ""
   try {
-    const raw = await readFile(filePath, "utf8")
-    const statusMatch = raw.match(/^\s*status:\s*["']?([a-z_-]+)["']?/im)
-    const value = statusMatch?.[1]?.toLowerCase()
-    if (value === "completed") return "completed"
-    if (value === "failed" || value === "error") return "failed"
-    if (value === "running" || value === "in_progress") return "running"
-    if (value === "pending") return "pending"
-    return "unknown"
+    if (
+      (trimmed.startsWith("\"") && trimmed.endsWith("\"")) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    ) {
+      return JSON.parse(trimmed.replace(/^'/, "\"").replace(/'$/, "\""))
+    }
   } catch {
-    return "pending"
+    return trimmed.replace(/^["']|["']$/g, "")
   }
+  return trimmed.replace(/^["']|["']$/g, "")
+}
+
+function isLauncherStateYaml(raw: string) {
+  return raw.includes("state_kind: \"launcher_scaffold\"") ||
+    raw.includes("origin: \"aiox-research-launcher\"") ||
+    raw.includes("scaffolded_by: aiox-research-shell")
 }
 
 function latestIsoTimestamp(left: string, right: string) {
@@ -1431,7 +1455,9 @@ async function persistRuntimeCompletionArtifacts(state: ResearchRunState, messag
   const workspaceRoot = getDashWorkspaceRoot()
   const researchDir = path.join(workspaceRoot, "docs", "research", state.outputSlug)
   const runtimeDir = path.join(researchDir, "runtimes", state.cliId)
+  const launcherStateDir = path.join(researchDir, ".aiox-state", "launcher")
   await mkdir(runtimeDir, { recursive: true })
+  await mkdir(launcherStateDir, { recursive: true })
   await Promise.all([
     writeFile(path.join(runtimeDir, "raw-output.log"), state.log, "utf8"),
     writeFile(
@@ -1453,7 +1479,7 @@ async function persistRuntimeCompletionArtifacts(state: ResearchRunState, messag
       ].join("\n"),
       "utf8",
     ),
-    appendExecutionEvent(path.join(researchDir, "execution-log.jsonl"), {
+    appendExecutionEvent(path.join(launcherStateDir, "execution-log.jsonl"), {
       ts: state.updatedAt,
       event: state.status === "completed" ? "runtime.completed" : "runtime.failed",
       run_id: state.runId,

@@ -64,12 +64,12 @@ export async function GET(request: NextRequest, { params }: RunStreamRouteProps)
           return
         }
         send(state)
-        if (state.status === "completed" || state.status === "failed") close()
+        if (shouldCloseStream(state)) close()
       }
 
       request.signal.addEventListener("abort", close)
       send(initialState)
-      if (initialState.status === "completed" || initialState.status === "failed") {
+      if (shouldCloseStream(initialState)) {
         close()
         return
       }
@@ -93,4 +93,10 @@ export async function GET(request: NextRequest, { params }: RunStreamRouteProps)
       Connection: "keep-alive",
     },
   })
+}
+
+function shouldCloseStream(state: ResearchRunState) {
+  if (state.status === "failed") return true
+  if (state.filesystem?.progress.status === "failed") return true
+  return state.status === "completed" && state.filesystem?.progress.status === "completed"
 }
