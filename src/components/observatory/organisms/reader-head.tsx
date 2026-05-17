@@ -164,38 +164,35 @@ export function ReaderHead({
 
         <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 xl:justify-end">
           {showSwitcher && (
-            <div className={cn(
-              "flex max-w-full gap-px overflow-x-auto border border-[var(--rule)] bg-[var(--rule)] p-px [scrollbar-width:none]",
-              isSinkra && "sm:gap-1 sm:border-0 sm:bg-transparent sm:p-0",
-            )}>
+            <div
+              role="tablist"
+              aria-label="Visualizações da pesquisa"
+              className="flex max-w-full gap-1.5 overflow-x-auto [scrollbar-width:none]"
+            >
               {availableModes.map((m, idx) => {
                 const active = m === mode
-                const help = isSinkra ? SINKRA_MODE_HELP[m] : null
                 return (
                   <button
                     key={m}
                     type="button"
+                    role="tab"
+                    aria-selected={active}
                     onClick={() => !active && onChangeMode?.(m)}
                     className={cn(
-                      "h-[var(--dash-control-h)] shrink-0 cursor-pointer px-2.5 text-[10px] uppercase tracking-[0.12em] transition-colors",
-                      isSinkra && "h-auto min-h-[42px] px-3 py-2 text-left",
+                      "inline-flex h-9 shrink-0 cursor-pointer items-center gap-2.5 border px-3.5 font-semibold uppercase transition-colors",
                       active
-                        ? "bg-[var(--ink)] text-[var(--paper)]"
-                        : "bg-[var(--paper-alt)] text-[var(--ink-3)] hover:bg-[var(--paper)] hover:text-[var(--ink)]",
+                        ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-[var(--on-lime)] shadow-[0_0_16px_rgba(209,255,0,0.10)]"
+                        : "border-[var(--rule)] bg-[var(--surface)] text-[var(--ink-2)] hover:border-[var(--rule-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
                     )}
-                    style={{ fontFamily: MONO_FONT }}
+                    style={{ fontFamily: MONO_FONT, fontSize: "11px", letterSpacing: "0.16em" }}
                   >
-                    <span className="flex items-baseline gap-1.5">
-                      <span className={cn("text-[9px] tabular-nums", active ? "text-[var(--paper)]/55" : "text-[var(--ink-faint)]")}>
-                        {String(idx + 1).padStart(2, "0")}
-                      </span>
-                      <span>{MODE_LABELS[m]}</span>
+                    <span
+                      className={cn("border-r pr-2 font-bold tabular-nums", active ? "border-black/20 text-black/60" : "border-[var(--rule-soft)] text-[var(--ink-dim)]")}
+                      style={{ fontSize: "10px", letterSpacing: "0.1em" }}
+                    >
+                      {String(idx + 1).padStart(2, "0")}
                     </span>
-                    {help && (
-                      <span className={cn("mt-0.5 hidden text-[9px] normal-case tracking-[0] sm:block", active ? "text-[var(--paper)]/62" : "text-[var(--ink-dim)]")}>
-                        {help}
-                      </span>
-                    )}
+                    <span>{MODE_LABELS[m]}</span>
                   </button>
                 )
               })}

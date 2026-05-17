@@ -1,7 +1,6 @@
 import { type RefObject } from "react"
 import { LineChart, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { ChipCycler } from "../molecules/chip-cycler"
 import { LightScrollArea } from "../molecules/light-scroll-area"
 import { RunRow } from "../molecules/run-row"
 import {
@@ -15,7 +14,7 @@ import {
   STATUS_LABEL_PLURAL,
   type StatusKey,
 } from "../foundations/constants"
-import { MONO_FONT, SANS_FONT } from "../foundations/theme"
+import { MONO_FONT, SANS_FONT, observatoryDarkThemeVars } from "../foundations/theme"
 import type { ObservatoryRunSummary } from "../foundations/types"
 
 /* Organism — coluna esquerda (head + overview button + list).
@@ -71,31 +70,61 @@ export function IndexPane({
     return key
   }
 
+  const filterButtons = [
+    {
+      label: SORTS.find((s) => s[0] === sort)?.[1] ?? sort,
+      onCycle: onCycleSort,
+      active: sort !== "recent",
+    },
+    {
+      label: STATUSES.find((s) => s[0] === statusF)?.[1] ?? statusF,
+      onCycle: onCycleStatus,
+      active: statusF !== "all",
+    },
+    {
+      label: GROUPS.find((g) => g[0] === group)?.[1] ?? group,
+      onCycle: onCycleGroup,
+      active: group !== "category",
+    },
+    ...(onCycleQuality
+      ? [
+          {
+            label: QUALITIES.find((q) => q[0] === quality)?.[1] ?? quality,
+            onCycle: onCycleQuality,
+            active: quality !== "all",
+          },
+        ]
+      : []),
+  ]
+
   return (
-    <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-[var(--rule)]">
-      <div className="border-b border-[var(--rule)] bg-[var(--paper)] px-5 pb-3 pl-5 pr-12 pt-4">
-        <div className="mb-3 flex items-baseline justify-between gap-3.5">
+    <aside
+      className="flex h-full min-h-0 flex-col overflow-hidden border-r border-[var(--rule-soft)] bg-[var(--paper-panel)]"
+      style={observatoryDarkThemeVars}
+    >
+      <div className="border-b border-[var(--rule-soft)] bg-[var(--paper-panel)] px-5 pb-5 pr-8 pt-[18px]">
+        <div className="mb-4 flex items-baseline justify-between gap-3.5">
           <span
-            className="flex min-w-0 items-baseline gap-2.5 truncate text-[10.5px] uppercase tracking-[0.14em] text-[var(--ink-3)]"
+            className="flex min-w-0 items-baseline gap-2.5 truncate text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-3)]"
             style={{ fontFamily: MONO_FONT }}
           >
-            <span className="shrink-0">Index</span>
+            <span className="shrink-0 text-[var(--lime-ink)]">Index</span>
             <span className="shrink-0 text-[var(--ink-faint)]">·</span>
             <span
-              className="truncate text-[10.5px] uppercase tracking-[0.14em] text-[var(--ink-dim)]"
+              className="truncate text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-dim)]"
             >
               {sourceLabel} runs
             </span>
           </span>
           <span
-            className="shrink-0 whitespace-nowrap text-[11px] tracking-[0.04em] text-[var(--ink-3)]"
+            className="shrink-0 whitespace-nowrap text-[11px] tracking-[0.08em] text-[var(--ink-3)]"
             style={{ fontFamily: MONO_FONT }}
           >
-            <strong className="font-semibold text-[var(--ink)]">{totalRuns}</strong> total
+            <strong className="font-semibold text-[var(--ink)]">{totalRuns}</strong>
           </span>
         </div>
 
-        <label className="flex h-[var(--dash-control-h)] cursor-text items-center gap-2.5 border border-[var(--rule)] bg-[var(--paper-alt)] px-2.5">
+        <label className="flex h-8 cursor-text items-center gap-2.5 border border-[var(--rule)] bg-[var(--paper)] px-2.5">
           <Search size={14} strokeWidth={1.75} className="text-[var(--ink-3)]" />
           <input
             id="observatory-search-input"
@@ -119,10 +148,10 @@ export function IndexPane({
             type="button"
             onClick={onToggleOverview}
             className={cn(
-              "mt-2.5 grid w-full grid-cols-[auto_1fr_auto_auto] items-center gap-2 border px-3 py-2.5 transition-colors",
+              "mt-3 grid w-full grid-cols-[auto_1fr_auto_auto] items-center gap-2 border px-3 py-2.5 transition-colors",
               overviewActive
-                ? "border-[var(--ink-faint)] bg-[var(--paper-alt)] text-[var(--ink)]"
-                : "border-[var(--ink)] bg-[var(--ink)] text-[var(--paper)] hover:bg-[var(--paper-alt)] hover:text-[var(--ink)]",
+                ? "border-[var(--lime-ink)] bg-[rgba(209,255,0,0.06)] text-[var(--lime-ink)]"
+                : "border-[var(--rule)] bg-[var(--paper)] text-[var(--ink-3)] hover:text-[var(--ink)]",
             )}
             style={{ fontFamily: MONO_FONT }}
           >
@@ -141,27 +170,28 @@ export function IndexPane({
         )}
 
         <div
-          className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[9.5px] uppercase tracking-[0.1em] text-[var(--ink-dim)]"
+          className="mt-3 grid grid-cols-2 gap-1.5"
           style={{ fontFamily: MONO_FONT }}
         >
-          <ChipCycler label={SORTS.find((s) => s[0] === sort)?.[1] ?? sort} prefix="↓" onCycle={onCycleSort} />
-          <span className="text-[var(--ink-faint)]">·</span>
-          <ChipCycler label={STATUSES.find((s) => s[0] === statusF)?.[1] ?? statusF} onCycle={onCycleStatus} />
-          <span className="text-[var(--ink-faint)]">·</span>
-          <ChipCycler label={GROUPS.find((g) => g[0] === group)?.[1] ?? group} onCycle={onCycleGroup} />
-          {onCycleQuality && (
-            <>
-              <span className="text-[var(--ink-faint)]">·</span>
-              <ChipCycler
-                label={QUALITIES.find((q) => q[0] === quality)?.[1] ?? quality}
-                onCycle={onCycleQuality}
-              />
-            </>
-          )}
+          {filterButtons.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={item.onCycle}
+              className={cn(
+                "h-7 border px-2 text-center text-[9.5px] font-semibold uppercase tracking-[0.16em] transition-colors",
+                item.active
+                  ? "border-[var(--lime-ink)] bg-[rgba(209,255,0,0.06)] text-[var(--lime-ink)]"
+                  : "border-[var(--rule)] bg-transparent text-[var(--ink-dim)] hover:text-[var(--ink)]",
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <LightScrollArea ref={listRef} className="min-h-0 flex-1">
+      <LightScrollArea ref={listRef} className="min-h-0 flex-1" fadeColor="var(--paper-panel)">
         <div className="relative pb-12">
           {visibleRuns.length === 0 ? (
             <div className="px-5 py-6 text-[13px] text-[var(--ink-3)]" style={{ fontFamily: SANS_FONT }}>
@@ -173,7 +203,7 @@ export function IndexPane({
                 <li key={`${groupKey}-${gIdx}`} className="contents">
                   {group !== "none" && (
                     <div
-                      className="sticky top-0 z-[3] flex items-baseline justify-between border-b border-[var(--rule)] bg-[var(--paper)] px-5 pb-2 pt-4 text-[10px] uppercase tracking-[0.18em] text-[var(--ink-3)] first:pt-2"
+                      className="sticky top-0 z-[3] flex items-baseline justify-between border-b border-[var(--rule-soft)] bg-[var(--paper-panel)] px-5 pb-2 pt-4 text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-3)] first:pt-4"
                       style={{ fontFamily: MONO_FONT }}
                     >
                       <span>{groupLabel(groupKey)}</span>

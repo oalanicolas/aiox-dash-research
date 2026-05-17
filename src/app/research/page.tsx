@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { ResearchWorkbench } from "@/components/research/research-workbench"
 import { getResearchCliDiscovery } from "@/lib/research-cli.server"
+import { getRecentResearchRunSummaries } from "@/lib/research-observatory.server"
 
 export const dynamic = "force-dynamic"
 
@@ -14,11 +15,27 @@ type ResearchPageProps = {
 }
 
 export default async function ResearchPage({ searchParams }: ResearchPageProps) {
-  const discovery = await getResearchCliDiscovery()
+  const [discovery, recentRuns] = await Promise.all([
+    getResearchCliDiscovery(),
+    getRecentResearchRunSummaries(8),
+  ])
   const params = searchParams ? await searchParams : {}
   return (
     <ResearchWorkbench
       initialDiscovery={discovery}
+      recentRuns={recentRuns.map((run) => ({
+        slug: run.slug,
+        title: run.title,
+        displayTitle: run.displayTitle,
+        date: run.date,
+        status: run.status,
+        category: run.category,
+        coverage: run.coverage,
+        sources: run.sources,
+        files: run.files,
+        sampleFiles: run.sampleFiles,
+        waves: run.waves,
+      }))}
       initialRunIds={splitParam(params.runs)}
       initialConsolidationRunId={firstParam(params.consolidation)}
     />

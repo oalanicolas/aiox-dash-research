@@ -9,67 +9,131 @@
   font-display: swap;
 }
 
-:root {
-  --font-bb-display: "TASAOrbiterDisplay", "Arial Black", ui-sans-serif, system-ui, sans-serif;
-  --font-bb-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-bb-mono: "Geist Mono", "SFMono-Regular", ui-monospace, monospace;
+@font-face {
+  font-family: "TASAOrbiterDisplay Fallback";
+  src: local("Arial");
+  font-weight: 700 900;
+  font-style: normal;
+  size-adjust: 96.46%;
+  ascent-override: 92%;
+  descent-override: 24%;
+  line-gap-override: 0%;
+}
 
-  --background: oklch(0.9644 0.0172 103.15);
-  --foreground: oklch(0.235 0.0116 122.3);
-  --cream: oklch(0.9639 0.0158 106.69);
-  --cream-alt: oklch(0.9644 0.0172 103.15);
-  --border: rgba(156, 156, 156, 0.24);
-  --border-subtle: rgba(156, 156, 156, 0.12);
-  --border-medium: rgba(156, 156, 156, 0.35);
-  --primary: oklch(0.934 0.2264 121.95);
-  --primary-foreground: oklch(0.235 0.0116 122.3);
-  --secondary: oklch(0.9252 0.0174 103.16);
-  --secondary-foreground: oklch(0.235 0.0116 122.3);
-  --muted: oklch(0.9252 0.0174 103.16);
-  --muted-foreground: oklch(0.5241 0.0183 107.02);
-  --accent: rgba(209, 255, 0, 0.15);
-  --accent-foreground: oklch(0.6801 0.1625 120.61);
-  --warning-ink: oklch(0.48 0.13 70.08);
+:root {
+  --font-bb-display: "TASAOrbiterDisplay", "TASAOrbiterDisplay Fallback", "Geist", system-ui, sans-serif;
+  --font-bb-sans: "Geist", system-ui, -apple-system, sans-serif;
+  --font-bb-mono: "Geist Mono", "Roboto Mono", ui-monospace, monospace;
+
+  --lime: #d1ff00;
+  --dark: #050505;
+  --void: #000000;
+  --surface: #0f0f11;
+  --surface-alt: #1c1e19;
+  --surface-deep: #0a0a0c;
+  --surface-panel: #18181b;
+  --surface-console: #1a1c14;
+  --surface-hover: #1e1f22;
+  --cream: rgb(244, 244, 232);
+  --cream-alt: rgb(245, 244, 231);
+  --warm-white: #ffffed;
+  --gray-charcoal: #3d3d3d;
+  --gray-dim: #696969;
+  --gray-muted: #999999;
+  --gray-silver: #bdbdbd;
+  --gray-light: #c2c2c2;
+  --blue: #0099ff;
+  --flare: #ed4609;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --success: #22c55e;
+  --lime-02: rgba(209, 255, 0, 0.02);
+  --lime-05: rgba(209, 255, 0, 0.05);
+  --lime-10: rgba(209, 255, 0, 0.1);
+  --lime-15: rgba(209, 255, 0, 0.15);
+  --lime-25: rgba(209, 255, 0, 0.25);
+  --lime-40: rgba(209, 255, 0, 0.4);
+  --lime-75: rgba(209, 255, 0, 0.75);
+  --fg1: var(--cream);
+  --fg2: rgba(244, 244, 232, 0.7);
+  --fg3: rgba(244, 244, 232, 0.55);
+  --fg-dim: rgba(245, 244, 231, 0.4);
+  --fg-meta: #afafaf;
+  --fg-muted: #919191;
+  --fg-on-lime: var(--dark);
+  --border: rgba(156, 156, 156, 0.15);
+  --border-soft: rgba(156, 156, 156, 0.1);
+  --border-strong: rgba(156, 156, 156, 0.25);
+  --border-hover: rgba(156, 156, 156, 0.24);
+  --border-input: rgba(156, 156, 156, 0.2);
+  --lime-glow: rgba(209, 255, 0, 0.25);
+  --lime-glow-soft: rgba(209, 255, 0, 0.1);
+  --shadow: rgba(0, 0, 0, 0.2);
+  --overlay: rgba(61, 61, 61, 0.5);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-decel: cubic-bezier(0, 0, 0.2, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 0.2s;
+  --dur-med: 0.4s;
+  --dur-slow: 0.7s;
+
+  --background: var(--dark);
+  --foreground: var(--cream);
+  --border-subtle: var(--border-soft);
+  --border-medium: var(--border-strong);
+  --primary: var(--lime);
+  --primary-foreground: var(--fg-on-lime);
+  --secondary: var(--surface);
+  --secondary-foreground: var(--cream);
+  --muted: var(--surface-alt);
+  --muted-foreground: var(--fg3);
+  --accent: var(--lime-15);
+  --accent-foreground: var(--lime);
+  --warning-ink: var(--warning);
   --radius: 0px;
 
-  --bb-lime: oklch(0.934 0.2264 121.95);
-  --bb-dark: oklch(0.1149 0 0);
-  --bb-surface: oklch(0.1693 0.0041 285.95);
-  --bb-border: rgba(156, 156, 156, 0.15);
-  --bb-cream: oklch(0.9639 0.0158 106.69);
-  --bb-dim: rgba(245, 244, 231, 0.4);
+  --bb-lime: var(--lime);
+  --bb-dark: var(--dark);
+  --bb-surface: var(--surface);
+  --bb-border: var(--border);
+  --bb-cream: var(--cream);
+  --bb-dim: var(--fg-dim);
   --bb-accent-rgb: 209, 255, 0;
-  --bb-error: oklch(0.6368 0.2078 25.33);
+  --bb-error: var(--error);
 
-  --aiox-lime: #d1ff00;
-  --aiox-dark: #050505;
-  --aiox-void: #000000;
-  --aiox-surface: #0f0f11;
-  --aiox-surface-alt: #1c1e19;
-  --aiox-surface-deep: #0a0a0c;
-  --aiox-surface-hover: #1e1f22;
-  --aiox-cream: rgb(244, 244, 232);
-  --aiox-cream-alt: rgb(245, 244, 231);
-  --aiox-fg-2: rgba(244, 244, 232, 0.7);
-  --aiox-fg-3: rgba(244, 244, 232, 0.55);
-  --aiox-fg-dim: rgba(245, 244, 231, 0.4);
-  --aiox-border: rgba(156, 156, 156, 0.15);
-  --aiox-border-soft: rgba(156, 156, 156, 0.1);
-  --aiox-border-strong: rgba(156, 156, 156, 0.25);
-  --aiox-lime-05: rgba(209, 255, 0, 0.05);
-  --aiox-lime-10: rgba(209, 255, 0, 0.1);
-  --aiox-lime-25: rgba(209, 255, 0, 0.25);
-  --aiox-lime-glow: rgba(209, 255, 0, 0.25);
-  --aiox-lime-glow-soft: rgba(209, 255, 0, 0.1);
-  --aiox-blue: #0099ff;
-  --aiox-error: #ef4444;
-  --aiox-warning: #f59e0b;
-  --aiox-ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --aiox-lime: var(--lime);
+  --aiox-dark: var(--dark);
+  --aiox-void: var(--void);
+  --aiox-surface: var(--surface);
+  --aiox-surface-alt: var(--surface-alt);
+  --aiox-surface-panel: var(--surface-panel);
+  --aiox-surface-deep: var(--surface-deep);
+  --aiox-surface-console: var(--surface-console);
+  --aiox-surface-hover: var(--surface-hover);
+  --aiox-cream: var(--cream);
+  --aiox-cream-alt: var(--cream-alt);
+  --aiox-fg-2: var(--fg2);
+  --aiox-fg-3: var(--fg3);
+  --aiox-fg-dim: var(--fg-dim);
+  --aiox-fg-on-lime: var(--fg-on-lime);
+  --aiox-border: var(--border);
+  --aiox-border-soft: var(--border-soft);
+  --aiox-border-strong: var(--border-strong);
+  --aiox-lime-05: var(--lime-05);
+  --aiox-lime-10: var(--lime-10);
+  --aiox-lime-25: var(--lime-25);
+  --aiox-lime-glow: var(--lime-glow);
+  --aiox-lime-glow-soft: var(--lime-glow-soft);
+  --aiox-blue: var(--blue);
+  --aiox-error: var(--error);
+  --aiox-warning: var(--warning);
+  --aiox-ease-smooth: var(--ease-smooth);
 
   --dash-control-h: 34px;
   --dash-header-h: 44px;
-  --dash-sidebar-w: 340px;
-  --dash-sidebar-w-md: 288px;
+  --dash-sidebar-w: 320px;
+  --dash-sidebar-w-md: 300px;
   --dash-inspector-w: 320px;
   --dash-inspector-w-md: 288px;
 }
@@ -89,6 +153,12 @@ body {
   color: var(--foreground);
   font-family: var(--font-bb-sans);
   text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--dark);
+  color: var(--lime);
 }
 
 button,

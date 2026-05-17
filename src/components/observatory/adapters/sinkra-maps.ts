@@ -96,10 +96,14 @@ export function mapSinkraMapsToObservatory(
   const runs = data.runs.map(mapRun)
   const selectedRun = mapRun(data.selectedRun)
   const extras = selectedRun.extras ?? {}
-  const modes: ReaderMode[] = ["map"]
-  if (extras.hasWorkflow || extras.hasDeps || extras.hasComposition || extras.hasTokens) modes.push("flow")
+  const modes: ReaderMode[] = []
+  const hasMapSignal = extras.hasObservatory || extras.hasProcess || extras.hasWorkflow || extras.hasTasks || extras.hasDeps || extras.hasDomain
+  const hasFlowSignal = extras.hasObservatory || extras.hasWorkflow || extras.hasDeps || extras.hasComposition || extras.hasTokens
+  const hasGovernanceSignal = extras.hasGates || extras.hasCompliance || extras.hasScore
+  if (hasMapSignal) modes.push("map")
+  if (hasFlowSignal) modes.push("flow")
   if (extras.hasAutomation) modes.push("automation")
-  if (extras.hasGates || extras.hasCompliance || extras.hasScore) modes.push("governance")
+  if (hasGovernanceSignal) modes.push("governance")
   if (extras.hasRaci) modes.push("accountability")
   if (extras.hasGaps || extras.hasObservatory) modes.push("gaps")
   if (extras.hasState || extras.hasMetrics) modes.push("evidence")

@@ -23,6 +23,7 @@ import { getBenchDashboardData } from "./bench-dashboard.server"
 import { demoAdapterMeta, getDemoObservatoryData } from "./demo-observatory.server"
 import { getResearchObservatoryData } from "./research-observatory.server"
 import { getSinkraMapsObservatoryData } from "./sinkra-maps-observatory.server"
+import { EmptyObservatorySourceError } from "./observatory-errors.server"
 import { getDashWorkspaceRoot } from "./workspace-root.server"
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -38,12 +39,7 @@ import { getDashWorkspaceRoot } from "./workspace-root.server"
      3. Registering the source below.
    ────────────────────────────────────────────────────────────────────── */
 
-export class EmptyObservatorySourceError extends Error {
-  constructor(public source: string) {
-    super(`Observatory source has no runs: ${source}`)
-    this.name = "EmptyObservatorySourceError"
-  }
-}
+export { EmptyObservatorySourceError }
 
 export type ObservatorySource = "research" | "bench" | "sinkra-maps" | "demo"
 

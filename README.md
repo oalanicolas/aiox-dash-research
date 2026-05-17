@@ -7,7 +7,7 @@
 
 AIOX Research é um console local-first para **executar pesquisas**, consolidar runtimes e visualizar artefatos operacionais de Research, Bench e SINKRA Maps.
 
-O app foi pensado para funcionar em instalações locais e parciais. Se uma instalação não tiver `docs/` ou `outputs/`, a fonte correspondente simplesmente não aparece no menu. O `Demo` sempre fica disponível para onboarding. A rota `/research` adiciona uma camada ativa: cria pesquisas em `docs/research/` usando CLIs locais detectados automaticamente ou BYOK OpenAI-compatible.
+O app foi pensado para funcionar em instalações locais e parciais. Se uma instalação não tiver `docs/` ou `outputs/`, a fonte correspondente simplesmente não aparece no menu. O `Demo` sempre fica disponível para onboarding. A rota `/research` adiciona uma camada ativa: cria pesquisas em `docs/research/` usando CLIs locais detectados automaticamente ou OpenRouter CLI.
 
 ---
 
@@ -56,7 +56,7 @@ npm run dev -- --port 3001
 # Demo visual: http://localhost:3001/observatory/demo
 ```
 
-Sem dados reais o app abre normalmente em `/observatory/demo`. Para executar pesquisa real via `/research`, use um workspace com permissão de escrita em `docs/research/` e ao menos um CLI local autenticado ou uma chave BYOK configurada na tela.
+Sem dados reais o app abre normalmente em `/observatory/demo`. Para executar pesquisa real via `/research`, use um workspace com permissão de escrita em `docs/research/` e ao menos um CLI local autenticado ou uma chave OpenRouter configurada na tela.
 
 ---
 
@@ -80,7 +80,7 @@ Stack interno (todas instaladas via `npm install`, não precisam ser provisionad
 - TypeScript 5 (strict)
 - `react-markdown`, `remark-gfm`, `yaml`, `lucide-react`
 
-Sem banco de dados. Sem autenticação. O Observatory lê o filesystem apontado; o Research Workbench também escreve artefatos em `docs/research/` e pode chamar provedores externos apenas quando o operador configura BYOK explicitamente.
+Sem banco de dados. Sem autenticação. O Observatory lê o filesystem apontado; o Research Workbench também escreve artefatos em `docs/research/` e pode chamar OpenRouter apenas quando o operador configura uma chave explicitamente.
 
 ---
 
@@ -189,7 +189,7 @@ AIOX_RESEARCH_ROOT=/srv/aiox/workspace
 
 `AIOX_RESEARCH_ROOT` deve apontar **apenas** para o diretório cujo conteúdo o app está autorizado a ler. Não aponte para `/` nem para a raiz home do usuário.
 
-BYOK não usa variável de ambiente nesta versão. A `API key`, `baseUrl` e `model` são configurados no seletor de runtime da tela `/research` e ficam armazenados apenas no navegador do operador.
+OpenRouter CLI não usa variável de ambiente nesta versão. A `API key` e o `model` são configurados no seletor de runtime da tela `/research`; o endpoint OpenRouter fica fixo e a chave fica armazenada apenas no navegador do operador.
 
 ---
 
@@ -199,7 +199,7 @@ O app descobre estas pastas dentro de `AIOX_RESEARCH_ROOT` em cada request:
 
 | Fonte | Pasta esperada | Rota | Comportamento |
 |---|---|---|---|
-| Research Workbench | `docs/research/` gravável | `/research` | Cria pesquisas via CLIs locais ou BYOK, acompanha execução em tempo real e redireciona para o run pela URL |
+| Research Workbench | `docs/research/` gravável | `/research` | Cria pesquisas via CLIs locais ou OpenRouter, acompanha execução em tempo real e redireciona para o run pela URL |
 | Demo | nenhuma | `/observatory/demo` | Exemplo completo de onboarding (Map, Slides, Roadmap, Evidências, Matriz, Duelo, Score, Personas, TCO, Decisão) |
 | Research | `docs/research/<slug>/` | `/observatory/research` | Leitor de pesquisas Markdown/YAML/JSON estruturado |
 | Bench | `docs/bench/<slug>/` | `/observatory/bench` | Relatórios comparativos, matriz, score, personas, TCO e decisão |
@@ -222,21 +222,30 @@ Regras de descoberta:
 Fluxo principal:
 
 1. O operador escreve a pergunta no buscador central.
-2. Seleciona `Local CLI` ou `BYOK`.
-3. Em `Local CLI`, o AIOX Research detecta `claude`, `codex`, `gemini` e `opencode` no `PATH`; os CLIs com launcher habilitado podem rodar em paralelo.
-4. Em `BYOK`, o operador informa `baseUrl`, `API key` e `model` de um provider OpenAI-compatible.
-5. Ao iniciar, a URL muda para `/research?runs=<runId...>`, então refresh no meio da execução restaura a sessão.
-6. Cada run emite estado via SSE em `/api/research/runs/[runId]/stream`.
-7. Ao iniciar, o AIOX Research cria a pasta canônica `docs/research/<YYYY-MM-DD>-<slug>/` com artefatos raiz mínimos para o Observatory.
-8. Cada runtime grava sua saída em `docs/research/<YYYY-MM-DD>-<slug>/runtimes/<runtime>/`.
-9. A consolidação final escreve os arquivos raiz da pesquisa e pode ser aberta no Observatory.
+2. Seleciona o modo: `MAPEAMENTO`, `BENCHMARK`, `TECH` ou `MERCADO`.
+3. Seleciona `Local CLI` ou `OpenRouter`.
+4. Em `Local CLI`, o AIOX Research detecta `claude`, `codex` e `gemini` no `PATH`; os CLIs com launcher habilitado podem rodar em paralelo.
+5. Em `OpenRouter`, o operador informa `API key` e `model`; o endpoint fica fixo em OpenRouter.
+6. Ao iniciar, a URL muda para `/research?runs=<runId...>`, então refresh no meio da execução restaura a sessão.
+7. Cada run emite estado via SSE em `/api/research/runs/[runId]/stream`.
+8. Ao iniciar, o AIOX Research cria a pasta canônica `docs/research/<YYYY-MM-DD>-<slug>/` com artefatos raiz mínimos para o Observatory.
+9. Cada runtime grava sua saída em `docs/research/<YYYY-MM-DD>-<slug>/runtimes/<runtime>/`.
+10. A consolidação final escreve os arquivos raiz da pesquisa e pode ser aberta no Observatory.
 
 Profundidade do Research Squad:
 
-- O prompt enviado aos runtimes não pede apenas uma resposta. Ele referencia o contrato completo `SP-TECH-RESEARCH`.
-- Runtimes com suporte a skills devem ativar `sinkra-hub:tech-research`; runtimes sem esse mecanismo recebem o protocolo inline.
-- O contrato exige auto-clarify, decomposição em subqueries, deep research prompt, ondas de pesquisa, deep read, coverage gate, compressão de waves, síntese, citation gate e documentação final.
-- Os assets canônicos usados como referência ficam em `.agents/skills/tech-research/SKILL.md` e `squads/research/{workflows,prompts,templates,checklists}/tech-research/`.
+- Runtimes com suporte a skills recebem uma invocação de skill, não uma checklist de 12 passos.
+- Cada modo carrega a skill e o workflow canônico do squad:
+  - `MAPEAMENTO` → `research-chief` + `squads/research/workflows/wf-deep-research.yaml`
+  - `BENCHMARK` → `research-bench` + `squads/research/workflows/bench-comparison-pipeline.yaml`
+  - `TECH` → `tech-research` + `squads/research/workflows/tech-research/tech-research-pipeline.yaml`
+  - `MERCADO` → `research-chief` + `squads/research/workflows/wf-competitive-intel.yaml`
+- Claude recebe a invocação da skill correspondente com a query enriquecida por modo, workflow, tarefas e contrato de saída.
+- Codex recebe uma menção explícita ao arquivo da skill correspondente com os mesmos argumentos.
+- Runtimes sem mecanismo de skill não são tratados como equivalentes; OpenRouter usa fallback degradado e Gemini fica bloqueado até existir adapter de skill local.
+- O modo `TECH` exige auto-clarify, decomposição em subqueries, deep research prompt, ondas de pesquisa, deep read, coverage gate, compressão de waves, síntese, citation gate e documentação final.
+- Os outros modos seguem seus próprios workflows do `squads/research/workflows/`: `wf-deep-research`, `bench-comparison-pipeline` e `wf-competitive-intel`.
+- Os assets canônicos usados como referência ficam nas skills correspondentes e em `squads/research/{workflows,tasks,prompts,templates,checklists,data,scripts}/`.
 - Uma pesquisa deve nascer como uma pasta única em `docs/research/<YYYY-MM-DD>-<slug>/`; os outputs de cada CLI/LLM ficam em `runtimes/<runtime>/` e a consolidação usa os arquivos raiz.
 
 Runtimes suportados no workbench:
@@ -245,9 +254,8 @@ Runtimes suportados no workbench:
 |---|---|---|---|
 | Local CLI | Claude Code | `claude` autenticado no `PATH` | Launcher web habilitado |
 | Local CLI | Codex CLI | `codex` autenticado no `PATH` | Usa sandbox `workspace-write` |
-| Local CLI | Gemini CLI | `gemini` autenticado no `PATH` | Usa workspace trusted |
-| Local CLI | OpenCode | `opencode` no `PATH` | Detectado para inventário; launcher ainda bloqueado |
-| BYOK | OpenAI-compatible | `baseUrl`, `API key`, `model` | Chave fica no navegador; servidor rejeita localhost/IP privado como upstream |
+| Local CLI | Gemini CLI | `gemini` autenticado no `PATH` | Detectado para inventário; execução canônica bloqueada até adapter de skill local |
+| OpenRouter | OpenRouter CLI | `API key`, `model` | Chave fica no navegador; endpoint fixo em OpenRouter |
 
 Consolidação:
 
@@ -263,7 +271,7 @@ Após `npm run dev` ou `npm run start`, valide nesta ordem:
 
 | Verificação | URL | Esperado |
 |---|---|---|
-| Workbench abre | `http://localhost:3001/research` | Tela de pesquisa com seletor Local CLI / BYOK |
+| Workbench abre | `http://localhost:3001/research` | Tela de pesquisa com seletor Local CLI / OpenRouter |
 | Demo carrega | `http://localhost:3001/observatory/demo` | Página com Map/Slides/Evidências renderizada |
 | Index do observatório | `http://localhost:3001/observatory` | Redireciona para Demo ou primeira fonte presente |
 | Tipos passam | `npm run typecheck` | Exit code 0, zero `error TS` |
@@ -425,7 +433,7 @@ docs/research/<slug>/
       prompt.md
       runtime-summary.md
       raw-output.log
-      ...artefatos específicos do provider BYOK
+      ...artefatos específicos do OpenRouter
 ```
 
 Uma pesquisa deve ter **uma única pasta raiz**. Não crie diretórios irmãos com sufixos como `-claude`, `-codex` ou `-gemini`. O isolamento por runtime acontece dentro de `runtimes/<runtime>/`; o relatório consolidado mora nos arquivos raiz.
@@ -538,8 +546,8 @@ Nenhum arquivo individual é obrigatório. Quanto mais artefatos estruturados ex
 - O Observatory é read-only: lê arquivos locais e renderiza relatórios.
 - O Research Workbench escreve em `docs/research/` quando uma execução é iniciada.
 - CLIs locais rodam no workspace configurado. Use apenas em diretórios onde o operador autoriza leitura e escrita de artefatos.
-- BYOK envia o prompt ao provider configurado pelo operador. A chave fica no navegador e é enviada ao servidor apenas para aquela execução.
-- O proxy BYOK rejeita `localhost`, IP privado, loopback e link-local como upstream para reduzir risco de SSRF.
+- OpenRouter envia o prompt ao endpoint fixo do OpenRouter. A chave fica no navegador e é enviada ao servidor apenas para aquela execução.
+- O proxy OpenRouter rejeita `localhost`, IP privado, loopback e link-local como upstream para reduzir risco de SSRF.
 - **Sem autenticação embutida**. Em rede aberta, sempre atrás de reverse proxy com auth.
 - `AIOX_RESEARCH_ROOT` deve apontar apenas para a pasta autorizada. Nunca raiz do disco nem `$HOME`.
 - Não publique workspaces com dados sensíveis em repositórios abertos.
@@ -553,8 +561,8 @@ Nenhum arquivo individual é obrigatório. Quanto mais artefatos estruturados ex
 - Sem lint script no `package.json` (use `npm run typecheck` como gate de qualidade).
 - Sem testes automatizados nesta versão.
 - Sem CI/CD configurado para o submodule.
-- BYOK suporta providers OpenAI-compatible via `/v1/chat/completions`; Anthropic-native, Google-native e Azure-native ainda não têm adaptador próprio no AIOX Research.
-- O stream do Workbench é SSE de estado/log do run; não é token-level streaming do provider BYOK.
+- OpenRouter usa `/v1/chat/completions`; Anthropic-native, Google-native e Azure-native diretos não têm adaptador próprio no AIOX Research.
+- O stream do Workbench é SSE de estado/log do run; não é token-level streaming do provider remoto.
 - Hot reload do Next ignora `node_modules`, `.git`, `.claude`, `outputs/`, `squads/` — mudanças nesses paths não disparam rebuild (intencional para performance).
 
 ---

@@ -16,7 +16,7 @@ import {
   type ObservatorySource,
   type ReaderMode,
 } from "./foundations/constants"
-import { observatoryThemeVars, SANS_FONT } from "./foundations/theme"
+import { observatoryDarkThemeVars, SANS_FONT } from "./foundations/theme"
 import {
   coverageNumeric,
   cycleNext,
@@ -29,8 +29,6 @@ import type {
   ObservatoryData,
   ObservatoryRunSummary,
 } from "./foundations/types"
-import { CloserStrip } from "./organisms/closer-strip"
-import { Footer } from "./organisms/footer"
 import { IndexPane } from "./organisms/index-pane"
 import { InspectorPane } from "./organisms/inspector-pane"
 import { ReaderBody } from "./organisms/reader-body"
@@ -44,13 +42,10 @@ import { Topbar } from "./organisms/topbar"
  *
  * Layout: 3 columns × dynamic rows
  *   ┌──────────────────────────────────────────────────────────┐
- *   │ Topbar (2 rows: brand+source toggle / ticker)            │
+ *   │ Topbar                                                   │
  *   ├─────────┬────────────────────────────────────┬───────────┤
  *   │ Index   │ ReaderHead                         │ Inspector │
  *   │ 340px   │ ReaderBody                         │ 320px     │
- *   │         │ CloserStrip (collapsible bottom)   │           │
- *   ├─────────┴────────────────────────────────────┴───────────┤
- *   │ Footer                                                   │
  *   └──────────────────────────────────────────────────────────┘
  */
 export function Observatory({
@@ -81,7 +76,6 @@ export function Observatory({
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [copiedNew, setCopiedNew] = useState(false)
-  const [copiedDeepen, setCopiedDeepen] = useState(false)
   const [viewport, setViewport] = useState<"sm" | "md" | "lg">(() => {
     if (typeof window === "undefined") return "lg"
     const w = window.innerWidth
@@ -375,43 +369,6 @@ export function Observatory({
     }
   }, [data.selectedRun.slug])
 
-  /* ── readiness (derived from extras when present) ── */
-  const corePhases = useMemo(() => {
-    if (data.source === "research") {
-      const extras = data.selectedRun.extras ?? {}
-      return [
-        { label: "Query", key: "query", on: data.documents.some((d) => d.file.startsWith("00-")) },
-        { label: "Prompt", key: "prompt", on: data.documents.some((d) => d.file.startsWith("01-")) },
-        { label: "Report", key: "report", on: data.documents.some((d) => d.file.startsWith("02-")) },
-        { label: "Ações", key: "recommend", on: data.documents.some((d) => d.file.startsWith("03-")) },
-        { label: "Waves", key: "waves", on: data.selectedRun.waves > 0 },
-      ]
-    }
-    if (data.source === "sinkra-maps") {
-      return [
-        { label: "Map", key: "map", on: data.availableModes.includes("map") },
-        { label: "Flow", key: "flow", on: data.availableModes.includes("flow") },
-        { label: "Auto", key: "automation", on: data.availableModes.includes("automation") },
-        { label: "Gov", key: "governance", on: data.availableModes.includes("governance") },
-        { label: "RACI", key: "accountability", on: data.availableModes.includes("accountability") },
-        { label: "Gaps", key: "gaps", on: data.availableModes.includes("gaps") },
-        { label: "Evidence", key: "evidence", on: data.availableModes.includes("evidence") },
-      ]
-    }
-    return [
-      { label: "Map", key: "map", on: data.availableModes.includes("map") },
-      { label: "Slides", key: "slides", on: data.availableModes.includes("slides") },
-      { label: "Roadmap", key: "roadmap", on: data.availableModes.includes("roadmap") },
-      { label: "Evidência", key: "evidence", on: data.availableModes.includes("evidence") },
-      { label: "Score", key: "score", on: data.documents.some((d) => /scorecard/i.test(d.file)) },
-      { label: "Matriz", key: "matrix", on: data.matrix !== null },
-      { label: "Personas", key: "personas", on: data.personas.length > 0 },
-      { label: "TCO", key: "tco", on: data.tco !== null },
-    ]
-  }, [data])
-
-  const stopNote = data.selectedRun.status || "—"
-
   function copyCommand(command: string, onDone: (value: boolean) => void) {
     void navigator.clipboard?.writeText(command)
     onDone(true)
@@ -433,19 +390,14 @@ export function Observatory({
     copyCommand(command, setCopiedNew)
   }
 
-  function onCopyDeepen() {
-    copyCommand(data.deepenCommand, setCopiedDeepen)
-  }
-
   const showDocCompanions = mode === "document"
   const compactShell = viewport === "sm"
   const showSidePanes = !compactShell
-  const showBottomCompanion = showDocCompanions && !compactShell
 
   return (
     <main
-      className="grid h-[100dvh] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[var(--paper)] text-[var(--ink)]"
-      style={{ ...observatoryThemeVars, fontFamily: SANS_FONT, fontSize: 14, lineHeight: 1.55 }}
+      className="grid h-[100dvh] min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-[var(--paper)] text-[var(--ink)]"
+      style={{ ...observatoryDarkThemeVars, fontFamily: SANS_FONT, fontSize: 14, lineHeight: 1.55 }}
     >
       <Topbar
         source={data.source}
@@ -458,10 +410,7 @@ export function Observatory({
         availableSources={availableSources}
         onChangeSource={(next) => pushUrl({ source: next })}
         onCopyNew={onCopyNew}
-        onCopyDeepen={onCopyDeepen}
         copiedNew={copiedNew}
-        copiedDeepen={copiedDeepen}
-        onList={() => router.push(`${basePath}/${data.source}`)}
       />
 
       <div
@@ -520,7 +469,10 @@ export function Observatory({
           )
         )}
 
-        <section className="flex min-h-0 flex-col overflow-hidden">
+        <section
+          className="flex min-h-0 flex-col overflow-hidden bg-[var(--paper)] text-[var(--ink)]"
+          style={showDocCompanions ? observatoryDarkThemeVars : undefined}
+        >
           <ReaderHead
             phase={selectedDocument.phase}
             runTitle={data.selectedRun.title}
@@ -574,16 +526,6 @@ export function Observatory({
             sourceSummary={data.sourceSummary}
             typeSpecific={data.typeSpecific}
           />
-          {showBottomCompanion && (
-            <CloserStrip
-              artifactDocs={artifactDocs}
-              selectedFile={selectedFile}
-              onSelectFile={selectFile}
-              selectedRun={data.selectedRun}
-              corePhases={corePhases}
-              stopNote={stopNote}
-            />
-          )}
         </section>
 
         {showDocCompanions && showSidePanes && (
@@ -621,8 +563,6 @@ export function Observatory({
           )
         )}
       </div>
-
-      <Footer sourceLabel={data.sourceLabel} sourceRoot={data.sourceRoot} />
 
       <style>{`
         @keyframes cleanPulse {
@@ -723,7 +663,8 @@ function defaultReaderMode(data: ObservatoryData): ReaderMode {
     return data.availableModes[0] ?? "document"
   }
   if (data.source === "sinkra-maps") {
-    return data.availableModes.includes("map") ? "map" : data.availableModes[0] ?? "document"
+    const priority: ReaderMode[] = ["map", "flow", "governance", "automation", "accountability", "gaps", "evidence", "score", "document"]
+    return priority.find((m) => data.availableModes.includes(m)) ?? data.availableModes[0] ?? "document"
   }
   if (data.source === "research") {
     return data.availableModes.includes("map") ? "map" : data.availableModes[0] ?? "document"

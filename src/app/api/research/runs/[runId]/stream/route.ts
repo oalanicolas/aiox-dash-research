@@ -47,7 +47,10 @@ export async function GET(request: NextRequest, { params }: RunStreamRouteProps)
       }
 
       const send = (state: ResearchRunState) => {
-        const signature = `${state.updatedAt}:${state.status}:${state.exitCode ?? ""}:${state.log.length}`
+        const filesystemSignature = state.filesystem
+          ? `${state.filesystem.checkedAt}:${state.filesystem.latestActivityAt ?? ""}:${state.filesystem.fileCount}:${state.filesystem.totalBytes}`
+          : ""
+        const signature = `${state.updatedAt}:${state.status}:${state.exitCode ?? ""}:${state.log.length}:${filesystemSignature}`
         if (signature === lastSignature) return
         lastSignature = signature
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(state)}\n\n`))

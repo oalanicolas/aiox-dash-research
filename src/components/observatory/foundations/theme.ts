@@ -1,49 +1,36 @@
 import { type CSSProperties } from "react"
 
-/* AIOX light operational palette.
- * Component-scoped so the Observatory can stay light even inside the
- * dark-first Brandbook shell. Values defer to the canonical DS tokens
- * from globals.css, with stable fallbacks for isolated renders. */
+/* AIOX operational palette.
+ * These vars mirror colors_and_type.css so source-specific readers can scope
+ * the same dark cockpit tokens without depending on global selector order. */
 export const observatoryThemeVars: CSSProperties = {
-  "--paper": "oklch(0.9644 0.0172 103.15)",
-  "--paper-alt": "oklch(0.9252 0.0174 103.16)",
-  "--paper-deep": "oklch(0.89 0.015 103.16)",
-  "--ink": "oklch(0.235 0.0116 122.3)",
-  "--ink-2": "rgba(50, 52, 43, 0.78)",
-  "--ink-3": "rgba(50, 52, 43, 0.55)",
-  "--ink-dim": "rgba(50, 52, 43, 0.38)",
-  "--ink-faint": "rgba(50, 52, 43, 0.18)",
-  "--rule": "rgba(156, 156, 156, 0.24)",
-  "--rule-soft": "rgba(156, 156, 156, 0.12)",
-  "--rule-strong": "rgba(156, 156, 156, 0.35)",
-  "--lime-ink": "oklch(0.6801 0.1625 120.61)",
-  "--lime-fill": "var(--primary, oklch(0.934 0.2264 121.95))",
-  "--warning-ink": "oklch(0.48 0.13 70.08)",
-  "--danger-ink": "oklch(0.6368 0.2078 25.33)",
+  "--paper": "var(--dark, #050505)",
+  "--paper-alt": "var(--surface, #0f0f11)",
+  "--paper-panel": "var(--surface-panel, #18181b)",
+  "--paper-deep": "var(--surface-deep, #0a0a0c)",
+  "--surface-console": "var(--surface-console, #1a1c14)",
+  "--surface-hover": "var(--surface-hover, #1e1f22)",
+  "--ink": "var(--cream-alt, #f5f4e7)",
+  "--ink-2": "var(--fg2, rgba(244,244,232,0.70))",
+  "--ink-3": "var(--fg3, rgba(244,244,232,0.55))",
+  "--ink-dim": "var(--fg-dim, rgba(245,244,231,0.40))",
+  "--ink-faint": "rgba(245,244,231,0.18)",
+  "--rule": "var(--border, rgba(156,156,156,0.15))",
+  "--rule-soft": "var(--border-soft, rgba(156,156,156,0.10))",
+  "--rule-strong": "var(--border-strong, rgba(156,156,156,0.25))",
+  "--lime-ink": "var(--lime, #d1ff00)",
+  "--lime-fill": "var(--lime, #d1ff00)",
+  "--lime-glow": "var(--lime-glow, rgba(209,255,0,0.25))",
+  "--warning-ink": "var(--warning, #f59e0b)",
+  "--danger-ink": "var(--error, #ef4444)",
+  "--on-lime": "var(--fg-on-lime, #050505)",
   "--dash-control-h": "34px",
   "--dash-header-h": "44px",
   "--serif": "var(--font-bb-sans), 'Geist', system-ui, sans-serif",
 } as CSSProperties
 
 export const observatoryDarkThemeVars: CSSProperties = {
-  "--paper": "var(--aiox-dark, #050505)",
-  "--paper-alt": "var(--aiox-surface, #101012)",
-  "--paper-deep": "var(--aiox-surface-2, #171719)",
-  "--ink": "var(--aiox-cream-alt, #f5f4e7)",
-  "--ink-2": "rgba(245, 244, 231, 0.78)",
-  "--ink-3": "rgba(245, 244, 231, 0.55)",
-  "--ink-dim": "rgba(245, 244, 231, 0.38)",
-  "--ink-faint": "rgba(245, 244, 231, 0.18)",
-  "--rule": "rgba(245, 244, 231, 0.16)",
-  "--rule-soft": "rgba(245, 244, 231, 0.08)",
-  "--rule-strong": "rgba(245, 244, 231, 0.28)",
-  "--lime-ink": "var(--aiox-lime, #d1ff00)",
-  "--lime-fill": "var(--aiox-lime, #d1ff00)",
-  "--warning-ink": "oklch(0.79 0.17 72)",
-  "--danger-ink": "oklch(0.73 0.22 25)",
-  "--dash-control-h": "34px",
-  "--dash-header-h": "44px",
-  "--serif": "var(--font-bb-sans), 'Geist', system-ui, sans-serif",
+  ...observatoryThemeVars,
 } as CSSProperties
 
 export const MONO_FONT = "var(--font-bb-mono), 'Geist Mono', ui-monospace, monospace"

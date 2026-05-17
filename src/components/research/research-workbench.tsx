@@ -1,24 +1,34 @@
 "use client"
 
-import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from "react"
 import {
   AlertTriangle,
+  ArrowRight,
   Check,
   ChevronDown,
   Circle,
   ExternalLink,
   FileText,
+  LayoutDashboard,
   Loader2,
-  Play,
+  Mic,
+  Plus,
   Radar,
   RefreshCcw,
   Search,
   Settings,
+  Sparkles,
+  Square,
   Terminal,
+  X,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
+  OPENROUTER_API_BASE_URL,
+  OPENROUTER_CLI_LABEL,
+  methodById,
+  normalizeResearchMethodId,
   normalizeResearchRunRequest,
   RESEARCH_METHODS,
   slugifyResearchTopic,
@@ -34,33 +44,103 @@ import { DISPLAY_FONT, MONO_FONT, SANS_FONT } from "@/components/observatory/fou
 
 type ResearchWorkbenchProps = {
   initialDiscovery: ResearchCliDiscovery
+  recentRuns?: RecentResearchRun[]
   initialRunIds?: string[]
   initialConsolidationRunId?: string | null
 }
 
-const DEPTH_OPTIONS = [
-  { id: "standard", label: "Padrão", description: "Pesquisa objetiva com artefatos suficientes para o AIOX Research." },
-  { id: "deep", label: "Profunda", description: "Força mais ondas, mais fontes e matriz de evidências." },
-] as const
+type RecentResearchRun = {
+  slug: string
+  title: string
+  displayTitle: string
+  date: string
+  status: string
+  category: string
+  coverage: string
+  sources: string
+  files: number
+  sampleFiles: string[]
+  waves: number
+}
+
+type ResearchAttachmentResult = {
+  name: string
+  type: string
+  size: number
+  path: string
+  kind: "audio" | "file"
+  transcript?: string
+  transcriptionStatus?: "skipped" | "completed" | "failed" | "unavailable"
+  transcriptionMessage?: string
+  transcriptionProvider?: string
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike
+
+type SpeechRecognitionLike = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
+  start: () => void
+  stop: () => void
+  abort: () => void
+}
+
+type SpeechRecognitionResultEventLike = {
+  resultIndex: number
+  results: SpeechRecognitionResultListLike
+}
+
+type SpeechRecognitionErrorEventLike = {
+  error?: string
+}
+
+type SpeechRecognitionResultListLike = {
+  length: number
+  [index: number]: SpeechRecognitionResultLike
+}
+
+type SpeechRecognitionResultLike = {
+  isFinal: boolean
+  length: number
+  [index: number]: {
+    transcript: string
+  }
+}
 
 type ResearchExecutionMode = "local" | "byok"
+type ResearchSidebarSort = "recent" | "score" | "category"
 
 const BYOK_STORAGE_KEY = "aiox-research:research-byok"
 const RUNTIME_STEP_TOTAL = 7
 const MAX_RESEARCH_TOPIC_SLUG_LENGTH = 44
 
 const DEFAULT_BYOK_CONFIG: ResearchByokConfig = {
-  providerLabel: "OpenAI compatible",
-  baseUrl: "https://api.openai.com/v1",
+  providerLabel: OPENROUTER_CLI_LABEL,
+  baseUrl: OPENROUTER_API_BASE_URL,
   apiKey: "",
-  model: "gpt-4o",
+  model: "openai/gpt-4o",
 }
 
-const BYOK_PROVIDER_PRESETS = [
-  { label: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-4o" },
-  { label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-4o" },
-  { label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-chat" },
-  { label: "Groq", baseUrl: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile" },
+const QUICK_RESEARCH_SUGGESTIONS = [
+  {
+    label: "Cenário competitivo",
+    prompt: "Mapear o cenário competitivo de design systems para fintechs LATAM em 2026.",
+  },
+  {
+    label: "Top 10 + bench",
+    prompt: "Top 10 plataformas low-code para automação de back-office, com preço, integrações e benchmark.",
+  },
+  {
+    label: "Validar tese",
+    prompt: "Tese: design.md como contrato vivo entre Figma, código e LLMs. Validar.",
+  },
+  {
+    label: "Concorrentes diretos",
+    prompt: "Pesquisar concorrentes do AIOX Console em pesquisa paralela com CLIs locais.",
+  },
 ] as const
 
 const AIOX_RESEARCH_THEME = {
@@ -70,7 +150,7 @@ const AIOX_RESEARCH_THEME = {
   "--surface": "#0F0F11",
   "--surface-alt": "#1C1E19",
   "--surface-hover": "#1E1F22",
-  "--surface-console": "#12130F",
+  "--surface-console": "#1A1C14",
   "--ink": "rgb(244, 244, 232)",
   "--ink-2": "rgba(244, 244, 232, 0.70)",
   "--ink-3": "rgba(244, 244, 232, 0.55)",
@@ -79,6 +159,7 @@ const AIOX_RESEARCH_THEME = {
   "--rule": "rgba(156, 156, 156, 0.15)",
   "--rule-soft": "rgba(156, 156, 156, 0.10)",
   "--rule-strong": "rgba(156, 156, 156, 0.25)",
+  "--grid-line": "rgba(156, 156, 156, 0.04)",
   "--lime-ink": "#D1FF00",
   "--blue-ink": "#0099FF",
   "--danger-ink": "#EF4444",
@@ -87,63 +168,58 @@ const AIOX_RESEARCH_THEME = {
 
 export function ResearchWorkbench({
   initialDiscovery,
+  recentRuns = [],
   initialRunIds = [],
   initialConsolidationRunId = null,
 }: ResearchWorkbenchProps) {
   const router = useRouter()
-  const [discovery, setDiscovery] = useState(initialDiscovery)
+  const [discovery] = useState(initialDiscovery)
   const [query, setQuery] = useState("")
-  const [methodId, setMethodId] = useState<ResearchMethodId>("landscape")
-  const [depth, setDepth] = useState<ResearchRunRequest["depth"]>("standard")
+  const [methodId, setMethodId] = useState<ResearchMethodId>("mapping")
+  const depth: ResearchRunRequest["depth"] = "deep"
   const [selectedCliIds, setSelectedCliIds] = useState<ResearchCliId[]>(() => [preferredCli(initialDiscovery.clis)?.id ?? "claude"])
+  const [audioFile, setAudioFile] = useState<File | null>(null)
+  const [audioAttachment, setAudioAttachment] = useState<ResearchAttachmentResult | null>(null)
+  const [contextFiles, setContextFiles] = useState<File[]>([])
+  const [contextAttachments, setContextAttachments] = useState<ResearchAttachmentResult[]>([])
   const [runs, setRuns] = useState<ResearchRunState[]>([])
   const [consolidationRun, setConsolidationRun] = useState<ResearchRunState | null>(null)
   const [focusedRunId, setFocusedRunId] = useState<string | null>(null)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false)
+  const [isComposerDragActive, setIsComposerDragActive] = useState(false)
+  const [isRecordingAudio, setIsRecordingAudio] = useState(false)
+  const [isTranscribingAudio, setIsTranscribingAudio] = useState(false)
   const [isConsolidating, setIsConsolidating] = useState(false)
   const [retryingRunIds, setRetryingRunIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [runtimePickerOpen, setRuntimePickerOpen] = useState(false)
+  const [modelPickerOpen, setModelPickerOpen] = useState(false)
+  const [methodPickerOpen, setMethodPickerOpen] = useState(false)
+  const [sidebarQuery, setSidebarQuery] = useState("")
+  const [sidebarSort, setSidebarSort] = useState<ResearchSidebarSort>("recent")
   const [executionMode, setExecutionMode] = useState<ResearchExecutionMode>("local")
   const [byokConfig, setByokConfig] = useState<ResearchByokConfig>(DEFAULT_BYOK_CONFIG)
+  const audioInputRef = useRef<HTMLInputElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const speechTranscriptRef = useRef("")
 
   const selectedClis = useMemo(
     () => selectedCliIds.map((cliId) => discovery.clis.find((cli) => cli.id === cliId)).filter((cli): cli is ResearchCliStatus => Boolean(cli)),
     [discovery.clis, selectedCliIds],
   )
 
-  const baseOutputSlug = useMemo(() => slugifyResearchTopic(query), [query])
+  const firstAttachmentName = audioFile?.name ?? audioAttachment?.name ?? contextFiles[0]?.name ?? contextAttachments[0]?.name
+  const baseOutputSlug = useMemo(() => slugifyResearchTopic(query || firstAttachmentName || "research-context"), [firstAttachmentName, query])
   const researchOutputSlug = useMemo(() => datedResearchSlug(baseOutputSlug), [baseOutputSlug])
-
-  const normalizedRequests = useMemo(
-    () =>
-      executionMode === "byok"
-        ? [
-            normalizeResearchRunRequest({
-              query,
-              cliId: "byok",
-              methodId,
-              depth,
-              outputSlug: researchOutputSlug,
-              byok: byokConfig,
-            }),
-          ]
-        : selectedCliIds.map((cliId) =>
-            normalizeResearchRunRequest({
-              query,
-              cliId,
-              methodId,
-              depth,
-              outputSlug: researchOutputSlug,
-            }),
-          ),
-    [byokConfig, depth, executionMode, methodId, query, researchOutputSlug, selectedCliIds],
-  )
 
   const runnableSelectedClis = selectedClis.filter((cli) => cli.available && cli.launchSupported)
   const byokReady = Boolean(byokConfig.apiKey.trim() && byokConfig.baseUrl.trim() && byokConfig.model.trim())
   const completedRuns = runs.filter((run) => run.status === "completed")
+  const visibleSessionRuns = consolidationRun ? [...runs, consolidationRun] : runs
   const allRunsFinished = runs.length > 0 && runs.every((run) => run.status === "completed" || run.status === "failed")
   const canConsolidate = allRunsFinished && completedRuns.length >= 2 && !isConsolidating && consolidationRun?.status !== "running"
   const initialRunIdsKey = initialRunIds.join(",")
@@ -151,16 +227,40 @@ export function ResearchWorkbench({
   const hasResearchSession = hasUrlScopedSession || runs.length > 0 || Boolean(consolidationRun)
   const canStart =
     !hasResearchSession &&
-    query.trim().length >= 8 &&
+    !isRecordingAudio &&
+    (query.trim().length >= 8 || Boolean(audioFile || audioAttachment || contextFiles.length > 0 || contextAttachments.length > 0)) &&
     (executionMode === "byok" ? byokReady : runnableSelectedClis.length > 0)
   const activeStreamRunIdsKey = useMemo(() => {
-    const runQueue = consolidationRun ? [...runs, consolidationRun] : runs
-    return runQueue
+    return visibleSessionRuns
       .filter((run) => run.status !== "completed" && run.status !== "failed")
       .map((run) => run.runId)
       .sort()
       .join(",")
-  }, [consolidationRun, runs])
+  }, [visibleSessionRuns])
+  const activeSidebarSlug =
+    visibleSessionRuns.find((run) => run.runId === focusedRunId)?.outputSlug ??
+    visibleSessionRuns[0]?.outputSlug ??
+    recentRuns[0]?.slug ??
+    null
+  const sidebarRuns = useMemo(() => {
+    const needle = sidebarQuery.trim().toLocaleLowerCase("pt-BR")
+    const matches = recentRuns.filter((run) => {
+      if (!needle) return true
+      return [run.slug, run.title, run.displayTitle, run.category, run.status]
+        .join(" ")
+        .toLocaleLowerCase("pt-BR")
+        .includes(needle)
+    })
+    const sorted = [...matches]
+    if (sidebarSort === "score") {
+      sorted.sort((a, b) => (parseCoveragePercent(formatCoverage(b.coverage)) ?? -1) - (parseCoveragePercent(formatCoverage(a.coverage)) ?? -1))
+    } else if (sidebarSort === "category") {
+      sorted.sort((a, b) => `${a.category}-${a.displayTitle}`.localeCompare(`${b.category}-${b.displayTitle}`, "pt-BR"))
+    } else {
+      sorted.sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+    }
+    return sorted
+  }, [recentRuns, sidebarQuery, sidebarSort])
 
   useEffect(() => {
     try {
@@ -168,8 +268,8 @@ export function ResearchWorkbench({
       if (!stored) return
       const parsed = JSON.parse(stored) as Partial<ResearchByokConfig>
       setByokConfig({
-        providerLabel: typeof parsed.providerLabel === "string" ? parsed.providerLabel : DEFAULT_BYOK_CONFIG.providerLabel,
-        baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : DEFAULT_BYOK_CONFIG.baseUrl,
+        providerLabel: OPENROUTER_CLI_LABEL,
+        baseUrl: OPENROUTER_API_BASE_URL,
         apiKey: typeof parsed.apiKey === "string" ? parsed.apiKey : "",
         model: typeof parsed.model === "string" ? parsed.model : DEFAULT_BYOK_CONFIG.model,
       })
@@ -182,6 +282,14 @@ export function ResearchWorkbench({
     if (hasResearchSession) return
     window.localStorage.setItem(BYOK_STORAGE_KEY, JSON.stringify(byokConfig))
   }, [byokConfig, hasResearchSession])
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop()
+      speechRecognitionRef.current?.abort()
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+    }
+  }, [])
 
   useEffect(() => {
     const runIds = uniqueIds(initialRunIds)
@@ -204,7 +312,7 @@ export function ResearchWorkbench({
       if (firstRun) setFocusedRunId(firstRun.runId)
       if (firstRun) {
         setQuery(firstRun.query)
-        setMethodId(firstRun.methodId)
+        setMethodId(normalizeResearchMethodId(firstRun.methodId))
         setSelectedCliIds(uniqueCliIds(restoredRuns.length > 0 ? restoredRuns.map((run) => run.cliId) : [firstRun.cliId]))
       }
 
@@ -253,21 +361,92 @@ export function ResearchWorkbench({
     }
   }, [activeStreamRunIdsKey])
 
-  async function refreshClis() {
-    setIsRefreshing(true)
-    setError(null)
+  async function ensureAudioAttachment() {
+    if (!audioFile) return audioAttachment
+    return uploadAudioAttachment(audioFile, false)
+  }
+
+  async function uploadAudioAttachment(file: File, transcribe: boolean) {
+    setIsUploadingAttachment(true)
+    if (transcribe) setIsTranscribingAudio(true)
     try {
-      const response = await fetch("/api/research/clis", { cache: "no-store" })
-      if (!response.ok) throw new Error("Não foi possível detectar os CLIs.")
-      const next = (await response.json()) as ResearchCliDiscovery
-      setDiscovery(next)
-      const nextPreferred = preferredCli(next.clis)
-      if (nextPreferred && selectedCliIds.length === 0) setSelectedCliIds([nextPreferred.id])
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Falha ao detectar CLIs.")
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("slug", researchOutputSlug)
+      if (transcribe) formData.append("transcribe", "true")
+      const response = await fetch("/api/research/uploads/audio", {
+        method: "POST",
+        body: formData,
+      })
+      const body = (await response.json()) as ResearchAttachmentResult | { error?: string }
+      if (!response.ok || "error" in body) {
+        throw new Error("error" in body && body.error ? body.error : "Falha ao anexar áudio.")
+      }
+      const uploaded = body as ResearchAttachmentResult
+      setAudioAttachment(uploaded)
+      setAudioFile(null)
+      if (uploaded.transcript?.trim()) appendTranscriptToQuery(uploaded.transcript)
+      if (transcribe && !uploaded.transcript?.trim() && uploaded.transcriptionMessage) {
+        setError(uploaded.transcriptionMessage)
+      }
+      return uploaded
     } finally {
-      setIsRefreshing(false)
+      setIsUploadingAttachment(false)
+      setIsTranscribingAudio(false)
     }
+  }
+
+  async function ensureContextAttachments() {
+    if (contextFiles.length === 0) return contextAttachments
+    setIsUploadingAttachment(true)
+    const formData = new FormData()
+    contextFiles.forEach((file) => formData.append("files", file))
+    formData.append("slug", researchOutputSlug)
+    const response = await fetch("/api/research/uploads/files", {
+      method: "POST",
+      body: formData,
+    })
+    const body = (await response.json()) as { uploaded?: ResearchAttachmentResult[]; failed?: string[]; error?: string }
+    if (!response.ok || body.error) {
+      throw new Error(body.error || "Falha ao anexar arquivos.")
+    }
+    const uploaded = body.uploaded ?? []
+    if (uploaded.length === 0 && contextFiles.length > 0) {
+      throw new Error("Nenhum arquivo foi anexado.")
+    }
+    const nextAttachments = [...contextAttachments, ...uploaded]
+    setContextAttachments(nextAttachments)
+    setContextFiles([])
+    if (body.failed && body.failed.length > 0) {
+      setError(`Alguns anexos falharam: ${body.failed.join(", ")}`)
+    }
+    return nextAttachments
+  }
+
+  function buildRequestQuery(audio: ResearchAttachmentResult | null, files: ResearchAttachmentResult[]) {
+    const trimmedQuery = query.trim()
+    if (!audio && files.length === 0) return trimmedQuery
+    const lines = [trimmedQuery || "Pesquise o conteúdo dos anexos."]
+    if (audio) {
+      const transcript = audio.transcript?.trim()
+      lines.push(
+        "",
+        `Áudio anexado: ${audio.path} (${audio.name}, ${formatBytes(audio.size)}).`,
+        "Use esse arquivo como entrada da pesquisa; transcreva, sumarize e extraia evidências quando o runtime suportar leitura de áudio local.",
+      )
+      if (transcript && !trimmedQuery.includes(transcript)) {
+        lines.push("", "Transcrição do áudio:", transcript)
+      }
+    }
+    if (files.length > 0) {
+      lines.push(
+        "",
+        "Arquivos anexados como contexto:",
+        ...files.map((file) => `- ${file.path} (${file.name}, ${file.type || "tipo desconhecido"}, ${formatBytes(file.size)})`),
+        "Leia os arquivos acima antes de pesquisar e trate-os como contexto fornecido pelo usuário. Cite quando uma conclusão vier de um anexo.",
+      )
+    }
+    return lines.join("\n")
   }
 
   async function startRuns() {
@@ -276,11 +455,33 @@ export function ResearchWorkbench({
     setRuns([])
     setConsolidationRun(null)
     try {
+      const uploadedAudio = await ensureAudioAttachment()
+      const uploadedFiles = await ensureContextAttachments()
+      const requestQuery = buildRequestQuery(uploadedAudio, uploadedFiles)
       const runnableIds = new Set(runnableSelectedClis.map((cli) => cli.id))
       const requests =
         executionMode === "byok"
-          ? normalizedRequests
-          : normalizedRequests.filter((request) => runnableIds.has(request.cliId))
+          ? [
+              normalizeResearchRunRequest({
+                query: requestQuery,
+                cliId: "byok",
+                methodId,
+                depth,
+                outputSlug: researchOutputSlug,
+                byok: byokConfig,
+              }),
+            ]
+          : selectedCliIds
+              .filter((cliId) => runnableIds.has(cliId))
+              .map((cliId) =>
+                normalizeResearchRunRequest({
+                  query: requestQuery,
+                  cliId,
+                  methodId,
+                  depth,
+                  outputSlug: researchOutputSlug,
+                }),
+              )
       const results = await Promise.allSettled(
         requests.map(async (request) => {
           const response = await fetch("/api/research/runs", {
@@ -312,6 +513,8 @@ export function ResearchWorkbench({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Falha ao iniciar pesquisas.")
     } finally {
+      setIsUploadingAttachment(false)
+      setIsTranscribingAudio(false)
       setIsStarting(false)
     }
   }
@@ -372,7 +575,7 @@ export function ResearchWorkbench({
         body: JSON.stringify({
           query: run.query,
           cliId: run.cliId,
-          methodId: run.methodId,
+          methodId: normalizeResearchMethodId(run.methodId),
           depth,
           outputSlug: run.outputSlug,
           byok: run.cliId === "byok" ? byokConfig : undefined,
@@ -434,8 +637,184 @@ export function ResearchWorkbench({
     if (runnableIds.length > 0) setSelectedCliIds(runnableIds)
   }
 
+  function setExecutionModeFromPicker(mode: ResearchExecutionMode) {
+    setExecutionMode(mode)
+    if (mode === "byok") {
+      setByokConfig((current) => ({
+        ...current,
+        providerLabel: OPENROUTER_CLI_LABEL,
+        baseUrl: OPENROUTER_API_BASE_URL,
+      }))
+    }
+  }
+
   function updateByokConfig(patch: Partial<ResearchByokConfig>) {
-    setByokConfig((current) => ({ ...current, ...patch }))
+    setByokConfig((current) => ({
+      ...current,
+      ...patch,
+      providerLabel: OPENROUTER_CLI_LABEL,
+      baseUrl: OPENROUTER_API_BASE_URL,
+    }))
+  }
+
+  function toggleComposerCli(cliId: ResearchCliId) {
+    setExecutionMode("local")
+    toggleCli(cliId)
+  }
+
+  function appendTranscriptToQuery(transcript: string) {
+    const normalized = transcript.trim().replace(/\s+/g, " ")
+    if (!normalized) return
+    setQuery((current) => {
+      if (current.includes(normalized)) return current
+      const prefix = current.trim()
+      return prefix ? `${prefix}\n\nTranscrição do áudio:\n${normalized}` : normalized
+    })
+  }
+
+  function handleAudioButtonClick() {
+    if (isRecordingAudio) {
+      stopAudioRecording()
+      return
+    }
+    void startAudioRecording()
+  }
+
+  async function startAudioRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("Gravação de áudio não disponível neste navegador. Use o anexo de arquivo para enviar um áudio.")
+      audioInputRef.current?.click()
+      return
+    }
+
+    setError(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      mediaStreamRef.current = stream
+      mediaRecorderRef.current = recorder
+      audioChunksRef.current = []
+      speechTranscriptRef.current = ""
+
+      const recognition = createSpeechRecognition()
+      if (recognition) {
+        recognition.onresult = (event) => {
+          for (let index = event.resultIndex; index < event.results.length; index += 1) {
+            const result = event.results[index]
+            const alternative = result?.[0]
+            if (result?.isFinal && alternative?.transcript) {
+              speechTranscriptRef.current = `${speechTranscriptRef.current} ${alternative.transcript}`.trim()
+            }
+          }
+        }
+        recognition.onerror = () => undefined
+        speechRecognitionRef.current = recognition
+        try {
+          recognition.start()
+        } catch {
+          speechRecognitionRef.current = null
+        }
+      }
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data)
+      }
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || "audio/webm"
+        const chunks = audioChunksRef.current
+        const recordedFile = new File(chunks, `audio-pesquisa-${Date.now()}.${audioExtensionFromMimeType(mimeType)}`, { type: mimeType })
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+        mediaStreamRef.current = null
+        try {
+          speechRecognitionRef.current?.stop()
+        } catch {
+          speechRecognitionRef.current?.abort()
+        }
+        speechRecognitionRef.current = null
+        setIsRecordingAudio(false)
+        void acceptAudioFile(recordedFile, speechTranscriptRef.current)
+      }
+      recorder.start()
+      setIsRecordingAudio(true)
+    } catch (caught) {
+      setIsRecordingAudio(false)
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop())
+      mediaStreamRef.current = null
+      setError(caught instanceof Error ? caught.message : "Não foi possível iniciar a gravação.")
+    }
+  }
+
+  function stopAudioRecording() {
+    const recorder = mediaRecorderRef.current
+    if (!recorder || recorder.state === "inactive") {
+      setIsRecordingAudio(false)
+      return
+    }
+    recorder.stop()
+  }
+
+  async function acceptAudioFile(file: File, browserTranscript = "") {
+    if (file.size <= 0) return
+    setAudioFile(file)
+    setAudioAttachment(null)
+    const transcript = browserTranscript.trim()
+    if (transcript) appendTranscriptToQuery(transcript)
+    try {
+      await uploadAudioAttachment(file, !transcript)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Falha ao anexar ou transcrever áudio.")
+    }
+  }
+
+  function handleAudioFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const nextFile = event.target.files?.[0] ?? null
+    if (!nextFile) return
+    void acceptAudioFile(nextFile)
+    event.target.value = ""
+  }
+
+  function addContextFiles(files: File[]) {
+    const nextFiles = files.filter((file) => file.size > 0)
+    if (nextFiles.length === 0) return
+    setContextFiles((current) => [...current, ...nextFiles])
+  }
+
+  function handleContextFileChange(event: ChangeEvent<HTMLInputElement>) {
+    addContextFiles(Array.from(event.target.files ?? []))
+    event.target.value = ""
+  }
+
+  function handlePromptPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData.files ?? [])
+    if (files.length === 0) return
+    event.preventDefault()
+    addContextFiles(files)
+  }
+
+  function handleComposerDragOver(event: DragEvent<HTMLDivElement>) {
+    if (hasResearchSession || !Array.from(event.dataTransfer.types).includes("Files")) return
+    event.preventDefault()
+    setIsComposerDragActive(true)
+  }
+
+  function handleComposerDrop(event: DragEvent<HTMLDivElement>) {
+    if (hasResearchSession) return
+    event.preventDefault()
+    setIsComposerDragActive(false)
+    addContextFiles(Array.from(event.dataTransfer.files ?? []))
+  }
+
+  function clearAudioAttachment() {
+    setAudioFile(null)
+    setAudioAttachment(null)
+  }
+
+  function removePendingContextFile(indexToRemove: number) {
+    setContextFiles((current) => current.filter((_, index) => index !== indexToRemove))
+  }
+
+  function removeContextAttachment(pathToRemove: string) {
+    setContextAttachments((current) => current.filter((attachment) => attachment.path !== pathToRemove))
   }
 
   function handlePromptKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -449,101 +828,70 @@ export function ResearchWorkbench({
       className="min-h-screen overflow-x-hidden bg-[var(--paper)] text-[var(--ink)]"
       style={{ ...AIOX_RESEARCH_THEME, fontFamily: SANS_FONT }}
     >
-      <header className="sticky top-0 z-50 border-b border-[var(--rule)] bg-[rgba(5,5,5,0.85)] backdrop-blur">
-        <div className="mx-auto flex min-h-[60px] max-w-[1280px] flex-wrap items-center justify-between gap-3 px-5 py-2 lg:px-10 lg:py-0">
-          <button
-            type="button"
-            onClick={() => router.push("/observatory/research")}
-            className="flex min-w-0 items-center gap-4 text-left"
-            title="Abrir Observatory"
-          >
-            <img src="/logo/AIOX-White.svg" alt="AIOX" className="h-[14px] w-auto shrink-0" />
-            <span className="hidden h-4 w-px bg-[var(--rule)] sm:block" />
-            <span
-              className="hidden text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--ink)] sm:block"
-              style={{ fontFamily: MONO_FONT }}
-            >
-              Open Research
-            </span>
-          </button>
+      <ResearchShellHeader
+        onOpenResearch={() => router.push("/research")}
+        onOpenBench={() => router.push("/observatory/bench")}
+        onOpenSinkraMaps={() => router.push("/observatory/sinkra-maps")}
+        onOpenDemo={() => router.push("/observatory/demo")}
+      />
 
-          <div className="flex min-w-0 items-center gap-2">
-            {hasResearchSession ? (
-              <SessionRuntimeChip runs={runs} consolidationRun={consolidationRun} />
-            ) : (
-              <RuntimePicker
-                clis={discovery.clis}
-                selectedCliIds={selectedCliIds}
-                mode={executionMode}
-                byokConfig={byokConfig}
-                open={runtimePickerOpen}
-                onOpenChange={setRuntimePickerOpen}
-                onModeChange={setExecutionMode}
-                onToggle={toggleCli}
-                onSelectAll={selectAllRunnableClis}
-                onByokConfigChange={updateByokConfig}
-              />
-            )}
-            <button
-              type="button"
-              onClick={refreshClis}
-              className="grid h-10 w-10 place-items-center border border-[var(--rule)] text-[var(--ink-3)] transition-colors hover:border-[var(--lime-ink)] hover:text-[var(--ink)]"
-              disabled={isRefreshing}
-              title="Detectar CLIs"
-              aria-label="Detectar CLIs"
-            >
-              <RefreshCcw size={14} className={cn(isRefreshing && "animate-spin")} />
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push("/observatory/research")}
-              className="grid h-10 w-10 place-items-center border border-[var(--rule)] text-[var(--ink-3)] transition-colors hover:border-[var(--lime-ink)] hover:text-[var(--ink)]"
-              title="Abrir Observatory"
-            >
-              <ExternalLink size={14} />
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <section className="relative min-h-[calc(100vh-60px)] border-b border-[var(--rule)]">
+      <section className="relative min-h-[calc(100vh-56px)] border-b border-[var(--rule)]">
         <div className="pointer-events-none absolute inset-0 grid grid-cols-4">
-          <span className="border-l border-[var(--rule-soft)]" />
-          <span className="border-l border-[var(--rule-soft)]" />
-          <span className="border-l border-[var(--rule-soft)]" />
-          <span className="border-x border-[var(--rule-soft)]" />
+          <span className="border-l border-[var(--grid-line)]" />
+          <span className="border-l border-[var(--grid-line)]" />
+          <span className="border-l border-[var(--grid-line)]" />
+          <span className="border-x border-[var(--grid-line)]" />
         </div>
-        <div
-          className="pointer-events-none absolute left-1/2 top-[23%] hidden -translate-x-1/2 select-none text-center text-[22vw] font-black uppercase leading-none text-[rgba(245,244,231,0.045)] lg:block"
-          style={{ fontFamily: DISPLAY_FONT }}
-        >
-          AIOX
-        </div>
+        <ResearchIndexSidebar
+          runs={sidebarRuns}
+          activeSlug={activeSidebarSlug}
+          query={sidebarQuery}
+          sort={sidebarSort}
+          totalRuns={recentRuns.length}
+          onQueryChange={setSidebarQuery}
+          onSortChange={setSidebarSort}
+          onOpenDash={() => router.push("/observatory")}
+          onOpenRun={(slug) => router.push(`/observatory/research?slug=${encodeURIComponent(slug)}`)}
+        />
+        <ResearchCrumbBar
+          hasResearchSession={hasResearchSession}
+          title={hasResearchSession ? query || "Execução restaurada" : "Novo prompt"}
+          score={recentRuns.find((run) => run.slug === activeSidebarSlug)?.coverage ?? "--"}
+          date={recentRuns.find((run) => run.slug === activeSidebarSlug)?.date ?? new Date().toISOString().slice(0, 10)}
+        />
+        <ResearchSectionTabs />
+        {hasResearchSession ? (
+          <div
+            className="pointer-events-none absolute left-1/2 top-[23%] hidden -translate-x-1/2 select-none text-center text-[22vw] font-black uppercase leading-none text-[rgba(245,244,231,0.045)] lg:block"
+            style={{ fontFamily: DISPLAY_FONT }}
+          >
+            AIOX
+          </div>
+        ) : null}
 
         <div
           className={cn(
-            "relative z-10 mx-auto flex max-w-[1280px] flex-col px-5 lg:px-10",
+            "relative z-10 flex flex-col px-4 sm:px-5 md:px-8 lg:ml-[320px]",
+            "max-w-[1280px]",
             hasResearchSession
-              ? "min-h-0 py-12 lg:py-16"
-              : "min-h-[calc(100vh-60px)] py-14 lg:py-20",
+              ? "min-h-0 py-6 lg:py-10"
+              : "min-h-0 py-6 lg:py-12",
           )}
         >
           <div
             className={cn(
-              "mx-auto flex w-full max-w-[960px] flex-col items-center text-center",
-              hasResearchSession ? "justify-start" : "flex-1 justify-center",
+              "mx-auto flex w-full flex-col items-center text-center",
+              hasResearchSession ? "max-w-[1280px]" : "max-w-[800px]",
+              hasResearchSession ? "justify-start" : "justify-start",
             )}
           >
-            <div
-              className="mb-5 inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.12em]"
-              style={{ fontFamily: MONO_FONT }}
-            >
-              <span className="text-[var(--ink)]">[00]</span>
-              <span className="text-[var(--lime-ink)]">Open Research · AIOX Research_</span>
-            </div>
-
             <h1
-              className="max-w-[940px] text-[42px] font-black uppercase leading-[0.96] tracking-normal text-[var(--ink)] sm:text-[64px] lg:text-[88px]"
+              className={cn(
+                "font-black uppercase leading-none tracking-normal text-[var(--ink)]",
+                hasResearchSession
+                  ? "max-w-[820px] text-[34px] sm:text-[44px] lg:text-[54px]"
+                  : "max-w-none text-[20px]",
+              )}
               style={{ fontFamily: DISPLAY_FONT }}
             >
               {hasResearchSession ? (
@@ -551,30 +899,53 @@ export function ResearchWorkbench({
                   Pesquisa em <span className="text-[var(--lime-ink)]">{sessionHeadline(runs, consolidationRun)}</span>
                 </>
               ) : (
-                <>
-                  O que você quer <span className="text-[var(--lime-ink)]">pesquisar?</span>
-                </>
+                <span className="inline-flex flex-wrap items-center justify-center gap-3 normal-case sm:gap-4">
+                  <img src="/logo/AIOX-White.svg" alt="AIOX" className="h-5 w-auto shrink-0 sm:h-6" />
+                  <span className="my-1 h-3.5 w-px self-stretch bg-[var(--rule-strong)] sm:h-4" />
+                  <span className="font-black uppercase tracking-normal" style={{ fontFamily: DISPLAY_FONT }}>
+                    Research
+                  </span>
+                </span>
               )}
             </h1>
 
-            <div className="mt-9 w-full border border-[var(--rule-strong)] bg-[var(--surface)] text-left shadow-[0_28px_90px_rgba(0,0,0,0.42)]">
-              <div className="grid border-b border-[var(--rule)] bg-[var(--paper-deep)] sm:grid-cols-[1fr_auto]">
-                <div className="flex min-h-12 items-center gap-3 border-b border-[var(--rule)] px-4 sm:border-b-0 sm:border-r">
-                  <Search size={16} className="text-[var(--lime-ink)]" />
-                  <span
-                    className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--ink-3)]"
+            <div
+              className={cn(
+                "relative w-full border border-[var(--rule)] bg-[var(--surface)] text-left shadow-[0_28px_90px_rgba(0,0,0,0.28)]",
+                hasResearchSession ? "mt-6 sm:mt-7" : "mt-6 sm:mt-10",
+                isComposerDragActive && "border-[var(--lime-ink)]",
+              )}
+              onDragOver={handleComposerDragOver}
+              onDragLeave={() => setIsComposerDragActive(false)}
+              onDrop={handleComposerDrop}
+            >
+              {!hasResearchSession ? (
+                <>
+                  <span className="pointer-events-none absolute -left-px -top-px h-[14px] w-[14px] border-l border-t border-[var(--lime-ink)] shadow-[0_0_14px_rgba(209,255,0,0.10)]" />
+                  <span className="pointer-events-none absolute -right-px -top-px h-[14px] w-[14px] border-r border-t border-[var(--lime-ink)] shadow-[0_0_14px_rgba(209,255,0,0.10)]" />
+                  <span className="pointer-events-none absolute -bottom-px -left-px h-[14px] w-[14px] border-b border-l border-[var(--lime-ink)] shadow-[0_0_14px_rgba(209,255,0,0.10)]" />
+                  <span className="pointer-events-none absolute -bottom-px -right-px h-[14px] w-[14px] border-b border-r border-[var(--lime-ink)] shadow-[0_0_14px_rgba(209,255,0,0.10)]" />
+                </>
+              ) : null}
+              {hasResearchSession ? (
+                <div className="grid border-b border-[var(--rule)] bg-[var(--paper-deep)] sm:grid-cols-[1fr_auto]">
+                  <div className="flex min-h-12 items-center gap-3 border-b border-[var(--rule)] px-4 sm:border-b-0 sm:border-r">
+                    <Search size={16} className="text-[var(--lime-ink)]" />
+                    <span
+                      className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--ink-3)]"
+                      style={{ fontFamily: MONO_FONT }}
+                    >
+                      Research Prompt
+                    </span>
+                  </div>
+                  <div
+                    className="flex min-h-12 items-center px-4 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-2)]"
                     style={{ fontFamily: MONO_FONT }}
                   >
-                    [01] Research Prompt
-                  </span>
+                    {researchMethodLabel(methodId)} · {researchDepthLabel(depth)}
+                  </div>
                 </div>
-                <div
-                  className="flex min-h-12 items-center px-4 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-2)]"
-                  style={{ fontFamily: MONO_FONT }}
-                >
-                  {methodId} · {depth}
-                </div>
-              </div>
+              ) : null}
 
               {hasResearchSession ? (
                 <SessionPromptSummary
@@ -590,100 +961,156 @@ export function ResearchWorkbench({
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     onKeyDown={handlePromptKeyDown}
+                    onPaste={handlePromptPaste}
                     placeholder="Pesquise um mercado, uma tecnologia, um concorrente, uma tese ou um conjunto de fontes..."
-                    className="min-h-44 w-full resize-none border-0 bg-[var(--paper-deep)] px-5 py-5 text-[18px] leading-[1.55] text-[var(--ink)] outline-none placeholder:text-[var(--ink-dim)] focus:bg-[var(--surface-console)]"
+                    className="min-h-[132px] w-full resize-none border-0 bg-[var(--paper-deep)] px-5 py-5 text-[15px] leading-[1.55] text-[var(--ink)] outline-none placeholder:text-[var(--ink-dim)] focus:bg-[var(--surface-console)] sm:min-h-[220px] sm:px-[26px] sm:py-[22px] sm:text-[17px]"
                   />
 
-                  <div className="grid gap-0 border-t border-[var(--rule)] bg-[var(--surface)] sm:grid-cols-[1fr_auto]">
-                    <div
-                      className="hidden min-h-14 items-center px-4 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-dim)] sm:flex"
-                      style={{ fontFamily: MONO_FONT }}
-                    >
-                      Enter para rodar em paralelo · Shift + Enter para nova linha
+                  <div className="flex min-h-[52px] flex-col items-stretch border-t border-[var(--rule-soft)] bg-[var(--surface)] xl:flex-row xl:flex-wrap">
+                    <div className="flex min-w-0 flex-wrap items-stretch xl:flex-1">
+                      <input
+                        ref={audioInputRef}
+                        type="file"
+                        accept="audio/*"
+                        className="hidden"
+                        onChange={handleAudioFileChange}
+                      />
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={handleContextFileChange}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className={cn(
+                          "grid h-[52px] w-14 shrink-0 place-items-center border-r border-[var(--rule-soft)] text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
+                          (contextFiles.length > 0 || contextAttachments.length > 0) && "bg-[rgba(209,255,0,0.06)] text-[var(--lime-ink)]",
+                        )}
+                        aria-label="Anexar arquivos"
+                      >
+                        <Plus size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAudioButtonClick}
+                        className={cn(
+                          "grid h-[52px] w-14 shrink-0 place-items-center border-r border-[var(--rule-soft)] text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
+                          (audioFile || audioAttachment) && "text-[var(--lime-ink)]",
+                          isRecordingAudio && "bg-[rgba(239,68,68,0.12)] text-[var(--danger-ink)]",
+                        )}
+                        aria-label={isRecordingAudio ? "Parar gravação" : "Gravar áudio"}
+                      >
+                        {isTranscribingAudio ? <Loader2 size={15} className="animate-spin" /> : isRecordingAudio ? <Square size={13} fill="currentColor" /> : <Mic size={15} />}
+                      </button>
+                      <ResearchMethodPicker
+                        methodId={methodId}
+                        open={methodPickerOpen}
+                        onOpenChange={setMethodPickerOpen}
+                        onChange={(nextMethodId) => {
+                          setMethodId(nextMethodId)
+                          setMethodPickerOpen(false)
+                        }}
+                      />
+                      {audioFile || audioAttachment ? (
+                        <button
+                          type="button"
+                          onClick={clearAudioAttachment}
+                          className="inline-flex h-[52px] min-w-0 max-w-[240px] items-center gap-2 border-r border-[var(--rule-soft)] bg-[var(--paper-deep)] px-4 text-[11px] text-[var(--ink-2)] transition-colors hover:text-[var(--danger-ink)]"
+                          aria-label={`${audioFile?.name ?? audioAttachment?.name} · remover`}
+                        >
+                          <span className="truncate">{isTranscribingAudio ? "Transcrevendo áudio..." : audioFile?.name ?? audioAttachment?.name}</span>
+                          <X size={13} className="shrink-0" />
+                        </button>
+                      ) : null}
+                      {contextFiles.map((file, index) => (
+                        <button
+                          key={`pending-${file.name}-${file.size}-${index}`}
+                          type="button"
+                          onClick={() => removePendingContextFile(index)}
+                          className="inline-flex h-[52px] min-w-0 max-w-[240px] items-center gap-2 border-r border-[var(--rule-soft)] bg-[var(--paper-deep)] px-4 text-[11px] text-[var(--ink-2)] transition-colors hover:text-[var(--danger-ink)]"
+                          aria-label={`${file.name} · remover`}
+                        >
+                          <span className="truncate">{file.name}</span>
+                          <X size={13} className="shrink-0" />
+                        </button>
+                      ))}
+                      {contextAttachments.map((attachment) => (
+                        <button
+                          key={attachment.path}
+                          type="button"
+                          onClick={() => removeContextAttachment(attachment.path)}
+                          className="inline-flex h-[52px] min-w-0 max-w-[240px] items-center gap-2 border-r border-[var(--rule-soft)] bg-[var(--paper-deep)] px-4 text-[11px] text-[var(--ink-2)] transition-colors hover:text-[var(--danger-ink)]"
+                          aria-label={`${attachment.name} · remover`}
+                        >
+                          <span className="truncate">{attachment.name}</span>
+                          <X size={13} className="shrink-0" />
+                        </button>
+                      ))}
                     </div>
-                    <button
-                      type="button"
-                      onClick={submitResearch}
-                      disabled={!canStart || isStarting}
-                      className={cn(
-                        "inline-flex min-h-14 items-center justify-center gap-3 px-5 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors sm:border-l sm:border-[var(--rule)]",
-                        canStart
-                          ? "bg-[var(--lime-ink)] text-black hover:brightness-95"
-                          : "bg-[var(--ink-faint)] text-[var(--ink-dim)]",
-                      )}
-                      style={{ fontFamily: MONO_FONT }}
-                    >
-                      <Play size={15} fill="currentColor" />
-                      {isStarting
-                        ? "Executando"
-                        : executionMode === "byok"
-                          ? "Executar BYOK"
-                          : `Executar ${runnableSelectedClis.length} runtime${runnableSelectedClis.length === 1 ? "" : "s"}`}
-                    </button>
+
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1.04fr)] items-stretch border-t border-[var(--rule-soft)] xl:ml-auto xl:flex xl:shrink-0 xl:border-t-0">
+                      <ComposerModelPicker
+                        clis={discovery.clis}
+                        selectedCliIds={selectedCliIds}
+                        mode={executionMode}
+                        byokConfig={byokConfig}
+                        open={modelPickerOpen}
+                        onOpenChange={setModelPickerOpen}
+                        onToggleCli={toggleComposerCli}
+                        onSelectAll={selectAllRunnableClis}
+                        onModeChange={setExecutionModeFromPicker}
+                        onByokConfigChange={updateByokConfig}
+                      />
+                      <button
+                        type="button"
+                        onClick={submitResearch}
+                        disabled={!canStart || isStarting || isUploadingAttachment}
+                        className={cn(
+                          "inline-flex h-[52px] min-w-0 flex-1 items-center justify-center gap-2.5 px-4 text-[11px] font-bold uppercase tracking-[0.14em] transition-colors sm:flex-none sm:gap-3 sm:px-6 sm:text-[12px] sm:tracking-[0.16em] xl:min-w-[164px]",
+                          canStart && !isUploadingAttachment
+                            ? "bg-[var(--lime-ink)] text-black hover:brightness-105"
+                            : "cursor-not-allowed bg-[var(--lime-ink)] text-black brightness-75",
+                        )}
+                        style={{ fontFamily: MONO_FONT }}
+                        aria-label={isTranscribingAudio ? "Transcrevendo" : isUploadingAttachment ? "Anexando" : "Pesquisar"}
+                      >
+                        {isStarting || isUploadingAttachment ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <>
+                            <span>Pesquisar</span>
+                            <ArrowRight size={15} />
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </>
               )}
             </div>
 
+            {!hasResearchSession ? (
+              <QuickSuggestionRow
+                onSelect={(nextPrompt) => {
+                  setQuery(nextPrompt)
+                  setError(null)
+                }}
+              />
+            ) : null}
+
             {error && (
-              <p className="mt-4 flex max-w-[960px] gap-2 text-left text-[13px] leading-[1.45] text-[var(--danger-ink)]">
+              <p className="mt-4 flex max-w-[1880px] gap-2 text-left text-[13px] leading-[1.45] text-[var(--danger-ink)]">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0" />
                 {error}
               </p>
             )}
 
-            {!hasResearchSession && (
-              <>
-                <div className="mt-5 grid w-full max-w-[960px] gap-[1px] bg-[var(--rule)] sm:grid-cols-2 lg:grid-cols-4">
-                  {RESEARCH_METHODS.map((method) => {
-                    const active = method.id === methodId
-                    return (
-                      <button
-                        key={method.id}
-                        type="button"
-                        onClick={() => setMethodId(method.id)}
-                        className={cn(
-                          "inline-flex min-h-12 items-center justify-center gap-2 bg-[var(--paper-alt)] px-4 text-[12px] transition-colors",
-                          active
-                            ? "text-[var(--lime-ink)]"
-                            : "text-[var(--ink-3)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
-                        )}
-                        title={method.description}
-                      >
-                        <Radar size={14} />
-                        {method.label}
-                      </button>
-                    )
-                  })}
-                </div>
-
-                <div className="mt-[1px] grid w-full max-w-[960px] gap-[1px] bg-[var(--rule)] sm:grid-cols-2">
-                  {DEPTH_OPTIONS.map((option) => {
-                    const active = depth === option.id
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        onClick={() => setDepth(option.id)}
-                        className={cn(
-                          "min-h-11 bg-[var(--paper-alt)] px-4 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors",
-                          active
-                            ? "text-[var(--lime-ink)]"
-                            : "text-[var(--ink-3)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
-                        )}
-                        style={{ fontFamily: MONO_FONT }}
-                        title={option.description}
-                      >
-                        {option.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </>
-            )}
           </div>
 
-          <div className="mx-auto mt-12 w-full max-w-[960px]">
+          <div className={cn("mx-auto w-full", hasResearchSession ? "mt-10 max-w-[1280px]" : "mt-0 max-w-[800px]")}>
             {runs.length > 0 || consolidationRun ? (
               <BatchStatus
                 runs={runs}
@@ -703,13 +1130,18 @@ export function ResearchWorkbench({
                 title="Restaurando execução"
                 body="Buscando o estado salvo dos runs informados nesta URL."
               />
-            ) : (
-              <ExecutionEmptyState
-                icon={<FileText className="mx-auto mb-3 text-[var(--ink-3)]" size={22} />}
-                title="O resultado aparecerá aqui"
-                body="A pesquisa será salva em docs/research/ e poderá ser aberta no Observatory."
-              />
-            )}
+            ) : null}
+            <ResearchDocsPanel
+              runs={recentRuns}
+              onOpenDash={() => router.push("/observatory")}
+              onOpenRun={(slug) => router.push(`/observatory/research?slug=${encodeURIComponent(slug)}`)}
+            />
+            <RecentResearchList
+              runs={recentRuns}
+              flushTop={!hasResearchSession}
+              onOpenDash={() => router.push("/observatory")}
+              onOpenRun={(slug) => router.push(`/observatory/research?slug=${encodeURIComponent(slug)}`)}
+            />
           </div>
         </div>
       </section>
@@ -717,16 +1149,590 @@ export function ResearchWorkbench({
   )
 }
 
-function RuntimePicker({
+function ResearchShellHeader({
+  onOpenResearch,
+  onOpenBench,
+  onOpenSinkraMaps,
+  onOpenDemo,
+}: {
+  onOpenResearch: () => void
+  onOpenBench: () => void
+  onOpenSinkraMaps: () => void
+  onOpenDemo: () => void
+}) {
+  return (
+    <header className="sticky top-0 z-50 grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-stretch gap-0 border-b border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:gap-8 md:px-0 md:py-0 md:pr-5">
+      <button
+        type="button"
+        onClick={onOpenResearch}
+        className="flex min-w-0 items-center gap-3 text-left transition-colors hover:text-[var(--lime-ink)] md:h-full md:border-r md:border-[var(--rule-soft)] md:px-[22px] md:hover:bg-[var(--surface-hover)]"
+        title="Abrir Research"
+      >
+        <img src="/logo/AIOX-White.svg" alt="AIOX" className="h-[18px] w-auto shrink-0" />
+        <span className="h-4 w-px shrink-0 bg-[var(--rule-strong)]" />
+        <span
+          className="truncate text-[11px] font-bold uppercase tracking-[0.20em] text-[var(--ink)]"
+          style={{ fontFamily: MONO_FONT }}
+        >
+          Research
+        </span>
+      </button>
+
+      <ResearchNav
+        onOpenResearch={onOpenResearch}
+        onOpenBench={onOpenBench}
+        onOpenSinkraMaps={onOpenSinkraMaps}
+        onOpenDemo={onOpenDemo}
+      />
+
+      <div className="flex items-center justify-self-end">
+        <button
+          type="button"
+          onClick={onOpenResearch}
+          className="inline-flex h-[30px] items-center gap-2 bg-[var(--lime-ink)] px-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-black transition-[filter,box-shadow] hover:brightness-105 hover:shadow-[0_0_16px_rgba(209,255,0,0.25)] sm:px-3 md:h-8"
+          style={{ fontFamily: MONO_FONT }}
+          aria-label="Nova pesquisa"
+        >
+          <Plus size={13} />
+          <span>Nova pesquisa</span>
+        </button>
+      </div>
+    </header>
+  )
+}
+
+function ResearchNav({
+  onOpenResearch,
+  onOpenBench,
+  onOpenSinkraMaps,
+  onOpenDemo,
+}: {
+  onOpenResearch: () => void
+  onOpenBench: () => void
+  onOpenSinkraMaps: () => void
+  onOpenDemo: () => void
+}) {
+  const items = [
+    { order: "01", label: "Pesquisas", active: true, onClick: onOpenResearch },
+    { order: "02", label: "Bench", active: false, onClick: onOpenBench },
+    { order: "03", label: "SINKRA Maps", active: false, onClick: onOpenSinkraMaps },
+    { order: "04", label: "Demo", active: false, onClick: onOpenDemo },
+  ]
+  return (
+    <nav className="hidden min-w-0 items-stretch md:flex" aria-label="Apps">
+      {items.map((item) => {
+        return (
+          <button
+            key={item.label}
+            type="button"
+            onClick={item.onClick}
+            className={cn(
+              "relative inline-flex h-full min-w-0 items-center gap-2 px-3.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors xl:px-[18px]",
+              item.active
+                ? "text-[var(--lime-ink)] after:absolute after:inset-x-3.5 after:bottom-[-1px] after:h-px after:bg-[var(--lime-ink)] after:shadow-[0_0_10px_rgba(209,255,0,0.35)] xl:after:inset-x-[18px]"
+                : "text-[var(--ink-3)] hover:text-[var(--ink)]",
+            )}
+            style={{ fontFamily: MONO_FONT }}
+          >
+            <span className={cn("hidden text-[9.5px] tracking-[0.10em] xl:inline", item.active ? "text-[var(--lime-ink)]" : "text-[var(--ink-dim)]")}>
+              {item.order}
+            </span>
+            <span className="truncate">{item.label}</span>
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
+function ResearchIndexSidebar({
+  runs,
+  activeSlug,
+  query,
+  sort,
+  totalRuns,
+  onQueryChange,
+  onSortChange,
+  onOpenDash,
+  onOpenRun,
+}: {
+  runs: RecentResearchRun[]
+  activeSlug: string | null
+  query: string
+  sort: ResearchSidebarSort
+  totalRuns: number
+  onQueryChange: (value: string) => void
+  onSortChange: (sort: ResearchSidebarSort) => void
+  onOpenDash: () => void
+  onOpenRun: (slug: string) => void
+}) {
+  const filters: Array<{ id: ResearchSidebarSort; label: string }> = [
+    { id: "recent", label: "Recente" },
+    { id: "score", label: "Score" },
+    { id: "category", label: "Categoria" },
+  ]
+  return (
+    <aside className="fixed left-0 top-14 z-30 hidden h-[calc(100vh-56px)] w-[320px] flex-col overflow-hidden border-r border-[var(--rule-soft)] bg-[var(--surface)] lg:flex">
+      <div className="border-b border-[var(--rule-soft)] px-5 py-[18px]">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.20em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+            <b className="font-semibold text-[var(--lime-ink)]">Index</b> · Research Runs
+          </span>
+          <span className="text-[10px] tracking-[0.10em] text-[var(--ink-2)]" style={{ fontFamily: MONO_FONT }}>
+            <b className="font-medium text-[var(--ink)]">{totalRuns}</b>
+          </span>
+        </div>
+        <label className="relative flex items-center">
+          <Search size={13} className="pointer-events-none absolute left-3 text-[var(--ink-dim)]" />
+          <input
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="Buscar runs..."
+            spellCheck={false}
+            className="h-8 w-full border border-[var(--rule-soft)] bg-[var(--paper)] px-8 pr-12 text-[13px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-dim)] focus:border-[var(--lime-ink)]"
+          />
+          <span className="pointer-events-none absolute right-2 border border-[var(--rule-soft)] px-1.5 py-px text-[10px] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+            /
+          </span>
+        </label>
+        <div className="mt-3 grid grid-cols-3 gap-1">
+          {filters.map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              onClick={() => onSortChange(filter.id)}
+              className={cn(
+                "h-[26px] border px-1.5 text-[9px] font-bold uppercase tracking-[0.08em] transition-colors",
+                sort === filter.id
+                  ? "border-[rgba(209,255,0,0.25)] bg-[rgba(209,255,0,0.05)] text-[var(--lime-ink)]"
+                  : "border-[var(--rule-soft)] text-[var(--ink-3)] hover:border-[var(--rule-strong)] hover:text-[var(--ink)]",
+              )}
+              style={{ fontFamily: MONO_FONT }}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto pb-20">
+        <div className="flex items-baseline justify-between px-5 pb-2 pt-4 text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+          <span>{sort === "category" ? "Agrupado" : "Recentes"}</span>
+          <span className="text-[var(--ink-2)]">{runs.length}</span>
+        </div>
+        {runs.length > 0 ? (
+          runs.map((run, index) => (
+            <ResearchSidebarRunItem
+              key={run.slug}
+              run={run}
+              index={index}
+              active={run.slug === activeSlug}
+              onOpen={() => onOpenRun(run.slug)}
+            />
+          ))
+        ) : (
+          <div className="mx-5 mt-3 border border-dashed border-[var(--rule)] bg-[var(--paper-deep)] px-4 py-6 text-center">
+            <FileText className="mx-auto mb-3 text-[var(--ink-3)]" size={20} />
+            <p className="text-[13px] font-semibold text-[var(--ink)]">Nenhum run encontrado</p>
+            <p className="mt-1 text-[11px] leading-[1.45] text-[var(--ink-3)]">Ajuste a busca para voltar ao índice.</p>
+          </div>
+        )}
+      </div>
+
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between border-t border-[var(--rule-soft)] bg-[var(--surface)] px-5 py-3">
+        <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+          Docs / Research
+        </span>
+        <button
+          type="button"
+          onClick={onOpenDash}
+          className="grid h-[26px] w-[26px] place-items-center border border-[var(--rule-soft)] text-[var(--ink-3)] transition-colors hover:border-[var(--lime-ink)] hover:text-[var(--lime-ink)]"
+          aria-label="Abrir Observatory"
+        >
+          <LayoutDashboard size={12} />
+        </button>
+      </div>
+    </aside>
+  )
+}
+
+function ResearchSidebarRunItem({
+  run,
+  index,
+  active,
+  onOpen,
+}: {
+  run: RecentResearchRun
+  index: number
+  active: boolean
+  onOpen: () => void
+}) {
+  const score = formatCoverage(run.coverage)
+  const scoreNumber = parseCoveragePercent(score)
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(
+        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-l-2 border-transparent px-5 py-3 text-left transition-colors hover:bg-[var(--surface-hover)]",
+        active && "border-l-[var(--lime-ink)] bg-[var(--paper)]",
+      )}
+    >
+      <span
+        className={cn(
+          "h-2 w-2 border border-[var(--ink-dim)]",
+          run.status === "completed" && "border-[var(--lime-ink)] bg-[var(--lime-ink)] shadow-[0_0_8px_rgba(209,255,0,0.5)]",
+          run.status === "failed" && "border-[var(--danger-ink)] bg-[var(--danger-ink)]",
+          run.status !== "completed" && run.status !== "failed" && "border-[var(--warning-ink)] bg-[var(--warning-ink)]",
+        )}
+      />
+      <span className="min-w-0">
+        <span className="line-clamp-2 block text-[14px] font-semibold leading-[1.3] text-[var(--ink)]">
+          {run.displayTitle || run.title || run.slug}
+        </span>
+        <span className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[9.5px] uppercase tracking-[0.12em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+          <span>{formatResearchDate(run.date)}</span>
+          <span className="text-[var(--rule-strong)]">·</span>
+          <span>{run.files} arq.</span>
+          <span className="text-[var(--rule-strong)]">·</span>
+          <span>#{String(index + 1).padStart(2, "0")}</span>
+        </span>
+      </span>
+      <span
+        className={cn(
+          "text-right text-[13px] font-bold tracking-normal text-[var(--ink-2)]",
+          active && "text-[var(--lime-ink)]",
+          scoreNumber !== null && scoreNumber < 70 && "text-[var(--warning-ink)]",
+        )}
+        style={{ fontFamily: MONO_FONT }}
+      >
+        {scoreNumber ?? "--"}
+      </span>
+    </button>
+  )
+}
+
+function ResearchCrumbBar({
+  hasResearchSession,
+  title,
+  score,
+  date,
+}: {
+  hasResearchSession: boolean
+  title: string
+  score: string
+  date: string
+}) {
+  return (
+    <div className="relative z-10 hidden min-h-11 items-center gap-3 border-b border-[var(--rule-soft)] px-7 text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-dim)] lg:ml-[320px] lg:flex" style={{ fontFamily: MONO_FONT }}>
+      <span className="inline-flex items-center gap-2 font-semibold text-[var(--lime-ink)]">
+        <span className="h-1.5 w-1.5 bg-[var(--lime-ink)] shadow-[0_0_8px_rgba(209,255,0,0.55)]" />
+        {hasResearchSession ? "Sessão" : "Selecionado"}
+      </span>
+      <span className="text-[var(--rule-strong)]">·</span>
+      <span className="min-w-0 truncate font-medium text-[var(--ink)]">{title}</span>
+      <span className="ml-auto flex shrink-0 items-center gap-5">
+        <span>Score · <b className="font-medium text-[var(--ink-2)]">{formatCoverage(score)}</b></span>
+        <span>{formatResearchDate(date)}</span>
+      </span>
+    </div>
+  )
+}
+
+function ResearchSectionTabs() {
+  const tabs = ["Map", "Ações", "Evidências", "Waves", "Fontes", "Players", "Perguntas", "Doc"]
+  return (
+    <div className="relative z-10 flex gap-1.5 overflow-x-auto border-b border-[var(--rule-soft)] bg-[var(--paper)] px-3.5 py-2.5 sm:px-4 lg:ml-[320px] lg:px-7 lg:py-3.5">
+      {tabs.map((tab, index) => (
+        <span
+          key={tab}
+          className={cn(
+            "inline-flex h-9 shrink-0 items-center gap-2.5 border px-3.5 text-[11px] font-semibold uppercase tracking-[0.16em]",
+            index === 0
+              ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black shadow-[0_0_16px_rgba(209,255,0,0.10)]"
+              : "border-[var(--rule)] bg-[var(--surface)] text-[var(--ink-2)]",
+          )}
+          style={{ fontFamily: MONO_FONT }}
+        >
+          <span className={cn("border-r pr-2 text-[10px] font-bold tracking-[0.10em]", index === 0 ? "border-black/20 text-black/60" : "border-[var(--rule-soft)] text-[var(--ink-dim)]")}>
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          {tab}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function ResearchDocsPanel({
+  runs,
+  onOpenDash,
+  onOpenRun,
+}: {
+  runs: RecentResearchRun[]
+  onOpenDash: () => void
+  onOpenRun: (slug: string) => void
+}) {
+  const selectedRun = runs[0] ?? null
+  const selectedFiles = selectedRun?.sampleFiles ?? []
+  return (
+    <section className="mt-6 overflow-hidden border border-[var(--rule)] bg-[var(--surface)] text-left sm:mt-8">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--rule)] px-4 py-3.5 sm:px-5 sm:py-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--lime-ink)]" style={{ fontFamily: MONO_FONT }}>
+            Docs / Research
+          </p>
+          <h2 className="mt-1 text-[22px] font-black uppercase leading-none text-[var(--ink)] sm:text-[24px]" style={{ fontFamily: DISPLAY_FONT }}>
+            Arquivos indexados
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenDash}
+          className="inline-flex h-9 items-center gap-2.5 border border-[var(--rule-strong)] bg-[var(--paper-deep)] px-3.5 text-[9.5px] font-bold uppercase tracking-[0.18em] text-[var(--ink)] transition-colors hover:border-[var(--lime-ink)] hover:bg-[var(--lime-ink)] hover:text-black"
+          style={{ fontFamily: MONO_FONT }}
+        >
+          <LayoutDashboard size={13} />
+          Observatory
+        </button>
+      </div>
+      {selectedRun ? (
+        <div className="grid gap-[1px] bg-[var(--rule)] lg:grid-cols-[minmax(0,1fr)_300px]">
+          <button
+            type="button"
+            onClick={() => onOpenRun(selectedRun.slug)}
+            className="group grid min-h-[220px] min-w-0 content-between bg-[var(--paper-deep)] p-4 text-left transition-colors hover:bg-[var(--surface-hover)] sm:min-h-[260px] sm:p-7"
+          >
+            <span className="min-w-0">
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-[0.18em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+                <span className="text-[var(--lime-ink)]">Doc reader</span>
+                <span className="text-[var(--rule-strong)]">·</span>
+                <span>{selectedRun.files} arquivos</span>
+                <span className="text-[var(--rule-strong)]">·</span>
+                <span>{compactStatus(selectedRun.status)}</span>
+              </span>
+              <h3 className="mt-4 max-w-[780px] text-[24px] font-black uppercase leading-[1.04] text-[var(--ink)] sm:mt-5 sm:text-[36px]" style={{ fontFamily: DISPLAY_FONT }}>
+                {selectedRun.displayTitle || selectedRun.title || selectedRun.slug}
+              </h3>
+              <p className="mt-3 max-w-[720px] text-[12.5px] leading-[1.55] text-[var(--ink-2)] sm:mt-4 sm:text-[13px] sm:leading-[1.6]">
+                Run local-first em <span className="text-[var(--ink)]">docs/research/{selectedRun.slug}</span>. Abra no Observatory para ler o relatório completo, fontes, recomendações e arquivos auxiliares.
+              </p>
+            </span>
+            <span className="mt-6 grid grid-cols-2 gap-[1px] bg-[var(--rule)] sm:mt-8 sm:grid-cols-4">
+              <DocMetric label="Score" value={formatCoverage(selectedRun.coverage)} />
+              <DocMetric label="Fontes" value={selectedRun.sources || "--"} />
+              <DocMetric label="Waves" value={String(selectedRun.waves)} />
+              <DocMetric label="Data" value={formatResearchDate(selectedRun.date)} />
+            </span>
+          </button>
+
+          <aside className="bg-[var(--paper-deep)]" aria-label="Arquivos do run">
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--rule-soft)] px-4 py-3.5 sm:px-5 sm:py-4">
+              <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--ink)]" style={{ fontFamily: MONO_FONT }}>
+                Arquivos do run
+              </span>
+              <span className="text-[10px] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+                {selectedRun.files}
+              </span>
+            </div>
+            <div className="max-h-[300px] overflow-y-auto sm:max-h-[360px]">
+              {selectedFiles.length > 0 ? (
+                selectedFiles.map((file, index) => (
+                  <button
+                    key={file}
+                    type="button"
+                    onClick={() => onOpenRun(selectedRun.slug)}
+                    className="group grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-[var(--rule-soft)] px-4 py-2.5 text-left transition-colors last:border-b-0 hover:bg-[var(--surface-hover)] sm:grid-cols-[28px_minmax(0,1fr)_auto] sm:gap-3 sm:px-5 sm:py-3"
+                  >
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+                      {String(index + 1).padStart(2, "0")}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13px] font-semibold text-[var(--ink)]">{docFileTitle(file)}</span>
+                      <span className="mt-0.5 block truncate text-[9.5px] uppercase tracking-[0.12em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+                        {docFileKind(file)} · {file}
+                      </span>
+                    </span>
+                    <ArrowRight size={13} className="text-[var(--lime-ink)] opacity-70 transition-transform group-hover:translate-x-0.5 group-hover:opacity-100" />
+                  </button>
+                ))
+              ) : (
+                <div className="px-5 py-8 text-center">
+                  <FileText className="mx-auto mb-3 text-[var(--ink-3)]" size={20} />
+                  <p className="text-[12px] text-[var(--ink-2)]">Sem lista de arquivos para este run.</p>
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : (
+        <div className="grid min-h-32 place-items-center bg-[var(--paper-deep)] px-5 py-8 text-center">
+          <div>
+            <FileText className="mx-auto mb-3 text-[var(--ink-3)]" size={22} />
+            <p className="text-[14px] font-semibold text-[var(--ink)]">Sem docs indexados</p>
+            <p className="mt-1 text-[12px] leading-[1.45] text-[var(--ink-2)]">Os artefatos de docs/research aparecem aqui após o primeiro run.</p>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function DocMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="grid min-h-[62px] content-between bg-[var(--surface)] px-3 py-2.5 sm:min-h-[72px] sm:px-4 sm:py-3">
+      <span className="text-[9.5px] uppercase tracking-[0.16em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+        {label}
+      </span>
+      <span className="break-words text-[15px] font-black leading-tight text-[var(--ink)] sm:truncate sm:text-[17px]" style={{ fontFamily: DISPLAY_FONT }}>
+        {value}
+      </span>
+    </span>
+  )
+}
+
+function ResearchMethodPicker({
+  methodId,
+  open,
+  onOpenChange,
+  onChange,
+}: {
+  methodId: ResearchMethodId
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onChange: (methodId: ResearchMethodId) => void
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const selectedMethod = methodById(methodId)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: MouseEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) onOpenChange(false)
+    }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") onOpenChange(false)
+    }
+    document.addEventListener("mousedown", onPointerDown)
+    document.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown)
+      document.removeEventListener("keydown", onKeyDown)
+    }
+  }, [onOpenChange, open])
+
+  return (
+    <div className="relative min-w-[152px] flex-1 xl:min-w-[176px] xl:flex-none" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        className={cn(
+          "group relative inline-flex h-[52px] w-full min-w-0 items-center gap-3 border-r border-[var(--rule-soft)] px-4 text-[12px] font-semibold transition-colors xl:min-w-[204px] xl:px-[18px]",
+          open
+            ? "bg-[rgba(209,255,0,0.05)] text-[var(--ink)]"
+            : "bg-[var(--paper-deep)] text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
+        )}
+        aria-expanded={open}
+        aria-label="Selecionar tipo de pesquisa"
+      >
+        <span className="hidden text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-dim)] sm:inline" style={{ fontFamily: MONO_FONT }}>
+          Tipo
+        </span>
+        <span className="truncate text-[13.5px] font-medium text-[var(--ink)]">
+          {methodDisplayName(selectedMethod.label)}
+        </span>
+        <ChevronDown size={13} className={cn("ml-auto shrink-0 transition-transform text-[var(--ink-dim)]", open && "rotate-180 text-[var(--lime-ink)]")} />
+        <OptionTooltip title={selectedMethod.label} body={researchMethodTooltip(selectedMethod)} />
+      </button>
+
+      {open ? (
+        <div
+          className="absolute bottom-[calc(100%+6px)] left-0 z-50 w-[min(320px,calc(100vw-2rem))] border border-[var(--rule)] bg-[var(--surface)] shadow-[0_24px_70px_rgba(0,0,0,0.62)]"
+          role="listbox"
+        >
+          {RESEARCH_METHODS.map((method, index) => {
+            const active = method.id === methodId
+            return (
+              <button
+                key={method.id}
+                type="button"
+                onClick={() => onChange(method.id)}
+                role="option"
+                aria-selected={active}
+                className={cn(
+                  "group relative grid min-h-12 w-full grid-cols-[10px_minmax(0,1fr)_28px] items-center gap-3 border-b border-[var(--rule)] px-4 text-left transition-colors last:border-b-0",
+                  active
+                    ? "bg-[rgba(209,255,0,0.06)] text-[var(--lime-ink)]"
+                    : "text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
+                )}
+              >
+                <span className={cn("h-1.5 w-1.5 border border-current", active && "bg-[var(--lime-ink)] shadow-[0_0_8px_rgba(209,255,0,0.8)]")} />
+                <span className="truncate text-[13px] font-semibold">{methodDisplayName(method.label)}</span>
+                <span className="text-right text-[10px] tracking-[0.12em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <OptionTooltip title={method.label} body={researchMethodTooltip(method)} />
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function QuickSuggestionRow({ onSelect }: { onSelect: (prompt: string) => void }) {
+  return (
+    <div className="mb-9 mt-4 grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-3 text-left sm:mb-20 sm:flex sm:flex-wrap sm:gap-x-1.5 sm:gap-y-2">
+      <span className="text-[10px] font-bold uppercase tracking-[0.20em] text-[var(--ink-dim)] sm:mr-2" style={{ fontFamily: MONO_FONT }}>
+        Sugestões
+      </span>
+      <div className="flex min-w-0 gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
+        {QUICK_RESEARCH_SUGGESTIONS.map((suggestion) => (
+          <button
+            key={suggestion.label}
+            type="button"
+            onClick={() => onSelect(suggestion.prompt)}
+            className="inline-flex min-h-9 shrink-0 items-center gap-2 whitespace-nowrap border border-[var(--rule)] bg-transparent px-3 text-[13px] font-medium text-[var(--ink-2)] transition-colors hover:border-[var(--rule-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]"
+          >
+            <span className="text-[var(--lime-ink)]" style={{ fontFamily: MONO_FONT }}>
+              ›
+            </span>
+            {suggestion.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function OptionTooltip({ title, body }: { title: string; body: string }) {
+  return (
+    <span
+      className="pointer-events-none absolute left-1/2 top-[calc(100%+10px)] z-[70] w-[min(300px,calc(100vw-2rem))] -translate-x-1/2 border border-[var(--rule-strong)] bg-[var(--surface-console)] px-3 py-3 text-left normal-case tracking-normal text-[var(--ink-2)] opacity-0 shadow-[0_18px_44px_rgba(0,0,0,0.52)] transition-opacity delay-0 duration-150 group-hover:delay-1000 group-hover:opacity-100 group-focus-visible:delay-1000 group-focus-visible:opacity-100"
+      role="tooltip"
+      aria-hidden="true"
+    >
+      <span className="block text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--lime-ink)]" style={{ fontFamily: MONO_FONT }}>
+        {title}
+      </span>
+      <span className="mt-1 block text-[12px] font-normal leading-[1.45] text-[var(--ink-2)]" style={{ fontFamily: SANS_FONT }}>
+        {body}
+      </span>
+    </span>
+  )
+}
+
+function ComposerModelPicker({
   clis,
   selectedCliIds,
   mode,
   byokConfig,
   open,
   onOpenChange,
-  onModeChange,
-  onToggle,
+  onToggleCli,
   onSelectAll,
+  onModeChange,
   onByokConfigChange,
 }: {
   clis: ResearchCliStatus[]
@@ -735,272 +1741,329 @@ function RuntimePicker({
   byokConfig: ResearchByokConfig
   open: boolean
   onOpenChange: (open: boolean) => void
-  onModeChange: (mode: ResearchExecutionMode) => void
-  onToggle: (cliId: ResearchCliId) => void
+  onToggleCli: (cliId: ResearchCliId) => void
   onSelectAll: () => void
+  onModeChange: (mode: ResearchExecutionMode) => void
   onByokConfigChange: (patch: Partial<ResearchByokConfig>) => void
 }) {
-  const selectedRunnableCount = clis.filter((cli) => selectedCliIds.includes(cli.id) && cli.available && cli.launchSupported).length
-  const label = mode === "byok" ? "BYOK" : selectedRunnableCount === 1 ? "1 CLI" : `${selectedRunnableCount} CLIs`
-  const scope = mode === "byok" ? byokConfig.model || "modelo" : "paralelo"
-  const modeReady = mode === "byok" ? Boolean(byokConfig.apiKey && byokConfig.baseUrl && byokConfig.model) : selectedRunnableCount > 0
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+  const [popoverStyle, setPopoverStyle] = useState<CSSProperties | undefined>(undefined)
+  const availableClis = clis.filter((cli) => cli.available && cli.launchSupported)
+  const selectedAvailableClis = availableClis.filter((cli) => selectedCliIds.includes(cli.id))
+  const selectedLabel =
+    mode === "byok"
+      ? byokConfig.model || OPENROUTER_CLI_LABEL
+      : selectedAvailableClis.length === 0
+        ? "CLI"
+        : selectedAvailableClis.length === 1
+          ? compactCliLabel(selectedAvailableClis[0].id)
+          : `${selectedAvailableClis.length} CLIs`
+  const byokReady = Boolean(byokConfig.apiKey && byokConfig.baseUrl && byokConfig.model)
+
+  useEffect(() => {
+    if (!open) return
+    const updatePosition = () => {
+      if (!wrapRef.current) return
+      const rect = wrapRef.current.getBoundingClientRect()
+      const viewportPad = 16
+      const width = Math.min(380, window.innerWidth - viewportPad * 2)
+      setPopoverStyle({
+        width,
+        left: Math.min(Math.max(viewportPad, rect.right - width), window.innerWidth - width - viewportPad),
+        bottom: Math.max(viewportPad, window.innerHeight - rect.top + 10),
+      })
+    }
+    const onPointerDown = (event: MouseEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) onOpenChange(false)
+    }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") onOpenChange(false)
+    }
+    updatePosition()
+    document.addEventListener("mousedown", onPointerDown)
+    document.addEventListener("keydown", onKeyDown)
+    window.addEventListener("resize", updatePosition)
+    window.addEventListener("scroll", updatePosition, true)
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown)
+      document.removeEventListener("keydown", onKeyDown)
+      window.removeEventListener("resize", updatePosition)
+      window.removeEventListener("scroll", updatePosition, true)
+    }
+  }, [onOpenChange, open])
 
   return (
-    <div className="relative min-w-0">
+    <div className="relative min-w-0" ref={wrapRef}>
       <button
         type="button"
         onClick={() => onOpenChange(!open)}
         className={cn(
-          "inline-flex h-10 max-w-[min(520px,calc(100vw-2rem))] items-center gap-2 border px-3 text-[12px] transition-colors",
+          "relative inline-flex h-[52px] w-full min-w-0 items-center gap-2.5 border-l border-[var(--rule-soft)] border-r border-[var(--rule-soft)] bg-[rgba(209,255,0,0.04)] px-3 text-[12px] font-semibold text-[var(--ink)] transition-colors hover:bg-[rgba(209,255,0,0.08)] sm:gap-3 sm:px-[18px] xl:max-w-[204px]",
           open
-            ? "border-[var(--lime-ink)] bg-[rgba(209,255,0,0.10)] text-[var(--ink)]"
-            : "border-[var(--rule-strong)] bg-[var(--surface)] text-[var(--ink-2)] hover:border-[var(--lime-ink)] hover:text-[var(--ink)]",
+            ? "bg-[rgba(209,255,0,0.08)]"
+            : "",
         )}
         aria-expanded={open}
+        aria-label="Selecionar modelo"
       >
-        <span className={cn(
-          "grid h-6 w-6 shrink-0 place-items-center border",
-          modeReady
-            ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black"
-            : "border-[var(--rule)] bg-[var(--ink-faint)] text-[var(--ink-3)]",
-        )}>
-          <Terminal size={15} strokeWidth={2} />
+        <span className="pointer-events-none absolute inset-x-0 bottom-[-1px] h-0.5 bg-[var(--lime-ink)] shadow-[0_0_14px_rgba(209,255,0,0.25)]" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+          {mode === "byok" ? "OpenRouter" : "CLI"}
         </span>
-        <span
-          className="hidden whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.12em] sm:inline"
-          style={{ fontFamily: MONO_FONT }}
-        >
-          {mode === "byok" ? "API" : "Local CLI"}
-        </span>
-        <span className="hidden text-[var(--ink-dim)] sm:inline">·</span>
-        <span className="truncate font-semibold text-[var(--ink)]">{label}</span>
-        <span className="hidden text-[var(--ink-dim)] md:inline">·</span>
-        <span className="hidden max-w-[160px] truncate whitespace-nowrap text-[var(--ink-3)] md:inline">{scope}</span>
-        <ChevronDown size={16} className={cn("shrink-0 transition-transform", open && "rotate-180")} />
+        <span className="truncate text-[13.5px] font-medium normal-case tracking-normal" style={{ fontFamily: SANS_FONT }}>{selectedLabel}</span>
+        <ChevronDown size={13} className={cn("ml-auto shrink-0 text-[var(--ink-dim)] transition-transform", open && "rotate-180 text-[var(--lime-ink)]")} />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[min(640px,calc(100vw-2rem))] border border-[var(--rule-strong)] bg-[var(--surface)] shadow-[0_24px_70px_rgba(0,0,0,0.62)]">
-          <div className="border-b border-[var(--rule)] px-5 py-4">
-            <div className="grid gap-[1px] bg-[var(--rule)] p-[1px] sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => onModeChange("local")}
-                className={cn(
-                  "min-h-11 bg-[var(--paper-deep)] px-4 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors",
-                  mode === "local" ? "text-[var(--lime-ink)]" : "text-[var(--ink-3)] hover:text-[var(--ink)]",
-                )}
-                style={{ fontFamily: MONO_FONT }}
-              >
-                Local CLI
-              </button>
-              <button
-                type="button"
-                onClick={() => onModeChange("byok")}
-                className={cn(
-                  "min-h-11 bg-[var(--paper-deep)] px-4 text-[10px] font-bold uppercase tracking-[0.12em] transition-colors",
-                  mode === "byok" ? "text-[var(--lime-ink)]" : "text-[var(--ink-3)] hover:text-[var(--ink)]",
-                )}
-                style={{ fontFamily: MONO_FONT }}
-              >
-                BYOK
-              </button>
-            </div>
-
-            {mode === "local" ? (
-              <>
-                <div className="mt-4 flex items-center justify-between gap-4">
-                  <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-                    Runtimes paralelos
-                  </p>
-                  <button
-                    type="button"
-                    onClick={onSelectAll}
-                    className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)] transition-colors hover:text-[var(--lime-ink)]"
-                    style={{ fontFamily: MONO_FONT }}
-                  >
-                    Todos prontos
-                  </button>
-                </div>
-                <div className="mt-3 grid gap-[1px] bg-[var(--rule)] sm:grid-cols-2">
-                  {clis.map((cli) => {
-                    const active = selectedCliIds.includes(cli.id)
-                    const enabled = cli.available && cli.launchSupported
-                    return (
-                      <button
-                        key={cli.id}
-                        type="button"
-                        onClick={() => {
-                          if (!enabled) return
-                          onToggle(cli.id)
-                        }}
-                        disabled={!enabled}
-                        className={cn(
-                          "flex min-h-16 items-center gap-3 bg-[var(--paper-deep)] px-4 text-left transition-colors",
-                          active && "bg-[rgba(209,255,0,0.10)] text-[var(--ink)]",
-                          !active && enabled && "text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
-                          !enabled && "text-[var(--ink-dim)] opacity-60",
-                        )}
-                      >
-                        <span className={cn(
-                          "grid h-9 w-9 shrink-0 place-items-center border text-[12px] font-black uppercase",
-                          active
-                            ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black"
-                            : "border-[var(--rule)] bg-[var(--paper)] text-[var(--ink-2)]",
-                        )}>
-                          {active ? "ON" : agentInitial(cli.name)}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-[15px] font-semibold">{cli.name}</span>
-                          <span className="mt-0.5 block truncate text-[11px] text-[var(--ink-3)]">
-                            {enabled ? "Pronto para executar" : cli.available ? "Detectado sem launcher" : "Não detectado"}
-                          </span>
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </>
-            ) : (
-              <ByokPanel config={byokConfig} onChange={onByokConfigChange} />
-            )}
+        <div
+          className="fixed z-50 border border-[var(--rule-strong)] bg-[var(--surface-console)] text-left shadow-[0_24px_70px_rgba(0,0,0,0.62)]"
+          style={popoverStyle}
+        >
+          <span className="pointer-events-none absolute -bottom-px -right-px h-3 w-3 border-b border-r border-[var(--lime-ink)]" />
+          <div className="grid grid-cols-2 border-b border-[var(--rule)]">
+            <button
+              type="button"
+              onClick={() => onModeChange("local")}
+              className={cn(
+                "relative h-10 border-r border-[var(--rule)] text-[10px] font-bold uppercase tracking-[0.18em] transition-colors",
+                mode === "local"
+                  ? "bg-[rgba(209,255,0,0.05)] text-[var(--lime-ink)] shadow-[inset_0_-1px_0_var(--lime-ink)]"
+                  : "text-[var(--ink-3)] hover:text-[var(--ink)]",
+              )}
+              style={{ fontFamily: MONO_FONT }}
+            >
+              Local CLI
+            </button>
+            <button
+              type="button"
+              onClick={() => onModeChange("byok")}
+              className={cn(
+                "h-10 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors",
+                mode === "byok"
+                  ? "bg-[rgba(209,255,0,0.05)] text-[var(--lime-ink)] shadow-[inset_0_-1px_0_var(--lime-ink)]"
+                  : "text-[var(--ink-3)] hover:text-[var(--ink)]",
+              )}
+              style={{ fontFamily: MONO_FONT }}
+            >
+              OpenRouter
+            </button>
           </div>
 
-          <button
-            type="button"
-            disabled
-            className="inline-flex min-h-12 w-full items-center gap-3 px-5 text-left text-[12px] text-[var(--ink-dim)]"
-          >
-            <Settings size={17} />
-            {mode === "byok" ? "BYOK · chave armazenada apenas neste navegador" : "Execução local · modelos definidos por cada CLI"}
-          </button>
+          {mode === "local" ? (
+            <>
+              <div className="flex items-center justify-between gap-3 border-b border-[var(--rule)] px-4 py-3">
+                <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+                  <span className="font-bold text-[var(--lime-ink)]">[02]</span>
+                  <span className="ml-2">CLIs em paralelo</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={onSelectAll}
+                  className="text-[10px] uppercase tracking-[0.18em] text-[var(--ink-3)] transition-colors hover:text-[var(--lime-ink)]"
+                  style={{ fontFamily: MONO_FONT }}
+                >
+                  Todos
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2" role="group" aria-label="Selecionar CLIs">
+                {clis.map((cli) => {
+                  const enabled = cli.available && cli.launchSupported
+                  const active = selectedCliIds.includes(cli.id)
+                  return (
+                    <button
+                      key={cli.id}
+                      type="button"
+                      onClick={() => enabled && onToggleCli(cli.id)}
+                      disabled={!enabled}
+                      aria-pressed={active}
+                      className={cn(
+                        "relative grid min-h-12 grid-cols-[22px_minmax(0,1fr)_18px] items-center gap-3 border-b border-[var(--rule)] px-4 text-left transition-colors odd:sm:border-r",
+                        active
+                          ? "bg-[rgba(209,255,0,0.05)] text-[var(--ink)] shadow-[inset_0_-2px_0_var(--lime-ink)]"
+                          : enabled
+                            ? "text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]"
+                            : "cursor-not-allowed text-[var(--ink-dim)] opacity-55",
+                      )}
+                      aria-label={enabled ? `${compactCliLabel(cli.id)} · ${cli.launchHint}` : `${compactCliLabel(cli.id)} · ${cli.installHint}`}
+                    >
+                      <span className={cn(
+                        "grid h-[18px] w-[22px] place-items-center border text-[10px] font-black",
+                        active
+                          ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black"
+                          : "border-[var(--rule-strong)] bg-[var(--paper)] text-[var(--ink-2)]",
+                      )} style={{ fontFamily: MONO_FONT }}>
+                        &gt;_
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-[12.5px] font-semibold">{compactCliLabel(cli.id)}</span>
+                        <span className="mt-0.5 block truncate text-[9.5px] text-[var(--ink-dim)]">
+                          {enabled ? "Selecionável" : cli.available ? "Sem adapter" : "Não detectado"}
+                        </span>
+                      </span>
+                      {active ? <Check size={13} className="text-[var(--lime-ink)]" /> : null}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 border-b border-[var(--rule)] bg-[var(--paper-deep)] px-4 py-4 text-[12px] font-semibold text-[var(--ink-2)]">
+                <Sparkles size={14} className="text-[var(--lime-ink)]" />
+                {OPENROUTER_CLI_LABEL}
+              </div>
+              <div className="grid gap-2 p-4">
+                <input
+                  value={byokConfig.apiKey}
+                  onChange={(event) => onByokConfigChange({ apiKey: event.target.value })}
+                  type="password"
+                  placeholder="API key"
+                  className="h-11 border border-[var(--rule)] bg-[var(--paper-deep)] px-3 text-[12px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-dim)] focus:border-[var(--lime-ink)]"
+                />
+                <input
+                  value={byokConfig.model}
+                  onChange={(event) => onByokConfigChange({ model: event.target.value })}
+                  placeholder="modelo"
+                  className="h-11 border border-[var(--rule)] bg-[var(--paper-deep)] px-3 text-[12px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-dim)] focus:border-[var(--lime-ink)]"
+                />
+                {!byokReady ? (
+                  <span className="px-1 text-[11px] text-[var(--ink-dim)]">OpenRouter exige chave e modelo.</span>
+                ) : null}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-function ByokPanel({
-  config,
-  onChange,
-}: {
-  config: ResearchByokConfig
-  onChange: (patch: Partial<ResearchByokConfig>) => void
-}) {
-  return (
-    <div className="mt-4 grid gap-4">
-      <div className="grid gap-[1px] bg-[var(--rule)] sm:grid-cols-4">
-        {BYOK_PROVIDER_PRESETS.map((preset) => {
-          const active = config.baseUrl === preset.baseUrl
-          return (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() =>
-                onChange({
-                  providerLabel: preset.label,
-                  baseUrl: preset.baseUrl,
-                  model: preset.model,
-                })
-              }
-              className={cn(
-                "min-h-10 bg-[var(--paper-deep)] px-3 text-[10px] font-bold uppercase tracking-[0.10em] transition-colors",
-                active ? "text-[var(--lime-ink)]" : "text-[var(--ink-3)] hover:text-[var(--ink)]",
-              )}
-              style={{ fontFamily: MONO_FONT }}
-            >
-              {preset.label}
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="grid gap-3">
-        <ByokField
-          label="Base URL"
-          value={config.baseUrl}
-          onChange={(value) => onChange({ baseUrl: value, providerLabel: "Custom" })}
-          placeholder="https://api.openai.com/v1"
-        />
-        <ByokField
-          label="API key"
-          value={config.apiKey}
-          onChange={(value) => onChange({ apiKey: value })}
-          placeholder="sk-..."
-          secret
-        />
-        <ByokField
-          label="Modelo"
-          value={config.model}
-          onChange={(value) => onChange({ model: value })}
-          placeholder="gpt-4o"
-        />
-      </div>
-    </div>
-  )
-}
-
-function ByokField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  secret = false,
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  placeholder: string
-  secret?: boolean
-}) {
-  return (
-    <label className="grid gap-2">
-      <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-        {label}
-      </span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        type={secret ? "password" : "text"}
-        placeholder={placeholder}
-        className="min-h-11 border border-[var(--rule)] bg-[var(--paper-deep)] px-3 text-[13px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-dim)] focus:border-[var(--lime-ink)]"
-      />
-    </label>
-  )
-}
-
-function SessionRuntimeChip({
+function RecentResearchList({
   runs,
-  consolidationRun,
+  flushTop = false,
+  onOpenDash,
+  onOpenRun,
 }: {
-  runs: ResearchRunState[]
-  consolidationRun: ResearchRunState | null
+  runs: RecentResearchRun[]
+  flushTop?: boolean
+  onOpenDash: () => void
+  onOpenRun: (slug: string) => void
 }) {
-  const activeCount = [...runs, consolidationRun].filter(
-    (run): run is ResearchRunState => {
-      if (!run) return false
-      return run.status === "running" || run.status === "queued"
-    },
-  ).length
-  const label = runs.length > 0 ? `${runs.length} runtime${runs.length === 1 ? "" : "s"}` : "Restaurando"
   return (
-    <div className="inline-flex h-10 max-w-[min(520px,calc(100vw-2rem))] items-center gap-2 border border-[var(--rule-strong)] bg-[var(--surface)] px-3 text-[12px] text-[var(--ink-2)]">
-      <span
-        className={cn(
-          "grid h-6 w-6 shrink-0 place-items-center border text-black",
-          activeCount > 0 ? "border-[var(--lime-ink)] bg-[var(--lime-ink)]" : "border-[var(--rule)] bg-[var(--ink-faint)] text-[var(--ink-3)]",
-        )}
-      >
-        <Terminal size={15} strokeWidth={2} />
+    <section className={cn("text-left", flushTop ? "mt-0" : "mt-8 sm:mt-10")}>
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-7 sm:gap-4">
+        <div className="min-w-0">
+          <h2 className="text-[23px] font-black uppercase tracking-normal text-[var(--ink)] sm:text-[26px]" style={{ fontFamily: DISPLAY_FONT }}>
+            Últimas pesquisas
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={onOpenDash}
+          className="inline-flex h-9 items-center gap-2.5 border border-[var(--rule-strong)] bg-[var(--surface)] px-3 font-bold uppercase text-[var(--ink)] transition-colors hover:border-[var(--lime-ink)] hover:bg-[var(--lime-ink)] hover:text-black sm:px-3.5"
+          style={{ fontFamily: MONO_FONT, fontSize: "9.5px", letterSpacing: "0.18em" }}
+        >
+          <LayoutDashboard size={13} />
+          Ver dashboard
+        </button>
+      </div>
+
+      {runs.length > 0 ? (
+        <div className="border border-[var(--rule)] bg-[var(--surface)]">
+          {runs.map((run, index) => (
+            <RecentResearchCard
+              key={run.slug}
+              run={run}
+              index={index}
+              onOpen={() => onOpenRun(run.slug)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="grid min-h-32 place-items-center border border-[var(--rule)] bg-[var(--paper-deep)] px-5 py-8 text-center">
+          <div>
+            <FileText className="mx-auto mb-3 text-[var(--ink-3)]" size={22} />
+            <p className="text-[14px] font-semibold text-[var(--ink)]">Nenhuma pesquisa indexada ainda</p>
+            <p className="mt-1 text-[12px] leading-[1.45] text-[var(--ink-2)]">
+              Assim que houver artefatos em docs/research/, as três pesquisas mais recentes aparecem aqui.
+            </p>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function RecentResearchCard({
+  run,
+  index,
+  onOpen,
+}: {
+  run: RecentResearchRun
+  index: number
+  onOpen: () => void
+}) {
+  const coverage = parseCoveragePercent(formatCoverage(run.coverage))
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group relative grid w-full gap-3 border-b border-[var(--rule-soft)] bg-[var(--surface)] px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-[var(--surface-hover)] sm:px-[22px] md:min-h-[88px] md:grid-cols-[144px_minmax(0,1fr)_140px_86px] md:items-center md:gap-4"
+    >
+      <span className="flex min-w-0 flex-wrap items-center gap-2.5 md:block">
+        <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--lime-ink)]" style={{ fontFamily: MONO_FONT }}>
+          #{String(index + 1).padStart(2, "0")}
+        </span>
+        <CategoryChip category={run.category} />
+        <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--ink-dim)] md:mt-2 md:block" style={{ fontFamily: MONO_FONT }}>
+          {formatResearchDate(run.date)}
+        </span>
       </span>
-      <span className="hidden whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.12em] sm:inline" style={{ fontFamily: MONO_FONT }}>
-        Sessão
+
+      <span className="block min-w-0">
+        <span className="line-clamp-2 block text-[15px] font-semibold leading-[1.28] text-[var(--ink)]">
+          {run.displayTitle || run.title || run.slug}
+        </span>
       </span>
-      <span className="hidden text-[var(--ink-dim)] sm:inline">·</span>
-      <span className="truncate font-semibold text-[var(--ink)]">{label}</span>
-      <span className="hidden text-[var(--ink-dim)] md:inline">·</span>
-      <span className="hidden whitespace-nowrap text-[var(--ink-3)] md:inline">{activeCount > 0 ? "ao vivo" : "fixa"}</span>
-    </div>
+
+      <span className="min-w-0 border-t border-[var(--rule-soft)] pt-3 md:border-l md:border-t-0 md:pl-3 md:pt-0">
+        <span className="flex min-w-0 items-center justify-between gap-3">
+          <span className="inline-flex min-w-0 items-center gap-2 text-[12px] font-medium tracking-[0.04em] text-[var(--ink)]" style={{ fontFamily: MONO_FONT }}>
+            <span className="h-1.5 w-1.5 shrink-0 bg-[var(--lime-ink)] shadow-[0_0_8px_rgba(209,255,0,0.8)]" />
+            <span className="truncate">{compactStatus(run.status)}</span>
+          </span>
+          <span className="shrink-0 text-[12px] font-medium tracking-[0.04em] text-[var(--ink)]" style={{ fontFamily: MONO_FONT }}>
+            {formatCoverage(run.coverage)}
+          </span>
+        </span>
+        {coverage !== null ? (
+          <span className="mt-2 block h-[3px] bg-[var(--paper-deep)]">
+            <span className="block h-full bg-[var(--lime-ink)] shadow-[0_0_6px_rgba(209,255,0,0.25)]" style={{ width: `${coverage}%` }} />
+          </span>
+        ) : null}
+        <span className="mt-2 block truncate text-[9px] uppercase tracking-[0.16em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+          Fnt · {run.sources || "--"}
+        </span>
+      </span>
+
+      <span className="flex min-w-0 items-center justify-between gap-3 text-[10px] uppercase tracking-[0.16em] text-[var(--ink-dim)] md:flex-col md:items-end md:justify-center md:text-right" style={{ fontFamily: MONO_FONT }}>
+        <span className="whitespace-nowrap">{run.files} arq.</span>
+        <span className="inline-flex shrink-0 items-center gap-1 text-[var(--lime-ink)]">
+          Abrir
+          <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function CategoryChip({ category }: { category: string }) {
+  const colorClass = categoryColorClass(category)
+  return (
+    <span className="inline-flex items-center gap-2 border border-[var(--rule)] bg-[var(--surface)] px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-[var(--ink-2)]" style={{ fontFamily: MONO_FONT }}>
+      <span className={cn("h-1.5 w-1.5", colorClass)} />
+      {formatCategory(category)}
+    </span>
   )
 }
 
@@ -1021,6 +2084,10 @@ function SessionPromptSummary({
   const runtimeText = visibleRuns.length > 0
     ? visibleRuns.map((run) => cliLabel(run.cliId)).join(" · ")
     : "Restaurando runtimes da URL"
+  const completedReportRun =
+    consolidationRun?.status === "completed"
+      ? consolidationRun
+      : runs.find((run) => run.status === "completed")
   return (
     <div className="grid gap-0">
       <div className="bg-[var(--paper-deep)] px-5 py-5">
@@ -1030,13 +2097,23 @@ function SessionPromptSummary({
       </div>
       <div className="grid gap-[1px] border-t border-[var(--rule)] bg-[var(--rule)] sm:grid-cols-3">
         <SessionMetaCell label="Runtimes" value={runtimeText} />
-        <SessionMetaCell label="Modo" value={methodId} />
-        <SessionMetaCell label="Profundidade" value={depth === "deep" ? "profunda" : "padrão"} />
+        <SessionMetaCell label="Modo" value={researchMethodLabel(methodId)} />
+        <SessionMetaCell label="Profundidade" value={researchDepthLabel(depth)} />
       </div>
-      <div className="border-t border-[var(--rule)] bg-[rgba(209,255,0,0.04)] px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--rule)] bg-[rgba(209,255,0,0.04)] px-5 py-3">
         <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--lime-ink)]" style={{ fontFamily: MONO_FONT }}>
           Sessão fixada pela URL · nova submissão bloqueada nesta aba.
         </p>
+        {completedReportRun ? (
+          <a
+            href={`/observatory/research?slug=${encodeURIComponent(completedReportRun.outputSlug)}`}
+            className="inline-flex min-h-8 items-center gap-2 border border-[var(--lime-ink)] px-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--lime-ink)] transition-colors hover:bg-[var(--lime-ink)] hover:text-black"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            <ExternalLink size={13} />
+            Relatório completo
+          </a>
+        ) : null}
       </div>
     </div>
   )
@@ -1063,9 +2140,8 @@ function ExecutionEmptyState({
   body: string
 }) {
   return (
-    <section className="border border-[var(--rule)] bg-[var(--surface)]">
-      <SectionHeading index="02" title="Execução" meta="aguardando pesquisa" />
-      <div className="grid min-h-40 place-items-center border-t border-dashed border-[var(--rule)] bg-[var(--paper-deep)] p-5 text-center">
+    <section className="border border-dashed border-[var(--rule)] bg-[var(--paper-deep)]">
+      <div className="grid min-h-40 place-items-center p-5 text-center">
         <div>
           {icon}
           <p className="text-[14px] font-semibold">{title}</p>
@@ -1133,7 +2209,7 @@ function BatchStatus({
   const activeRuns = runs.filter((run) => run.status === "running" || run.status === "queued")
   const failedRuns = runs.filter((run) => run.status === "failed")
   const allParallelRunsFinished = runs.length > 0 && activeRuns.length === 0
-  const showConsolidationPanel = allParallelRunsFinished || Boolean(consolidationRun)
+  const showConsolidationPanel = Boolean(consolidationRun) || (runs.length >= 2 && allParallelRunsFinished)
   const focusedRun = visibleRuns.find((run) => run.runId === focusedRunId) ?? visibleRuns[0] ?? null
 
   return (
@@ -1150,7 +2226,7 @@ function BatchStatus({
         <SectionHeading
           index="02"
           title="Runtimes paralelos"
-          meta={`${runs.length} runtime${runs.length === 1 ? "" : "s"} · ${completedRuns.length} concluído${completedRuns.length === 1 ? "" : "s"} · ${activeRuns.length} em curso`}
+          meta={`${completedRuns.length} concluído${completedRuns.length === 1 ? "" : "s"} · ${activeRuns.length} em curso`}
         />
         <div
           className="grid gap-[1px] bg-[var(--rule)]"
@@ -1337,7 +2413,7 @@ function RuntimeRunCard({
             {consolidation ? "Consolidação" : cliLabel(run.cliId)}
           </span>
           <span className="mt-1 block truncate text-[10px] uppercase tracking-[0.10em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
-            {statusLabel(run.status)} · {run.methodId}
+            {statusLabel(run.status)} · {researchMethodLabel(run.methodId)}
           </span>
         </span>
         <StatusBadge status={run.status} exitCode={run.exitCode} hasIssue={hasLiveIssue} />
@@ -1473,6 +2549,20 @@ function TerminalOutput({ run }: { run: ResearchRunState }) {
   const lines = parseTerminalLines(run.log)
   const visibleLines = lines.length > 0 ? lines : [{ kind: "plain" as const, text: "Aguardando saída do processo..." }]
   const hasErrors = lines.some((line) => line.kind === "stderr")
+  const isLive = run.status === "running" || run.status === "queued"
+  const filesystemLabel = filesystemStatusLabel(run)
+  const latestFilePath = run.filesystem?.latestFiles[0]?.path
+  const streamLabel = hasErrors
+    ? "stderr detectado"
+    : isLive
+      ? run.status === "queued"
+        ? "aguardando runtime"
+        : "rodando"
+      : run.status === "completed"
+        ? "stream concluído"
+        : run.status === "failed"
+          ? "stream interrompido"
+          : "stream limpo"
   const prompt = terminalPrompt()
 
   return (
@@ -1492,7 +2582,23 @@ function TerminalOutput({ run }: { run: ResearchRunState }) {
           className="flex min-w-0 items-center justify-between gap-4 border-t border-[var(--rule-soft)] px-4 py-3 text-[10px] uppercase tracking-[0.14em] text-[var(--ink-dim)] md:border-l md:border-t-0"
           style={{ fontFamily: MONO_FONT }}
         >
-          <span className={cn("truncate", hasErrors && "text-[var(--danger-ink)]")}>{hasErrors ? "stderr detectado" : "stream limpo"}</span>
+          <span
+            className={cn(
+              "inline-flex min-w-0 items-center gap-2 truncate",
+              hasErrors && "text-[var(--danger-ink)]",
+              isLive && !hasErrors && "text-[var(--lime-ink)]",
+            )}
+          >
+            {isLive ? <span className="h-1.5 w-1.5 shrink-0 animate-pulse bg-[var(--lime-ink)] shadow-[0_0_10px_rgba(209,255,0,0.75)]" aria-hidden="true" /> : null}
+            <span className="truncate">{streamLabel}</span>
+            {isLive ? <span className="shrink-0 animate-pulse text-[var(--lime-ink)]" aria-hidden="true">|</span> : null}
+          </span>
+          <span
+            className="hidden min-w-0 truncate text-[var(--ink-3)] sm:inline"
+            title={latestFilePath ? `Último arquivo: ${latestFilePath}` : undefined}
+          >
+            {filesystemLabel}
+          </span>
           <span className="shrink-0">{formatRunTime(run.updatedAt)}</span>
         </div>
       </div>
@@ -1502,7 +2608,7 @@ function TerminalOutput({ run }: { run: ResearchRunState }) {
           <span className="text-[var(--lime-ink)]">{prompt}</span>
           <span className="text-[var(--ink-dim)]">:</span>
           <span className="min-w-0 truncate text-[var(--ink-3)]">docs/research/{run.outputSlug}</span>
-          <span className="ml-1 h-3 w-1 animate-pulse bg-[var(--lime-ink)]" aria-hidden="true" />
+          {isLive ? <span className="ml-1 h-4 w-1.5 shrink-0 animate-pulse bg-[var(--lime-ink)] shadow-[0_0_12px_rgba(209,255,0,0.7)]" aria-hidden="true" /> : null}
         </p>
       </div>
 
@@ -1888,6 +2994,30 @@ function statusLabel(status: ResearchRunState["status"]) {
   return "falhou"
 }
 
+function researchMethodLabel(methodId: string) {
+  return methodById(methodId).label
+}
+
+function methodDisplayName(label: string) {
+  const lower = label.toLocaleLowerCase("pt-BR")
+  return lower.charAt(0).toLocaleUpperCase("pt-BR") + lower.slice(1)
+}
+
+function researchMethodTooltip(method: (typeof RESEARCH_METHODS)[number]) {
+  return `${method.description} Skill: ${method.skill.name}. Workflow: ${method.workflow.id}. Agente: ${method.primaryAgent}.`
+}
+
+function researchDepthLabel(depth: ResearchRunRequest["depth"]) {
+  return depth === "deep" ? "Profunda" : "Profunda"
+}
+
+function compactCliLabel(cliId: ResearchCliId) {
+  if (cliId === "claude") return "Claude"
+  if (cliId === "codex") return "Codex"
+  if (cliId === "gemini") return "Gemini"
+  return "OpenRouter"
+}
+
 function sessionHeadline(runs: ResearchRunState[], consolidationRun: ResearchRunState | null) {
   if (consolidationRun?.status === "running" || consolidationRun?.status === "queued") return "consolidação"
   if (runs.some((run) => run.status === "running" || run.status === "queued")) return "andamento"
@@ -1923,7 +3053,7 @@ function buildRuntimeDetailSteps(run: ResearchRunState): RuntimeDetailStep[] {
       id: "prompt",
       short: "Prompt",
       name: "Receber instrução de pesquisa",
-      desc: `Pergunta fixada na URL com modo ${run.methodId} e slug ${run.outputSlug}.`,
+      desc: `Pergunta fixada na URL com modo ${researchMethodLabel(run.methodId)} e slug ${run.outputSlug}.`,
       substeps: [`Runtime · ${cliLabel(run.cliId)}`, `Slug · ${run.outputSlug}`, `Início · ${formatRunTime(run.startedAt)}`],
     },
     {
@@ -2013,11 +3143,14 @@ function runtimeStepMeta(run: ResearchRunState, index: number) {
 
 function runProgress(run: ResearchRunState) {
   const lines = meaningfulLogLines(run.log).length
+  const filesystemDone = Math.max(0, Math.min(RUNTIME_STEP_TOTAL, run.filesystem?.progress.doneSteps ?? 0))
   if (run.status === "completed") return { done: RUNTIME_STEP_TOTAL, label: "07 de 07" }
-  if (run.status === "failed") return { done: Math.max(1, Math.min(6, Math.ceil(lines / 8))), label: "interrompido" }
+  if (run.status === "failed") return { done: Math.max(filesystemDone, Math.max(1, Math.min(6, Math.ceil(lines / 8)))), label: "interrompido" }
   if (run.status === "queued") return { done: 0, label: "01 de 07" }
   const activeStep = Math.max(2, Math.min(6, 2 + Math.floor(lines / 10)))
-  return { done: activeStep - 1, label: `${String(activeStep).padStart(2, "0")} de 07` }
+  const done = Math.max(filesystemDone, activeStep - 1)
+  const labelStep = Math.min(RUNTIME_STEP_TOTAL, Math.max(1, done + 1))
+  return { done, label: `${String(labelStep).padStart(2, "0")} de 07` }
 }
 
 function meaningfulLogLines(log: string) {
@@ -2115,22 +3248,146 @@ function cliLabel(cliId: ResearchCliId) {
   if (cliId === "claude") return "Claude Code"
   if (cliId === "codex") return "Codex CLI"
   if (cliId === "gemini") return "Gemini CLI"
-  if (cliId === "byok") return "BYOK API"
-  return "OpenCode"
+  if (cliId === "byok") return OPENROUTER_CLI_LABEL
+  return "CLI"
 }
 
 function cliGlyph(cliId: ResearchCliId) {
   if (cliId === "claude") return "CC"
   if (cliId === "codex") return "CX"
   if (cliId === "gemini") return "GM"
-  if (cliId === "byok") return "BK"
-  return "OC"
+  if (cliId === "byok") return "OR"
+  return "AI"
 }
 
 function formatRunTime(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "--:--"
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+}
+
+function filesystemStatusLabel(run: ResearchRunState) {
+  const filesystem = run.filesystem
+  if (!filesystem) return "docs: checando"
+  if (filesystem.error) return "docs: aguardando pasta"
+  if (filesystem.fileCount === 0) return "docs: sem arquivos"
+  const activity = filesystem.latestActivityAt
+    ? formatSince(filesystem.latestActivityAt, filesystem.checkedAt)
+    : "sem alteração"
+  return `${filesystem.fileCount} arquivos · ${activity}`
+}
+
+function formatSince(value: string, referenceValue?: string) {
+  const valueTime = new Date(value).getTime()
+  const referenceTime = referenceValue ? new Date(referenceValue).getTime() : Date.now()
+  if (Number.isNaN(valueTime) || Number.isNaN(referenceTime)) return "sem horário"
+  const seconds = Math.max(0, Math.round((referenceTime - valueTime) / 1000))
+  if (seconds < 5) return "agora"
+  if (seconds < 60) return `há ${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `há ${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  return `há ${hours}h`
+}
+
+function formatResearchDate(value: string) {
+  if (!value || value === "undated" || value === "undefined" || value === "—") return "sem data"
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "").toUpperCase()
+}
+
+function createSpeechRecognition() {
+  if (typeof window === "undefined") return null
+  const speechWindow = window as Window & typeof globalThis & {
+    SpeechRecognition?: SpeechRecognitionConstructor
+    webkitSpeechRecognition?: SpeechRecognitionConstructor
+  }
+  const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition
+  if (!Recognition) return null
+  const recognition = new Recognition()
+  recognition.lang = "pt-BR"
+  recognition.continuous = true
+  recognition.interimResults = true
+  return recognition
+}
+
+function audioExtensionFromMimeType(mimeType: string) {
+  if (mimeType.includes("mp4")) return "m4a"
+  if (mimeType.includes("mpeg")) return "mp3"
+  if (mimeType.includes("ogg")) return "ogg"
+  if (mimeType.includes("wav")) return "wav"
+  return "webm"
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0 B"
+  const units = ["B", "KB", "MB", "GB"]
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
+  return `${(value / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`
+}
+
+function compactStatus(value: string) {
+  if (!value) return "--"
+  return value
+    .replace(/[_-]+/g, " ")
+    .split(/\s+/)
+    .slice(0, 2)
+    .join(" ")
+}
+
+function formatCoverage(value: string) {
+  if (!value || value === "--") return "--"
+  return /^\d+(\.\d+)?$/.test(value) ? `${value}%` : value
+}
+
+function formatCategory(value: string) {
+  if (!value) return "Other"
+  return value
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.toUpperCase() === "AI" ? "AI" : part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+function docFileTitle(file: string) {
+  const baseName = file.split("/").at(-1) ?? file
+  return baseName
+    .replace(/\.(md|yaml|yml|jsonl|json)$/i, "")
+    .replace(/^\d{2}-/, "")
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.toUpperCase() === "README" ? "README" : part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+function docFileKind(file: string) {
+  if (file === "README.md") return "overview"
+  if (file.startsWith("00-")) return "query"
+  if (file.startsWith("01-")) return "prompt"
+  if (file.startsWith("02-")) return "report"
+  if (file.startsWith("03-")) return "recommend"
+  if (file.includes("source")) return "sources"
+  if (file.includes("metric")) return "metrics"
+  if (file.includes("state")) return "state"
+  if (file.includes("log") || file.endsWith(".jsonl")) return "log"
+  if (file.endsWith(".yaml") || file.endsWith(".yml")) return "metadata"
+  return "artifact"
+}
+
+function parseCoveragePercent(value: string) {
+  const match = value.match(/(\d+(?:\.\d+)?)/)
+  if (!match) return null
+  return Math.max(0, Math.min(100, Number(match[1])))
+}
+
+function categoryColorClass(value: string) {
+  const normalized = value.toLowerCase()
+  if (normalized.includes("product") || normalized.includes("produto")) return "bg-[var(--danger-ink)]"
+  if (normalized.includes("tech") || normalized.includes("tecnologia")) return "bg-[var(--blue-ink)]"
+  if (normalized.includes("market") || normalized.includes("mercado")) return "bg-[var(--lime-ink)]"
+  if (normalized.includes("bench")) return "bg-[var(--warning-ink)]"
+  return "bg-[var(--ink-3)]"
 }
 
 function formatElapsed(start: string, end: string) {
@@ -2179,14 +3436,6 @@ function uniqueIds(values: string[]) {
 
 function uniqueCliIds(values: ResearchCliId[]) {
   return Array.from(new Set(values))
-}
-
-function agentInitial(name: string) {
-  return name
-    .split(/\s+/)
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
 }
 
 function preferredCli(clis: ResearchCliStatus[]) {

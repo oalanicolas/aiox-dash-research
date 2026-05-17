@@ -2,7 +2,7 @@ import "server-only"
 
 import { readdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
-import { EmptyObservatorySourceError } from "./observatory.server"
+import { EmptyObservatorySourceError } from "./observatory-errors.server"
 import { resolveDashPath } from "./workspace-root.server"
 
 export type BenchDocument = {

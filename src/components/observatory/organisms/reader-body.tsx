@@ -2317,7 +2317,7 @@ function mostFrequent(values: string[]) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ""
 }
 
-function ReportLoader({ label, dark = false }: { label: string; dark?: boolean }) {
+function ReportLoader({ label, dark = true }: { label: string; dark?: boolean }) {
   return (
     <div
       className={cn(
@@ -2329,7 +2329,7 @@ function ReportLoader({ label, dark = false }: { label: string; dark?: boolean }
         <div
           className={cn(
             "mx-auto h-1.5 w-20 overflow-hidden bg-[var(--ink-faint)]",
-            dark && "bg-white/10",
+            dark && "bg-[rgba(245,244,231,0.10)]",
           )}
         >
           <div className="h-full w-1/2 animate-pulse bg-[var(--lime-ink)]" />
@@ -2337,7 +2337,7 @@ function ReportLoader({ label, dark = false }: { label: string; dark?: boolean }
         <div
           className={cn(
             "text-[10px] uppercase tracking-[0.16em] text-[var(--ink-3)]",
-            dark && "text-white/45",
+            dark && "text-[rgba(245,244,231,0.45)]",
           )}
           style={{ fontFamily: MONO_FONT }}
         >

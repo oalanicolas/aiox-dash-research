@@ -24,7 +24,7 @@ type SinkraRemediationItem = SinkraCompliance["remediationItems"][number]
 const SINKRA_DARK_THEME = {
   "--paper": "var(--aiox-dark, #050505)",
   "--paper-alt": "var(--aiox-surface, #0f0f11)",
-  "--paper-deep": "var(--aiox-surface-hover, #171719)",
+  "--paper-deep": "var(--aiox-surface-deep, #0a0a0c)",
   "--ink": "var(--aiox-cream-alt, #f5f4e7)",
   "--ink-2": "rgba(245, 244, 231, 0.74)",
   "--ink-3": "rgba(245, 244, 231, 0.48)",
@@ -71,6 +71,11 @@ function moneyLabel(value: number | null | undefined) {
 function numberLabel(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) return "--"
   return new Intl.NumberFormat("pt-BR").format(Math.round(value))
+}
+
+function listKey(scope: string, value: unknown, index: number) {
+  const raw = String(value ?? "").trim()
+  return `${scope}:${raw || "empty"}:${index}`
 }
 
 function maxMetric(values: Array<number | null | undefined>, fallback = 1) {
@@ -461,7 +466,7 @@ export function SinkraMapReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific["
             {phases.length > 0 ? (
               <div className="grid">
                 {(driftPhases.length > 0 ? driftPhases : phases).slice(0, 10).map((phase, index) => (
-                <article key={phase.id} className="grid gap-4 border-t border-[var(--rule-soft)] p-4 lg:grid-cols-[56px_minmax(0,1fr)_116px]">
+                <article key={listKey("drift-phase", phase.id, index)} className="grid gap-4 border-t border-[var(--rule-soft)] p-4 lg:grid-cols-[56px_minmax(0,1fr)_116px]">
                   <div className="text-[28px] font-black tabular-nums leading-none text-[var(--ink-dim)]" style={{ fontFamily: DISPLAY_FONT }}>
                     {String(index + 1).padStart(2, "0")}
                   </div>
@@ -477,8 +482,8 @@ export function SinkraMapReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific["
                     </p>
                     {phase.painPoints.length > 0 && (
                       <div className="mt-3 grid gap-2 md:grid-cols-2">
-                        {phase.painPoints.slice(0, 4).map((point) => (
-                          <span key={point} className="border-l-2 border-[var(--warning-ink)] bg-[var(--paper-alt)] px-3 py-2 text-[12px] leading-[1.42] text-[var(--ink-2)]">
+                        {phase.painPoints.slice(0, 4).map((point, pointIndex) => (
+                          <span key={listKey("pain-point", point, pointIndex)} className="border-l-2 border-[var(--warning-ink)] bg-[var(--paper-alt)] px-3 py-2 text-[12px] leading-[1.42] text-[var(--ink-2)]">
                             {shortText(point, 110)}
                           </span>
                         ))}
@@ -543,8 +548,8 @@ export function SinkraMapReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific["
               </div>
               {workflows.length > 0 ? (
                 <div className="grid gap-3">
-                  {workflows.slice(0, 3).map((workflow) => (
-                    <article key={workflow.id} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
+                  {workflows.slice(0, 3).map((workflow, workflowIndex) => (
+                    <article key={listKey("workflow-summary", workflow.id, workflowIndex)} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-[9px] uppercase tracking-[0.12em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
@@ -584,8 +589,8 @@ export function SinkraMapReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific["
               </div>
               {gates.length > 0 ? (
                 <div className="grid gap-2">
-                  {gates.slice(0, 5).map((gate) => (
-                    <div key={gate.id} className="grid grid-cols-[minmax(0,1fr)_72px] gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] px-3 py-2">
+                  {gates.slice(0, 5).map((gate, gateIndex) => (
+                    <div key={listKey("gate-summary", gate.id, gateIndex)} className="grid grid-cols-[minmax(0,1fr)_72px] gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] px-3 py-2">
                       <div className="min-w-0">
                         <div className="truncate text-[12px] font-bold text-[var(--ink)]">{gate.name}</div>
                         <div className="mt-0.5 text-[9px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
@@ -615,8 +620,8 @@ export function SinkraMapReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific["
           <SectionHead eyebrow="Domain topology" title="Distribuição por domínio SINKRA" meta={`${domains.length} domínios`} />
           {topDomains.length > 0 ? (
             <div className="grid gap-4 p-4 lg:grid-cols-2 xl:grid-cols-3">
-              {topDomains.map((domain) => (
-              <article key={domain.domain} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-4">
+              {topDomains.map((domain, domainIndex) => (
+              <article key={listKey("domain", domain.domain, domainIndex)} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h4 className="truncate text-[20px] font-black tracking-[-0.03em] text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
@@ -634,8 +639,8 @@ export function SinkraMapReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific["
                   <div className="h-full bg-[var(--ink)]" style={{ width: `${Math.min(100, Math.max(8, domain.total * 4))}%` }} />
                 </div>
                 <div className="mt-4 grid gap-2">
-                  {domain.samples.slice(0, 3).map((sample) => (
-                    <div key={sample.id} className="border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2">
+                  {domain.samples.slice(0, 3).map((sample, sampleIndex) => (
+                    <div key={listKey("domain-sample", sample.id, sampleIndex)} className="border border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2">
                       <div className="truncate text-[9px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
                         {sample.id} · {sample.level}
                       </div>
@@ -756,7 +761,7 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
       <div className="border-b border-[#f5f4e7]/10 px-5 py-5">
         <div className="grid gap-px bg-[#f5f4e7]/10 md:grid-cols-2 xl:grid-cols-6">
           {tldrCards.map((item, index) => (
-            <DarkTldr key={item.label} label={`[${String(index + 1).padStart(2, "0")}] · ${item.label}`} value={item.value} note={`${item.pin} · ${item.note}`} tone={item.tone} />
+            <DarkTldr key={listKey("dark-tldr", item.label, index)} label={`[${String(index + 1).padStart(2, "0")}] · ${item.label}`} value={item.value} note={`${item.pin} · ${item.note}`} tone={item.tone} />
           ))}
         </div>
       </div>
@@ -837,8 +842,8 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
           <ReportBlockMarker index="01" label="Axiomas e score" meta={`${criticalRisks} riscos críticos`} />
           <DarkSectionTitle eyebrow="scorecard" title="Critérios que explicam o veto" />
           <div className="mt-5 grid gap-3">
-            {scoreBreakdown.map((item) => (
-              <DarkScoreRow key={item.id} label={item.label} score={item.score} max={item.max} maxScale={maxScore} findings={item.findings} />
+            {scoreBreakdown.map((item, index) => (
+              <DarkScoreRow key={listKey("dark-score", item.id, index)} label={item.label} score={item.score} max={item.max} maxScale={maxScore} findings={item.findings} />
             ))}
           </div>
         </div>
@@ -846,8 +851,8 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
         <div className="bg-[#0f0f11] p-5">
           <DarkSectionTitle eyebrow="custo de execução" title="Custo, tokens e duração" />
           <div className="mt-5 grid gap-4">
-            {metrics.map((metric) => (
-              <article key={metric.phase} className="aiox-surface-card bg-[#050505] p-4">
+            {metrics.map((metric, index) => (
+              <article key={listKey("dark-metric", metric.phase, index)} className="aiox-surface-card bg-[#050505] p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h4 className="truncate text-[16px] font-black text-[#f5f4e7]">{phaseLabel(metric.phase)}</h4>
@@ -956,10 +961,10 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
               <div className="p-3">Ação</div>
               {["Hoje", "S+1", "S+2", "S+3", "S+4", "S+5", "S+6"].map((week) => <div key={week} className="border-l border-[#f5f4e7]/10 p-3 text-center">{week}</div>)}
             </div>
-            {remediation.map((item) => {
+            {remediation.map((item, index) => {
               const timing = remediationWeeks(item.priority, item.action)
               return (
-                <div key={`${item.priority}-${item.dimension}-${item.finding}`} className="grid grid-cols-[220px_minmax(0,1fr)] border-b border-[#f5f4e7]/10 last:border-b-0">
+                <div key={listKey("dark-remediation", `${item.priority}-${item.dimension}-${item.finding}`, index)} className="grid grid-cols-[220px_minmax(0,1fr)] border-b border-[#f5f4e7]/10 last:border-b-0">
                   <div className="grid grid-cols-[44px_minmax(0,1fr)] gap-3 p-3">
                     <span className={cn("text-[14px] font-black", item.priority === "P0" ? "text-[#ef4444]" : item.priority === "P1" ? "text-[#f5b340]" : "text-[#d1ff00]")}>{item.priority}</span>
                     <div className="min-w-0">
@@ -970,7 +975,7 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
                   <div className="relative grid grid-cols-7">
                     {Array.from({ length: 7 }).map((_, index) => <div key={index} className="border-l border-[#f5f4e7]/10" />)}
                     <div
-                      className={cn("absolute top-1/2 h-7 -translate-y-1/2 px-2 text-[10px] font-black uppercase leading-7 tracking-[0.08em] text-[#231d05]", item.priority === "P0" ? "bg-[#ef4444] text-white" : item.priority === "P1" ? "bg-[#f5b340]" : "bg-[#d1ff00]")}
+                      className={cn("absolute top-1/2 h-7 -translate-y-1/2 px-2 text-[10px] font-black uppercase leading-7 tracking-[0.08em] text-[#231d05]", item.priority === "P0" ? "bg-[#ef4444] text-[#f5f4e7]" : item.priority === "P1" ? "bg-[#f5b340]" : "bg-[#d1ff00]")}
                       style={{ left: `${(timing.start / 7) * 100}%`, width: `${(timing.span / 7) * 100}%`, fontFamily: MONO_FONT }}
                     >
                       {timing.label}
@@ -997,8 +1002,8 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
         <div className="bg-[#0f0f11] p-5">
           <DarkSectionTitle eyebrow="matriz de decisão" title="O que o mapa responde" />
           <div className="mt-5 grid gap-3">
-            {pilot.decisionMatrix.map((decision) => (
-              <article key={decision.question} className="aiox-surface-card grid gap-4 bg-[#050505] p-4 md:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]">
+            {pilot.decisionMatrix.map((decision, index) => (
+              <article key={listKey("dark-decision", decision.question, index)} className="aiox-surface-card grid gap-4 bg-[#050505] p-4 md:grid-cols-[minmax(0,0.72fr)_minmax(0,1fr)]">
                 <div className="text-[11px] uppercase tracking-[0.12em] text-[#f5f4e7]/42" style={{ fontFamily: MONO_FONT }}>
                   {decision.question}
                 </div>
@@ -1016,8 +1021,8 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
         <div className="bg-[#0f0f11] p-5">
           <DarkSectionTitle eyebrow="radar de prontidão" title="Onde está pronto e onde bloqueia" />
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {pilot.readinessBars.map((bar) => (
-              <article key={bar.label} className="aiox-surface-card bg-[#050505] p-4">
+            {pilot.readinessBars.map((bar, index) => (
+              <article key={listKey("dark-readiness", bar.label, index)} className="aiox-surface-card bg-[#050505] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h4 className="text-[16px] font-black text-[#f5f4e7]">{bar.label}</h4>
@@ -1045,7 +1050,7 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
         <DarkSectionTitle eyebrow="caminho crítico" title="Sequência mínima para operar" />
         <div className="mt-5 grid gap-3 lg:grid-cols-5">
           {pilot.criticalPath.map((step, index) => (
-            <article key={step.task} className="aiox-surface-card p-4">
+            <article key={listKey("dark-critical-path", step.task, index)} className="aiox-surface-card p-4">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[24px] font-black leading-none text-[#f5f4e7]/28" style={{ fontFamily: DISPLAY_FONT }}>
                   {String(index + 1).padStart(2, "0")}
@@ -1068,9 +1073,9 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
         <div className="bg-[#0f0f11] p-5">
           <DarkSectionTitle eyebrow="mix de execução" title="Carga operacional por executor" />
           <div className="mt-5 h-5 overflow-hidden bg-[#f5f4e7]/8">
-            {pilot.executorMix.map((item) => (
+            {pilot.executorMix.map((item, index) => (
               <div
-                key={item.executor}
+                key={listKey("dark-executor-bar", item.executor, index)}
                 className={cn("inline-block h-full", item.tone === "warn" ? "bg-[#ef4444]" : item.tone === "good" ? "bg-[#d1ff00]" : "bg-[#f5f4e7]/55")}
                 style={{ width: `${Math.max(3, (item.tasks / Math.max(totalExecutorTasks, 1)) * 100)}%` }}
                 title={`${item.executor}: ${item.tasks}`}
@@ -1078,8 +1083,8 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
             ))}
           </div>
           <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {pilot.executorMix.map((item) => (
-              <article key={item.executor} className="aiox-surface-card bg-[#050505] p-4">
+            {pilot.executorMix.map((item, index) => (
+              <article key={listKey("dark-executor-card", item.executor, index)} className="aiox-surface-card bg-[#050505] p-4">
                 <div className={cn("text-[42px] font-black leading-none", item.tone === "warn" ? "text-[#ef4444]" : item.tone === "good" ? "text-[#d1ff00]" : "text-[#f5f4e7]")} style={{ fontFamily: DISPLAY_FONT }}>
                   {item.tasks}
                 </div>
@@ -1094,8 +1099,8 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
         <div className="bg-[#0f0f11] p-5">
           <DarkSectionTitle eyebrow="gates de qualidade" title="Controles de qualidade" />
           <div className="mt-5 grid gap-2">
-            {pilot.gateBoard.map((gate) => (
-              <article key={gate.id} className={cn("grid grid-cols-[minmax(0,1fr)_74px] gap-3 border p-3", gate.status === "PASS" ? "border-[#d1ff00]/20 bg-[#050505]" : "border-[#ef4444]/35 bg-[#120808]")}>
+            {pilot.gateBoard.map((gate, index) => (
+              <article key={listKey("dark-gate", gate.id, index)} className={cn("grid grid-cols-[minmax(0,1fr)_74px] gap-3 border p-3", gate.status === "PASS" ? "border-[#d1ff00]/20 bg-[#050505]" : "border-[#ef4444]/35 bg-[#120808]")}>
                 <div className="min-w-0">
                   <h4 className="truncate text-[14px] font-black text-[#f5f4e7]">{gate.title}</h4>
                   <p className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>
@@ -1116,7 +1121,7 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
           <DarkSectionTitle eyebrow="linhas operacionais" title="Fluxo executivo do processo" />
           <div className="mt-5 grid gap-3">
             {pilot.lanes.map((lane, index) => (
-              <article key={lane.id} className="aiox-surface-card grid gap-4 p-4 md:grid-cols-[52px_minmax(0,1fr)_82px]">
+              <article key={listKey("dark-lane", lane.id, index)} className="aiox-surface-card grid gap-4 p-4 md:grid-cols-[52px_minmax(0,1fr)_82px]">
                 <div className="text-[28px] font-black leading-none text-[#f5f4e7]/28" style={{ fontFamily: DISPLAY_FONT }}>
                   {String(index + 1).padStart(2, "0")}
                 </div>
@@ -1141,8 +1146,8 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
           <div className="bg-[#0f0f11] p-5">
             <DarkSectionTitle eyebrow="registro de riscos" title="Bloqueios reais" />
             <div className="mt-5 grid gap-3">
-              {pilot.risks.map((risk) => (
-                <article key={risk.id} className="border border-[#ef4444]/35 bg-[#120808] p-4">
+              {pilot.risks.map((risk, index) => (
+                <article key={listKey("dark-risk", risk.id, index)} className="border border-[#ef4444]/35 bg-[#120808] p-4">
                   <div className="text-[10px] uppercase tracking-[0.1em] text-[#ef4444]" style={{ fontFamily: MONO_FONT }}>
                     {risk.id} · {risk.severity}
                   </div>
@@ -1155,8 +1160,8 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
           <div className="bg-[#0f0f11] p-5">
             <DarkSectionTitle eyebrow="próximas ações" title="Fila de correção" />
             <div className="mt-5 grid gap-2">
-              {pilot.nextActions.map((action) => (
-                <article key={`${action.priority}-${action.title}`} className="aiox-surface-card grid grid-cols-[48px_minmax(0,1fr)] gap-3 bg-[#050505] p-3">
+              {pilot.nextActions.map((action, index) => (
+                <article key={listKey("dark-action", `${action.priority}-${action.title}`, index)} className="aiox-surface-card grid grid-cols-[48px_minmax(0,1fr)] gap-3 bg-[#050505] p-3">
                   <span className={cn("text-[15px] font-black", action.priority === "P0" ? "text-[#ef4444]" : action.priority === "P1" ? "text-[#f5b340]" : "text-[#d1ff00]")}>{action.priority}</span>
                   <div className="min-w-0">
                     <h4 className="text-[14px] font-black leading-tight text-[#f5f4e7]">{action.title}</h4>
@@ -1229,8 +1234,8 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
             {pilot.narrative}
           </p>
           <div className="mt-6 grid gap-px bg-[var(--rule)] sm:grid-cols-4">
-            {featuredMetrics.slice(0, 4).map((metric) => (
-              <MetricTile key={metric.label} label={metric.label.replace(/_/g, " ")} value={metric.value} />
+            {featuredMetrics.slice(0, 4).map((metric, index) => (
+              <MetricTile key={listKey("featured-metric", metric.label, index)} label={metric.label.replace(/_/g, " ")} value={metric.value} />
             ))}
           </div>
         </div>
@@ -1253,8 +1258,8 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
       </div>
 
       <div className="grid gap-px border-t border-[var(--rule)] bg-[var(--rule)] md:grid-cols-2 xl:grid-cols-4">
-        {tldr.map((item) => (
-          <article key={item.label} className="bg-[var(--paper)] p-5">
+        {tldr.map((item, index) => (
+          <article key={listKey("tldr", item.label, index)} className="bg-[var(--paper)] p-5">
             <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
               {item.label}
             </p>
@@ -1297,8 +1302,8 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
             </div>
           </div>
           <div className="grid gap-3">
-            {pilot.decisionMatrix.map((decision) => (
-              <div key={decision.question} className="grid gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3 md:grid-cols-[minmax(0,0.78fr)_minmax(0,1fr)]">
+            {pilot.decisionMatrix.map((decision, index) => (
+              <div key={listKey("decision", decision.question, index)} className="grid gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3 md:grid-cols-[minmax(0,0.78fr)_minmax(0,1fr)]">
                 <div className="text-[12px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
                   {decision.question}
                 </div>
@@ -1318,8 +1323,8 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
             Readiness radar
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {pilot.readinessBars.map((bar) => (
-              <div key={bar.label} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
+            {pilot.readinessBars.map((bar, index) => (
+              <div key={listKey("readiness", bar.label, index)} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <span className="text-[14.5px] font-black text-[var(--ink)]">{bar.label}</span>
                   <span className={cn("text-[20px] font-black leading-none", bar.status === "blocked" ? "text-[var(--warning-ink)]" : bar.status === "ready" ? "text-[var(--lime-ink)]" : "text-[var(--ink)]")} style={{ fontFamily: DISPLAY_FONT }}>
@@ -1352,7 +1357,7 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
         </div>
         <div className="grid gap-3 lg:grid-cols-5">
           {pilot.criticalPath.map((step, index) => (
-            <article key={step.task} className="border border-[var(--paper)]/18 bg-[var(--paper)]/6 p-3">
+            <article key={listKey("critical-path", step.task, index)} className="border border-[var(--paper)]/18 bg-[var(--paper)]/6 p-3">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-[20px] font-black leading-none text-[var(--paper)]/45" style={{ fontFamily: DISPLAY_FONT }}>
                   {String(index + 1).padStart(2, "0")}
@@ -1377,9 +1382,9 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
             Executor mix
           </p>
           <div className="mt-4 h-3 overflow-hidden bg-[var(--paper-deep)]">
-            {pilot.executorMix.map((item) => (
+            {pilot.executorMix.map((item, index) => (
               <div
-                key={item.executor}
+                key={listKey("executor-bar", item.executor, index)}
                 className={cn("inline-block h-full", item.tone === "warn" ? "bg-[var(--warning-ink)]" : item.tone === "good" ? "bg-[var(--lime-ink)]" : "bg-[var(--ink)]")}
                 style={{ width: `${Math.max(2, (item.tasks / Math.max(totalExecutorTasks, 1)) * 100)}%` }}
                 title={`${item.executor}: ${item.tasks}`}
@@ -1387,8 +1392,8 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
             ))}
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {pilot.executorMix.map((item) => (
-              <div key={item.executor} className="grid grid-cols-[54px_minmax(0,1fr)] gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
+            {pilot.executorMix.map((item, index) => (
+              <div key={listKey("executor-card", item.executor, index)} className="grid grid-cols-[54px_minmax(0,1fr)] gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
                 <div className={cn("text-[26px] font-black leading-none", item.tone === "warn" ? "text-[var(--warning-ink)]" : item.tone === "good" ? "text-[var(--lime-ink)]" : "text-[var(--ink-dim)]")} style={{ fontFamily: DISPLAY_FONT }}>
                   {item.tasks}
                 </div>
@@ -1409,8 +1414,8 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
             Quality gate board
           </p>
           <div className="mt-4 grid gap-2">
-            {pilot.gateBoard.map((gate) => (
-              <article key={gate.id} className={cn("grid grid-cols-[minmax(0,1fr)_64px] gap-3 border p-3", gate.status === "FAIL" ? "border-[var(--warning-ink)] bg-[var(--paper-alt)]" : gate.status === "REVIEW" ? "border-[var(--ink)] bg-[var(--paper-alt)]" : "border-[var(--rule-soft)] bg-[var(--paper-alt)]")}>
+            {pilot.gateBoard.map((gate, index) => (
+              <article key={listKey("gate-board", gate.id, index)} className={cn("grid grid-cols-[minmax(0,1fr)_64px] gap-3 border p-3", gate.status === "FAIL" ? "border-[var(--warning-ink)] bg-[var(--paper-alt)]" : gate.status === "REVIEW" ? "border-[var(--ink)] bg-[var(--paper-alt)]" : "border-[var(--rule-soft)] bg-[var(--paper-alt)]")}>
                 <div className="min-w-0">
                   <div className="truncate text-[14.5px] font-black text-[var(--ink)]">{gate.title}</div>
                   <div className="mt-1 text-[10.5px] uppercase tracking-[0.08em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
@@ -1443,7 +1448,7 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
           </div>
           <div className="grid gap-3">
             {pilot.lanes.map((lane, index) => (
-              <article key={lane.id} className="grid gap-4 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-4 md:grid-cols-[46px_minmax(0,1fr)_76px]">
+              <article key={listKey("lane", lane.id, index)} className="grid gap-4 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-4 md:grid-cols-[46px_minmax(0,1fr)_76px]">
                 <div className="text-[26px] font-black leading-none text-[var(--ink-dim)]" style={{ fontFamily: DISPLAY_FONT }}>
                   {String(index + 1).padStart(2, "0")}
                 </div>
@@ -1481,8 +1486,8 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
               Bloqueios reais
             </h4>
             <div className="mt-4 grid gap-3">
-              {pilot.risks.map((risk) => (
-                <article key={risk.id} className="border border-[var(--warning-ink)] bg-[var(--paper-alt)] p-3">
+              {pilot.risks.map((risk, index) => (
+                <article key={listKey("risk", risk.id, index)} className="border border-[var(--warning-ink)] bg-[var(--paper-alt)] p-3">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--warning-ink)]" style={{ fontFamily: MONO_FONT }}>
                       {risk.id} · {risk.severity}
@@ -1500,8 +1505,8 @@ function PilotExecutiveMap({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
               Próximas ações
             </p>
             <div className="mt-4 grid gap-2">
-              {pilot.nextActions.map((action) => (
-                <div key={`${action.priority}-${action.title}`} className="grid grid-cols-[42px_minmax(0,1fr)] gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
+              {pilot.nextActions.map((action, index) => (
+                <div key={listKey("next-action", `${action.priority}-${action.title}`, index)} className="grid grid-cols-[42px_minmax(0,1fr)] gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
                   <span className="text-[14.5px] font-black text-[var(--warning-ink)]">{action.priority}</span>
                   <div className="min-w-0">
                     <div className="text-[14.5px] font-bold leading-tight text-[var(--ink)]">{action.title}</div>
@@ -1525,7 +1530,13 @@ export function SinkraFlowReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
   const dependencies = sinkra?.dependencies
   const composition = sinkra?.composition
   const tokenFlow = sinkra?.tokenFlow
-  if (!pilot && workflows.length === 0 && (composition?.nodes.length ?? 0) === 0) return <SinkraEmptyReport title="Flow indisponível" />
+  if (
+    !pilot &&
+    workflows.length === 0 &&
+    (dependencies?.nodes.length ?? 0) === 0 &&
+    (composition?.nodes.length ?? 0) === 0 &&
+    (tokenFlow?.tokens.length ?? 0) === 0
+  ) return <SinkraEmptyReport title="Flow indisponível" />
   const playbook = pilot ? buildJourneyPlaybook(pilot) : null
   const compositionGroups = countBy((composition?.nodes ?? []).map((node) => node.level))
   const tokenTypeGroups = countBy((tokenFlow?.tokens ?? []).map((token) => token.type || "token"))
@@ -1592,8 +1603,8 @@ export function SinkraFlowReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
                     {compositionGroups.find((item) => item.label === level)?.value ?? 0}
                   </div>
                   <div className="mt-4 grid gap-2">
-                    {(composition?.nodes ?? []).filter((node) => node.level === level).slice(0, 4).map((node) => (
-                      <div key={node.id} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] px-3 py-2">
+                    {(composition?.nodes ?? []).filter((node) => node.level === level).slice(0, 4).map((node, nodeIndex) => (
+                      <div key={listKey(`composition-node-${level}`, node.id, nodeIndex)} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] px-3 py-2">
                         <div className="truncate text-[13px] font-black text-[var(--ink)]">{node.name || node.id}</div>
                         <div className="mt-1 text-[10px] uppercase tracking-[0.09em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
                           {node.count} filhos/outputs
@@ -1610,7 +1621,7 @@ export function SinkraFlowReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
             <SectionHead eyebrow="Handoff packets" title="Transições formais" compact />
             <div className="grid gap-3 p-4">
               {(composition?.handoffPackets ?? []).map((packet, index) => (
-                <article key={`${packet.from}-${packet.to}-${packet.packet}`} className="grid grid-cols-[44px_minmax(0,1fr)] gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
+                <article key={listKey("handoff-packet", `${packet.from}-${packet.to}-${packet.packet}`, index)} className="grid grid-cols-[44px_minmax(0,1fr)] gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
                   <div className="text-[24px] font-black leading-none text-[var(--ink-dim)]" style={{ fontFamily: DISPLAY_FONT }}>{String(index + 1).padStart(2, "0")}</div>
                   <div className="min-w-0">
                     <div className="truncate text-[14px] font-black text-[var(--ink)]">{packet.packet}</div>
@@ -1629,8 +1640,8 @@ export function SinkraFlowReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
             <SectionHead eyebrow="Token flow" title="Packets produzidos e consumidos" meta={`${tokenFlow?.taskCountCovered ?? 0} tasks cobertas`} />
             <div className="grid gap-px bg-[var(--rule)] md:grid-cols-[minmax(0,1fr)_320px]">
               <div className="grid gap-px bg-[var(--rule)]">
-                {(tokenFlow?.tokens ?? []).slice(0, 12).map((token) => (
-                  <article key={token.tokenName} className="grid gap-3 bg-[var(--paper)] p-4 md:grid-cols-[minmax(0,1fr)_130px_80px]">
+                {(tokenFlow?.tokens ?? []).slice(0, 12).map((token, index) => (
+                  <article key={listKey("token-flow", token.tokenName, index)} className="grid gap-3 bg-[var(--paper)] p-4 md:grid-cols-[minmax(0,1fr)_130px_80px]">
                     <div className="min-w-0">
                       <h4 className="truncate text-[16px] font-black text-[var(--ink)]">{token.tokenValue || token.tokenName}</h4>
                       <p className="mt-1 truncate text-[11px] uppercase tracking-[0.08em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
@@ -1666,7 +1677,7 @@ export function SinkraFlowReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
                 const signal = workflowHumanSignal(outputs, controls, workflow.steps.length)
                 const attention = workflowHumanAttention(outputs, controls, workflow.steps.length)
                 return (
-                  <article key={workflow.id} className="bg-[var(--paper)] p-5">
+                  <article key={listKey("workflow-human", workflow.id, index)} className="bg-[var(--paper)] p-5">
                     <div className="flex items-start justify-between gap-5">
                       <div className="min-w-0">
                         <div className="mb-3 text-[11px] uppercase tracking-[0.14em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
@@ -1711,8 +1722,8 @@ export function SinkraFlowReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
                         Ver ações técnicas traduzidas
                       </summary>
                       <div className="grid gap-2 border-t border-[var(--rule-soft)] p-4">
-                        {workflow.steps.map((step) => (
-                          <div key={step.id} className="grid gap-2 border border-[var(--rule-soft)] bg-[var(--paper)] p-3 sm:grid-cols-[minmax(0,1fr)_100px]">
+                        {workflow.steps.map((step, stepIndex) => (
+                          <div key={listKey("workflow-step", step.id, stepIndex)} className="grid gap-2 border border-[var(--rule-soft)] bg-[var(--paper)] p-3 sm:grid-cols-[minmax(0,1fr)_100px]">
                             <span className="text-[14px] font-bold leading-[1.45] text-[var(--ink)]">
                               {humanizeProcessLabel(step.name || step.task)}
                             </span>
@@ -1814,13 +1825,13 @@ export function SinkraAutomationReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
           <section className="border border-[var(--rule)] bg-[var(--paper)]">
             <SectionHead eyebrow="Automation matrix" title="Automatabilidade por task" meta={`${automation.length} tasks`} />
             <div className="grid gap-px bg-[var(--rule)]">
-              {automation.map((item) => {
+              {automation.map((item, index) => {
                 const auto = item.automatability ?? 0
                 const std = item.standardization ?? 0
                 const tone: Tone = item.dependsOnGaps.length > 0 ? "warn" : auto >= 0.85 ? "good" : "neutral"
                 const taskLabel = humanizeSentence(item.taskName || item.taskId)
                 return (
-                  <article key={item.taskId} className="grid gap-4 bg-[var(--paper)] p-4 lg:grid-cols-[minmax(240px,1fr)_180px_180px]">
+                  <article key={listKey("automation-task", item.taskId, index)} className="grid gap-4 bg-[var(--paper)] p-4 lg:grid-cols-[minmax(240px,1fr)_180px_180px]">
                     <div className="min-w-0">
                       <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
                         {humanizeSentence(item.executorType)} · {humanizeSentence(item.automationType)}
@@ -1834,7 +1845,7 @@ export function SinkraAutomationReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
                       <p className="mt-2 line-clamp-2 text-[14px] leading-[1.45] text-[var(--ink-2)]">{item.justification || item.impact}</p>
                       {item.dependsOnGaps.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-1.5">
-                          {item.dependsOnGaps.map((gap) => <Tag key={gap} label={gap} tone="warn" />)}
+                          {item.dependsOnGaps.map((gap, gapIndex) => <Tag key={listKey("automation-gap", gap, gapIndex)} label={gap} tone="warn" />)}
                         </div>
                       )}
                     </div>
@@ -1855,8 +1866,8 @@ export function SinkraAutomationReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
             <section className="border border-[var(--rule)] bg-[var(--paper)]">
               <SectionHead eyebrow="Guardrails" title="Pendências" compact />
               <div className="grid gap-3 p-4">
-                {blocked.slice(0, 8).map((item) => (
-                  <article key={item.taskId} className="border border-[var(--warning-ink)] bg-[var(--paper-alt)] p-3">
+                {blocked.slice(0, 8).map((item, index) => (
+                  <article key={listKey("automation-blocked", item.taskId, index)} className="border border-[var(--warning-ink)] bg-[var(--paper-alt)] p-3">
                     <h4 className="text-[15px] font-black leading-tight text-[var(--ink)]">{item.taskName}</h4>
                     <p className="mt-2 text-[12.5px] leading-[1.45] text-[var(--ink-2)]">
                       {item.guardrailsMissing.length > 0 ? `${item.guardrailsMissing.length} guardrails faltando` : `Depende de ${item.dependsOnGaps.join(", ")}`}
@@ -1916,8 +1927,8 @@ function FlowExecutiveStrip({
           <ReportBlockMarker index="01" label="Jornada operacional" meta={`${steps.length} etapas visualizadas`} />
           <div className="mt-6 overflow-x-auto pb-2">
             <div className="grid min-w-[980px] auto-cols-fr grid-flow-col gap-px bg-[#f5f4e7]/10">
-              {steps.slice(0, 8).map((step) => (
-                <article key={step.id} className="min-h-[230px] bg-[#050505] p-4">
+              {steps.slice(0, 8).map((step, index) => (
+                <article key={listKey("flow-executive-step", step.id, index)} className="min-h-[230px] bg-[#050505] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[30px] font-black leading-none text-[#f5f4e7]/28" style={{ fontFamily: DISPLAY_FONT }}>
                       {String(step.index + 1).padStart(2, "0")}
@@ -2005,7 +2016,7 @@ function FlowHumanBrief({
   return (
     <section className="mt-6 grid gap-px bg-[#f5f4e7]/10 md:grid-cols-3">
       {cards.map((card, index) => (
-        <article key={card.title} className="bg-[#0f0f11] p-5">
+        <article key={listKey("flow-human-card", card.title, index)} className="bg-[#0f0f11] p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] uppercase tracking-[0.14em] text-[#f5f4e7]/42" style={{ fontFamily: MONO_FONT }}>
@@ -2051,11 +2062,11 @@ function AutomationDecisionBoard({
         <ReportBlockMarker index="01" label="Automation decision board" meta={hasData ? "dados reais de automation_specs.yaml" : "target schema"} />
       </div>
       <div className="grid gap-px bg-[#f5f4e7]/10 xl:grid-cols-4">
-        {columns.map((column) => {
+        {columns.map((column, columnIndex) => {
           const visible = column.items.slice(0, 4)
           const fallback = !hasData || visible.length === 0
           return (
-            <article key={column.title} className="bg-[#0f0f11] p-5">
+            <article key={listKey("automation-column", column.title, columnIndex)} className="bg-[#0f0f11] p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className={cn("text-[32px] font-black leading-none tracking-[-0.05em]", column.tone === "danger" ? "text-[#ef4444]" : column.tone === "warn" ? "text-[#f5b340]" : column.tone === "good" ? "text-[#d1ff00]" : "text-[#f5f4e7]")} style={{ fontFamily: DISPLAY_FONT }}>
@@ -2071,8 +2082,8 @@ function AutomationDecisionBoard({
                   <div className="border border-[#f5b340]/25 bg-[#050505] p-3 text-[13px] font-bold leading-[1.45] text-[#f5f4e7]/60">
                     Gerar campos suficientes para classificar tasks nesta zona.
                   </div>
-                ) : visible.map((item) => (
-                  <div key={item.taskId} className="border border-[#f5f4e7]/10 bg-[#050505] p-3">
+                ) : visible.map((item, itemIndex) => (
+                  <div key={listKey("automation-column-task", item.taskId, itemIndex)} className="border border-[#f5f4e7]/10 bg-[#050505] p-3">
                     <div className="truncate text-[14px] font-black text-[#f5f4e7]">{humanizeSentence(item.taskName || item.taskId)}</div>
                     <div className="mt-1 text-[10px] uppercase tracking-[0.09em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>
                       {item.taskId} · {pct(item.automatability ?? 0)}
@@ -2110,8 +2121,8 @@ function AutomationReadinessPanel({
         <DarkSignal label="Faltando" value={String(guardrailsMissing)} tone={guardrailsMissing > 0 ? "danger" : "good"} />
       </div>
       <div className="mt-5 grid gap-2">
-        {(blocked.length > 0 ? blocked : automation).slice(0, 5).map((item) => (
-          <article key={item.taskId} className="border border-[#f5f4e7]/10 bg-[#050505] p-3">
+        {(blocked.length > 0 ? blocked : automation).slice(0, 5).map((item, index) => (
+          <article key={listKey("automation-readiness", item.taskId, index)} className="border border-[#f5f4e7]/10 bg-[#050505] p-3">
             <div className="flex items-start justify-between gap-3">
               <h4 className="text-[14px] font-black leading-tight text-[#f5f4e7]">{humanizeSentence(item.taskName || item.taskId)}</h4>
               <span className={cn("text-[10px] uppercase tracking-[0.1em]", item.guardrailsMissing.length > 0 ? "text-[#ef4444]" : "text-[#d1ff00]")} style={{ fontFamily: MONO_FONT }}>
@@ -2159,11 +2170,11 @@ export function SinkraGovernanceReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
           <section className="mt-6 border border-[var(--rule)] bg-[var(--paper)]">
             <SectionHead eyebrow="Score card" title="Por que o score não libera produção" meta={`${scoreBreakdown.length} critérios`} />
             <div className="grid gap-px bg-[var(--rule)] md:grid-cols-2 xl:grid-cols-3">
-              {scoreBreakdown.map((item) => {
+              {scoreBreakdown.map((item, index) => {
                 const tone = scoreTone(item.score, item.max)
                 const width = ((item.score ?? 0) / Math.max(item.max ?? 100, 1)) * 100
                 return (
-                  <article key={item.id} className="bg-[var(--paper)] p-5">
+                  <article key={listKey("governance-score", item.id, index)} className="bg-[var(--paper)] p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <p className="text-[10.5px] uppercase tracking-[0.11em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
@@ -2181,8 +2192,8 @@ export function SinkraGovernanceReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
                       <div className={cn("h-full", tone === "good" ? "bg-[var(--lime-ink)]" : "bg-[var(--warning-ink)]")} style={{ width: `${Math.max(4, Math.min(100, width))}%` }} />
                     </div>
                     <div className="mt-3 grid gap-2">
-                      {item.findings.slice(0, 2).map((finding) => (
-                        <p key={finding} className="text-[13.5px] leading-[1.45] text-[var(--ink-2)]">{finding}</p>
+                      {item.findings.slice(0, 2).map((finding, findingIndex) => (
+                        <p key={listKey("governance-finding", finding, findingIndex)} className="text-[13.5px] leading-[1.45] text-[var(--ink-2)]">{finding}</p>
                       ))}
                     </div>
                   </article>
@@ -2196,8 +2207,8 @@ export function SinkraGovernanceReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
           <section className="border border-[var(--rule)] bg-[var(--paper)]">
             <SectionHead eyebrow="Compliance dimensions" title="Score por dimensão" meta={`${dimensions.length} dimensões`} />
             <div className="grid gap-px bg-[var(--rule)] md:grid-cols-2">
-              {dimensions.map((dimension) => (
-                <article key={`${dimension.id}-${dimension.name}`} className="bg-[var(--paper)] p-5">
+              {dimensions.map((dimension, index) => (
+                <article key={listKey("governance-dimension", `${dimension.id}-${dimension.name}`, index)} className="bg-[var(--paper)] p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="text-[10px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
@@ -2224,8 +2235,8 @@ export function SinkraGovernanceReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
             <section className="border border-[var(--rule)] bg-[var(--paper)]">
               <SectionHead eyebrow="Blocking issues" title="Bloqueios" compact />
               <div className="grid gap-3 p-4">
-                {issues.map((issue) => (
-                  <article key={issue.id} className="border border-[var(--warning-ink)] bg-[var(--paper-alt)] p-4">
+                {issues.map((issue, index) => (
+                  <article key={listKey("governance-issue", issue.id, index)} className="border border-[var(--warning-ink)] bg-[var(--paper-alt)] p-4">
                     <div className="text-[10px] uppercase tracking-[0.1em] text-[var(--warning-ink)]" style={{ fontFamily: MONO_FONT }}>
                       {issue.id} · {issue.severity} · {issue.linkedGate}
                     </div>
@@ -2261,8 +2272,8 @@ export function SinkraAccountabilityReport({ sinkra }: { sinkra?: ObservatoryTyp
           <section className="border border-[var(--rule)] bg-[var(--paper)]">
             <SectionHead eyebrow="RACI matrix" title="Responsável e accountable por task" meta={`${rows.length} linhas`} />
             <div className="grid gap-px bg-[var(--rule)]">
-              {rows.map((row) => (
-                <article key={row.taskId} className="grid gap-4 bg-[var(--paper)] p-4 lg:grid-cols-[minmax(240px,1fr)_220px_220px]">
+              {rows.map((row, index) => (
+                <article key={listKey("accountability-row", row.taskId, index)} className="grid gap-4 bg-[var(--paper)] p-4 lg:grid-cols-[minmax(240px,1fr)_220px_220px]">
                   <div className="min-w-0">
                     <div className="text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{row.taskId}</div>
                     <h4 className="mt-1 text-[18px] font-black leading-tight text-[var(--ink)]">{row.taskName}</h4>
@@ -2325,8 +2336,8 @@ export function SinkraGapsReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
           <section className="border border-[var(--rule)] bg-[var(--paper)]">
             <SectionHead eyebrow="Capability gaps" title="Gap register" meta={`${gaps.length} gaps`} />
             <div className="grid gap-px bg-[var(--rule)] md:grid-cols-2">
-              {gaps.map((gap) => (
-                <article key={gap.id} className="bg-[var(--paper)] p-5">
+              {gaps.map((gap, index) => (
+                <article key={listKey("gap", gap.id, index)} className="bg-[var(--paper)] p-5">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <div className="text-[10px] uppercase tracking-[0.1em] text-[var(--warning-ink)]" style={{ fontFamily: MONO_FONT }}>
@@ -2343,7 +2354,7 @@ export function SinkraGapsReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
                   <p className="mt-3 text-[14px] leading-[1.5] text-[var(--ink-2)]">{gap.impact}</p>
                   <p className="mt-3 border-l-2 border-[var(--lime-ink)] pl-3 text-[14px] font-bold leading-[1.45] text-[var(--ink)]">{gap.resolution}</p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
-                    {gap.blockers.slice(0, 4).map((item) => <Tag key={item} label={item} tone="warn" />)}
+                    {gap.blockers.slice(0, 4).map((item, blockerIndex) => <Tag key={listKey("gap-blocker", item, blockerIndex)} label={item} tone="warn" />)}
                   </div>
                 </article>
               ))}
@@ -2358,8 +2369,8 @@ export function SinkraGapsReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
             <section className="border border-[var(--rule)] bg-[var(--paper)]">
               <SectionHead eyebrow="Remediation" title="Roadmap" compact />
               <div className="grid gap-3 p-4">
-                {remediation.map((item) => (
-                  <article key={`${item.priority}-${item.dimension}-${item.finding}`} className="grid grid-cols-[54px_minmax(0,1fr)] gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
+                {remediation.map((item, index) => (
+                  <article key={listKey("gap-remediation", `${item.priority}-${item.dimension}-${item.finding}`, index)} className="grid grid-cols-[54px_minmax(0,1fr)] gap-3 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
                     <div className="text-[18px] font-black text-[var(--warning-ink)]">{item.priority}</div>
                     <div className="min-w-0">
                       <h4 className="text-[15px] font-black leading-tight text-[var(--ink)]">{item.dimension}</h4>
@@ -2382,17 +2393,17 @@ export function SinkraGapsReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
               <div className="min-w-[720px] border border-[var(--rule)]">
                 <div className="grid bg-[var(--paper-alt)]" style={{ gridTemplateColumns: `160px repeat(${executorTypes.length}, minmax(100px, 1fr))` }}>
                   <div className="border-r border-[var(--rule)] p-3 text-[11px] uppercase tracking-[0.12em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>Severidade</div>
-                  {executorTypes.map((executor) => (
-                    <div key={executor} className="border-r border-[var(--rule)] p-3 text-[11px] uppercase tracking-[0.12em] text-[var(--ink-3)] last:border-r-0" style={{ fontFamily: MONO_FONT }}>{executor}</div>
+                  {executorTypes.map((executor, index) => (
+                    <div key={listKey("gap-executor-head", executor, index)} className="border-r border-[var(--rule)] p-3 text-[11px] uppercase tracking-[0.12em] text-[var(--ink-3)] last:border-r-0" style={{ fontFamily: MONO_FONT }}>{executor}</div>
                   ))}
                 </div>
-                {severities.map((severity) => (
-                  <div key={severity} className="grid border-t border-[var(--rule)]" style={{ gridTemplateColumns: `160px repeat(${executorTypes.length}, minmax(100px, 1fr))` }}>
+                {severities.map((severity, severityIndex) => (
+                  <div key={listKey("gap-severity-row", severity, severityIndex)} className="grid border-t border-[var(--rule)]" style={{ gridTemplateColumns: `160px repeat(${executorTypes.length}, minmax(100px, 1fr))` }}>
                     <div className="border-r border-[var(--rule)] p-3 text-[15px] font-black text-[var(--ink)]">{severity}</div>
-                    {executorTypes.map((executor) => {
+                    {executorTypes.map((executor, executorIndex) => {
                       const count = gaps.filter((gap) => (gap.severity || "—") === severity && gap.executorTypes.includes(executor)).length
                       return (
-                        <div key={`${severity}-${executor}`} className={cn("border-r border-[var(--rule)] p-3 text-center text-[24px] font-black last:border-r-0", count > 0 ? "bg-[var(--paper-alt)] text-[var(--warning-ink)]" : "text-[var(--ink-dim)]")} style={{ fontFamily: DISPLAY_FONT }}>
+                        <div key={listKey("gap-severity-cell", `${severity}-${executor}`, executorIndex)} className={cn("border-r border-[var(--rule)] p-3 text-center text-[24px] font-black last:border-r-0", count > 0 ? "bg-[var(--paper-alt)] text-[var(--warning-ink)]" : "text-[var(--ink-dim)]")} style={{ fontFamily: DISPLAY_FONT }}>
                           {count}
                         </div>
                       )
@@ -2446,7 +2457,7 @@ export function SinkraEvidenceReport({ sinkra }: { sinkra?: ObservatoryTypeSpeci
             <SectionHead eyebrow="Execution timeline" title="Fases do pipeline" meta={`${phases.length} fases`} />
             <div className="grid gap-px bg-[var(--rule)]">
               {phases.map((phase, index) => (
-                <article key={phase.id} className="grid gap-4 bg-[var(--paper)] p-4 md:grid-cols-[64px_minmax(0,1fr)_120px]">
+                <article key={listKey("execution-phase", phase.id, index)} className="grid gap-4 bg-[var(--paper)] p-4 md:grid-cols-[64px_minmax(0,1fr)_120px]">
                   <span className="text-[30px] font-black leading-none text-[var(--ink-dim)]" style={{ fontFamily: DISPLAY_FONT }}>{String(index + 1).padStart(2, "0")}</span>
                   <div>
                     <div className="text-[10px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
@@ -2465,8 +2476,8 @@ export function SinkraEvidenceReport({ sinkra }: { sinkra?: ObservatoryTypeSpeci
           <aside className="border border-[var(--rule)] bg-[var(--paper)]">
             <SectionHead eyebrow="Runtime metrics" title="Custo por fase" compact />
             <div className="grid gap-3 p-4">
-              {metrics.map((metric) => (
-                <article key={metric.phase} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
+              {metrics.map((metric, index) => (
+                <article key={listKey("execution-metric", metric.phase, index)} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h4 className="truncate text-[15px] font-black text-[var(--ink)]">{metric.phase}</h4>
@@ -2517,9 +2528,9 @@ export function SinkraOperationsReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
           <SectionHead eyebrow="Executor distribution" title="Carga por tipo de executor" meta={`${pilot.executorMix.length} executores`} />
           <div className="p-5">
             <div className="h-5 overflow-hidden bg-[var(--paper-deep)]">
-              {pilot.executorMix.map((item) => (
+              {pilot.executorMix.map((item, index) => (
                 <div
-                  key={item.executor}
+                  key={listKey("operations-executor-bar", item.executor, index)}
                   className={cn("inline-block h-full", item.tone === "warn" ? "bg-[var(--warning-ink)]" : item.tone === "good" ? "bg-[var(--lime-ink)]" : "bg-[var(--ink)]")}
                   style={{ width: `${Math.max(3, (item.tasks / Math.max(totalExecutorTasks, 1)) * 100)}%` }}
                   title={`${item.executor}: ${item.tasks}`}
@@ -2527,8 +2538,8 @@ export function SinkraOperationsReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
               ))}
             </div>
             <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {pilot.executorMix.map((item) => (
-                <article key={item.executor} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-4">
+              {pilot.executorMix.map((item, index) => (
+                <article key={listKey("operations-executor-card", item.executor, index)} className="border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-4">
                   <div className={cn("text-[44px] font-black leading-none", item.tone === "warn" ? "text-[var(--warning-ink)]" : item.tone === "good" ? "text-[var(--lime-ink)]" : "text-[var(--ink)]")} style={{ fontFamily: DISPLAY_FONT }}>
                     {item.tasks}
                   </div>
@@ -2569,7 +2580,7 @@ export function SinkraOperationsReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
             <SectionHead eyebrow="Operating lanes" title="Lanes acionáveis" meta={`${pilot.lanes.length} lanes`} />
             <div className="grid gap-px bg-[var(--rule)] md:grid-cols-2">
               {pilot.lanes.map((lane, index) => (
-                <article key={lane.id} className="bg-[var(--paper)] p-5">
+                <article key={listKey("operations-lane", lane.id, index)} className="bg-[var(--paper)] p-5">
                   <div className="flex items-start justify-between gap-4">
                     <span className="text-[32px] font-black leading-none text-[var(--ink-dim)]" style={{ fontFamily: DISPLAY_FONT }}>
                       {String(index + 1).padStart(2, "0")}
@@ -2594,8 +2605,8 @@ export function SinkraOperationsReport({ sinkra }: { sinkra?: ObservatoryTypeSpe
           <section className="border border-[var(--rule)] bg-[var(--paper)]">
             <SectionHead eyebrow="Gate heatmap" title="Controles operacionais" compact />
             <div className="grid gap-3 p-4">
-              {pilot.gateBoard.map((gate) => (
-                <article key={gate.id} className={cn("border p-4", gate.status === "PASS" ? "border-[var(--rule-soft)] bg-[var(--paper-alt)]" : "border-[var(--warning-ink)] bg-[var(--paper-alt)]")}>
+              {pilot.gateBoard.map((gate, index) => (
+                <article key={listKey("operations-gate", gate.id, index)} className={cn("border p-4", gate.status === "PASS" ? "border-[var(--rule-soft)] bg-[var(--paper-alt)]" : "border-[var(--warning-ink)] bg-[var(--paper-alt)]")}>
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-[12px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{gate.id}</span>
                     <span className={cn("text-[12px] font-bold uppercase tracking-[0.1em]", gate.status === "PASS" ? "text-[var(--lime-ink)]" : "text-[var(--warning-ink)]")} style={{ fontFamily: MONO_FONT }}>{gate.status}</span>
@@ -2635,7 +2646,7 @@ export function SinkraRiskReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
             <SectionHead eyebrow="Risk register" title="Bloqueios priorizados" meta={`${pilot.risks.length} itens`} />
             <div className="grid gap-px bg-[var(--rule)]">
               {pilot.risks.map((risk, index) => (
-                <article key={risk.id} className="grid gap-5 bg-[var(--paper)] p-5 md:grid-cols-[76px_minmax(0,1fr)]">
+                <article key={listKey("risk-report", risk.id, index)} className="grid gap-5 bg-[var(--paper)] p-5 md:grid-cols-[76px_minmax(0,1fr)]">
                   <div>
                     <div className="text-[34px] font-black leading-none text-[var(--warning-ink)]" style={{ fontFamily: DISPLAY_FONT }}>
                       {String(index + 1).padStart(2, "0")}
@@ -2674,8 +2685,8 @@ export function SinkraRiskReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific[
             <section className="border border-[var(--rule)] bg-[var(--paper)]">
               <SectionHead eyebrow="Action plan" title="Fila de correção" compact />
               <div className="grid gap-3 p-4">
-                {pilot.nextActions.map((action) => (
-                  <article key={`${action.priority}-${action.title}`} className="grid grid-cols-[56px_minmax(0,1fr)] gap-4 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-4">
+                {pilot.nextActions.map((action, index) => (
+                  <article key={listKey("risk-action", `${action.priority}-${action.title}`, index)} className="grid grid-cols-[56px_minmax(0,1fr)] gap-4 border border-[var(--rule-soft)] bg-[var(--paper-alt)] p-4">
                     <span className="text-[18px] font-black text-[var(--warning-ink)]">{action.priority}</span>
                     <div>
                       <h4 className="text-[16px] font-black leading-tight text-[var(--ink)]">{action.title}</h4>
@@ -2889,12 +2900,12 @@ function DarkRadarPanel({
             {[0.25, 0.5, 0.75, 1].map((ring) => (
               <circle key={ring} cx={cx} cy={cy} r={radius * ring} fill="none" stroke="rgba(245,244,231,0.12)" strokeWidth="1" />
             ))}
-            {points.map((point) => (
-              <line key={`${point.item.id}-axis`} x1={cx} y1={cy} x2={point.ax} y2={point.ay} stroke="rgba(245,244,231,0.10)" strokeWidth="1" />
+            {points.map((point, index) => (
+              <line key={listKey("radar-axis", point.item.id, index)} x1={cx} y1={cy} x2={point.ax} y2={point.ay} stroke="rgba(245,244,231,0.10)" strokeWidth="1" />
             ))}
             <polygon points={polygon} fill="rgba(209,255,0,0.24)" stroke="#d1ff00" strokeWidth="2" />
-            {points.map((point) => (
-              <g key={point.item.id}>
+            {points.map((point, index) => (
+              <g key={listKey("radar-point", point.item.id, index)}>
                 <circle cx={point.x} cy={point.y} r="4.5" fill={scoreTone(point.item.score, point.item.max) === "danger" ? "#ef4444" : scoreTone(point.item.score, point.item.max) === "warn" ? "#f5b340" : "#d1ff00"} />
                 <text x={point.lx} y={point.ly} textAnchor={point.lx < cx ? "end" : point.lx > cx ? "start" : "middle"} dominantBaseline="middle" fill="rgba(245,244,231,0.58)" fontSize="10" fontFamily="monospace">
                   {shortText(point.item.label, 16)}
@@ -2904,11 +2915,11 @@ function DarkRadarPanel({
           </svg>
         </div>
         <div className="grid content-start gap-3">
-          {plotted.map((item) => {
+          {plotted.map((item, index) => {
             const tone = scoreTone(item.score, item.max)
             const pctValue = scorePercent(item)
             return (
-              <article key={item.id} className="aiox-surface-card p-4">
+              <article key={listKey("radar-score", item.id, index)} className="aiox-surface-card p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <h4 className="truncate text-[16px] font-black text-[#f5f4e7]">{item.label}</h4>
@@ -3096,9 +3107,9 @@ function DarkQuadrant({
         <div className="absolute right-3 top-3 text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/35" style={{ fontFamily: MONO_FONT }}>automatizar</div>
         <div className="absolute bottom-3 left-3 text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/35" style={{ fontFamily: MONO_FONT }}>manual</div>
         <div className="absolute bottom-3 right-3 text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/35" style={{ fontFamily: MONO_FONT }}>worker-ready</div>
-        {plotted.map((item) => (
+        {plotted.map((item, index) => (
           <div
-            key={`${item.label}-${item.x}-${item.y}`}
+            key={listKey("quadrant-point", `${item.label}-${item.x}-${item.y}`, index)}
             className={cn("absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 border", item.tone === "danger" ? "border-[#ef4444] bg-[#ef4444]" : item.tone === "warn" ? "border-[#f5b340] bg-[#f5b340]" : "border-[#d1ff00] bg-[#d1ff00]")}
             style={{ left: `${item.x}%`, top: `${100 - item.y}%` }}
             title={item.label}
@@ -3131,19 +3142,19 @@ function DarkRiskHeatmap({
       <div className="mt-6 overflow-x-auto border border-[#f5f4e7]/10">
         <div className="grid min-w-[560px] grid-cols-[110px_repeat(4,minmax(0,1fr))]">
           <div className="bg-[#050505] p-3" />
-          {categories.map((category) => (
-            <div key={category} className="border-l border-[#f5f4e7]/10 bg-[#050505] p-3 text-center text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/40" style={{ fontFamily: MONO_FONT }}>{category}</div>
+          {categories.map((category, index) => (
+            <div key={listKey("risk-category", category, index)} className="border-l border-[#f5f4e7]/10 bg-[#050505] p-3 text-center text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/40" style={{ fontFamily: MONO_FONT }}>{category}</div>
           ))}
           {severities.map((severity, row) => (
-            <Fragment key={severity}>
-              <div key={`${severity}-label`} className="border-t border-[#f5f4e7]/10 bg-[#050505] p-3 text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/45" style={{ fontFamily: MONO_FONT }}>{severity}</div>
+            <Fragment key={listKey("risk-severity-row", severity, row)}>
+              <div key={listKey("risk-severity-label", severity, row)} className="border-t border-[#f5f4e7]/10 bg-[#050505] p-3 text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/45" style={{ fontFamily: MONO_FONT }}>{severity}</div>
               {categories.map((category, col) => {
                 const count = hasData
                   ? risks.filter((risk) => risk.severity.toLowerCase().includes(severity)).length + gaps.filter((gap) => gap.severity.toLowerCase().includes(severity) && gap.category.toLowerCase().includes(category.slice(0, 4))).length
                   : Math.max(0, 4 - row - Math.abs(col - 1))
                 const hot = count > 2 || (row === 0 && count > 0)
                 return (
-                  <div key={`${severity}-${category}`} className={cn("min-h-[70px] border-l border-t border-[#f5f4e7]/10 p-3", hot ? "bg-[#ef4444]/22" : count > 0 ? "bg-[#f5b340]/16" : "bg-[#050505]")}>
+                  <div key={listKey("risk-heat-cell", `${severity}-${category}`, col)} className={cn("min-h-[70px] border-l border-t border-[#f5f4e7]/10 p-3", hot ? "bg-[#ef4444]/22" : count > 0 ? "bg-[#f5b340]/16" : "bg-[#050505]")}>
                     <div className={cn("text-[28px] font-black leading-none", hot ? "text-[#ef4444]" : count > 0 ? "text-[#f5b340]" : "text-[#f5f4e7]/20")} style={{ fontFamily: DISPLAY_FONT }}>
                       {count}
                     </div>
@@ -3169,7 +3180,7 @@ function DarkFunnel({ items }: { items: Array<{ label: string; value: number; ac
           const width = Math.max(18, Math.min(100, ratio * 100))
           const blocked = ratio < 1
           return (
-            <article key={item.label} className="aiox-surface-card relative bg-[#050505] p-4">
+            <article key={listKey("dark-funnel", item.label, index)} className="aiox-surface-card relative bg-[#050505] p-4">
               <div className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>
                 {String(index + 1).padStart(2, "0")} · {item.label}
               </div>
@@ -3262,8 +3273,8 @@ function FanPanel({ title, items }: { title: string; items: Array<{ label: strin
     <div className="bg-[var(--paper)] p-4">
       <p className="mb-3 text-[11px] uppercase tracking-[0.13em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{title}</p>
       <div className="grid gap-2">
-        {items.map((item) => (
-          <div key={item.label} className="grid grid-cols-[minmax(0,1fr)_42px] items-center gap-3">
+        {items.map((item, index) => (
+          <div key={listKey("fan-panel", item.label, index)} className="grid grid-cols-[minmax(0,1fr)_42px] items-center gap-3">
             <span className="truncate text-[13px] font-bold text-[var(--ink)]">{item.label}</span>
             <span className="text-right text-[22px] font-black leading-none text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>{item.value}</span>
           </div>
@@ -3308,8 +3319,8 @@ function CumulativeChart({ title, items }: { title: string; items: Array<{ label
     <div className="bg-[var(--paper)] p-5">
       <p className="mb-4 text-[11px] uppercase tracking-[0.13em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{title}</p>
       <div className="grid gap-3">
-        {cumulative.map((item) => (
-          <div key={item.label} className="grid gap-2">
+        {cumulative.map((item, index) => (
+          <div key={listKey("cumulative", item.label, index)} className="grid gap-2">
             <div className="flex items-center justify-between gap-3">
               <span className="truncate text-[13px] font-bold text-[var(--ink)]">{item.label}</span>
               <span className="text-[12px] font-bold text-[var(--ink-2)]">{item.display}</span>
@@ -3398,9 +3409,9 @@ function FlowLegendRow({
       className="flex min-w-0 flex-wrap justify-start gap-2 border-b border-[var(--rule)] bg-[var(--paper-alt)] px-4 pb-4 sm:justify-end sm:px-5"
       style={{ fontFamily: MONO_FONT }}
     >
-      {items.map((item) => (
+      {items.map((item, index) => (
         <span
-          key={item.label}
+          key={listKey("flow-legend", item.label, index)}
           className={cn(
             "max-w-full border bg-[var(--paper)] px-2 py-1 text-[10.5px] uppercase tracking-[0.1em]",
             item.tone === "warning"
@@ -3428,8 +3439,8 @@ function DependencyColumn({ title, values }: { title: string; values: string[] }
     <div>
       <div className="mb-2 text-[10.5px] uppercase tracking-[0.1em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{title}</div>
       <div className="grid gap-1.5">
-        {values.slice(0, 5).map((value) => (
-          <div key={value} className="truncate border border-[var(--rule-soft)] bg-[var(--paper-alt)] px-2 py-1.5 text-[12.5px] text-[var(--ink-2)]">{value}</div>
+        {values.slice(0, 5).map((value, index) => (
+          <div key={listKey("dependency-value", value, index)} className="truncate border border-[var(--rule-soft)] bg-[var(--paper-alt)] px-2 py-1.5 text-[12.5px] text-[var(--ink-2)]">{value}</div>
         ))}
       </div>
     </div>
@@ -3455,8 +3466,8 @@ function DistributionPanel({
       </div>
       {items.length > 0 ? (
         <div className="grid gap-2">
-          {items.slice(0, compact ? 5 : 8).map((item) => (
-            <div key={item.label} className="grid grid-cols-[minmax(0,1fr)_42px] items-center gap-3">
+          {items.slice(0, compact ? 5 : 8).map((item, index) => (
+            <div key={listKey("distribution", item.label, index)} className="grid grid-cols-[minmax(0,1fr)_42px] items-center gap-3">
               <div className="min-w-0">
                 <div className="mb-1 flex items-center justify-between gap-3">
                   <span className="truncate text-[13.5px] font-bold text-[var(--ink)]">{item.label}</span>

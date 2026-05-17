@@ -4,7 +4,7 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import YAML from "yaml"
 import type { ReaderMode } from "@/components/observatory/foundations/types"
-import { EmptyObservatorySourceError } from "./observatory.server"
+import { EmptyObservatorySourceError } from "./observatory-errors.server"
 import { resolveDashPath } from "./workspace-root.server"
 
 export type SinkraMapDocument = {
@@ -349,25 +349,31 @@ const LONG_CACHE_TTL_MS = process.env.NODE_ENV === "production" ? 5 * 60_000 : 5
 const INDEX_CACHE_TTL_MS = LONG_CACHE_TTL_MS
 const RUN_CACHE_TTL_MS = LONG_CACHE_TTL_MS
 const INDEX_BUILD_CONCURRENCY = 24
-const KEY_FILES = [
-  ["observatory_map.yaml", "Observatory"],
-  ["composition_map.yaml", "Composition"],
-  ["token_assignments.yaml", "Tokens"],
-  ["workflow_definition.yaml", "Workflow"],
-  ["task_definitions.yaml", "Tasks"],
-  ["quality_gates.yaml", "Gates"],
-  ["score_card.yaml", "Score"],
-  ["process_map.yaml", "Process"],
-  ["domain_map.yaml", "Domain"],
-  ["dependency_graph.yaml", "Dependencies"],
-  ["executor_matrix.yaml", "Executors"],
-  ["automation_specs.yaml", "Automation"],
-  ["raci_matrix.yaml", "RACI"],
-  ["capability_gaps.yaml", "Gaps"],
-  ["compliance_score.yaml", "Compliance"],
-  ["sinkra-state.json", "State"],
-  ["metrics.jsonl", "Metrics"],
+const RUN_SCAN_CONCURRENCY = 16
+const MAX_RUN_SCAN_DEPTH = 4
+const MAX_RUN_FILE_DEPTH = 2
+const CURRENT_RUN_ALIASES = new Set(["current", "latest"])
+const ARTIFACT_SPECS = [
+  { key: "observatory_map.yaml", label: "Observatory", aliases: ["observatory_map.yaml", "observatory-map.yaml"], pattern: /(?:^|[-_])observatory[-_]map\.ya?ml$/i },
+  { key: "composition_map.yaml", label: "Composition", aliases: ["composition_map.yaml", "composition-map.yaml"], pattern: /(?:^|[-_])composition[-_]map\.ya?ml$/i },
+  { key: "token_assignments.yaml", label: "Tokens", aliases: ["token_assignments.yaml", "token-assignments.yaml"], pattern: /(?:^|[-_])token[-_]assignments\.ya?ml$/i },
+  { key: "workflow_definition.yaml", label: "Workflow", aliases: ["workflow_definition.yaml", "workflow-definition.yaml", "workflow.yaml"], pattern: /(?:^|[-_])workflow(?:[-_]definition)?\.ya?ml$/i },
+  { key: "task_definitions.yaml", label: "Tasks", aliases: ["task_definitions.yaml", "task-definitions.yaml"], pattern: /(?:^|[-_])task[-_]definitions\.ya?ml$/i },
+  { key: "quality_gates.yaml", label: "Gates", aliases: ["quality_gates.yaml", "quality-gates.yaml"], pattern: /(?:^|[-_])quality[-_]gates\.ya?ml$/i },
+  { key: "score_card.yaml", label: "Score", aliases: ["score_card.yaml", "score-card.yaml", "deterministic-scores.yaml"], pattern: /(?:^|[-_])(?:score[-_]card|deterministic[-_]scores)\.ya?ml$/i },
+  { key: "process_map.yaml", label: "Process", aliases: ["process_map.yaml", "process-map.yaml", "process-mapping.yaml"], pattern: /(?:^|[-_])process[-_](?:map|mapping)\.ya?ml$/i },
+  { key: "domain_map.yaml", label: "Domain", aliases: ["domain_map.yaml", "domain-map.yaml"], pattern: /(?:^|[-_])domain[-_]map\.ya?ml$/i },
+  { key: "dependency_graph.yaml", label: "Dependencies", aliases: ["dependency_graph.yaml", "dependency-graph.yaml"], pattern: /(?:^|[-_])dependency[-_]graph\.ya?ml$/i },
+  { key: "executor_matrix.yaml", label: "Executors", aliases: ["executor_matrix.yaml", "executor-matrix.yaml"], pattern: /(?:^|[-_])executor[-_]matrix\.ya?ml$/i },
+  { key: "automation_specs.yaml", label: "Automation", aliases: ["automation_specs.yaml", "automation-specs.yaml"], pattern: /(?:^|[-_])automation[-_]specs\.ya?ml$/i },
+  { key: "raci_matrix.yaml", label: "RACI", aliases: ["raci_matrix.yaml", "raci-matrix.yaml"], pattern: /(?:^|[-_])raci[-_]matrix\.ya?ml$/i },
+  { key: "capability_gaps.yaml", label: "Gaps", aliases: ["capability_gaps.yaml", "capability-gaps.yaml", "gap-analysis.yaml"], pattern: /(?:^|[-_])(?:capability[-_]gaps|gap[-_]analysis)\.ya?ml$/i },
+  { key: "compliance_score.yaml", label: "Compliance", aliases: ["compliance_score.yaml", "compliance-score.yaml", "sinkra-compliance-report.yaml"], pattern: /(?:^|[-_])(?:compliance[-_]score|sinkra[-_]compliance[-_]report)\.ya?ml$/i },
+  { key: "sinkra-state.json", label: "State", aliases: ["sinkra-state.json", "pipeline-state.json"], pattern: /(?:^|[-_])(?:sinkra[-_]state|pipeline[-_]state)\.json$/i },
+  { key: "metrics.jsonl", label: "Metrics", aliases: ["metrics.jsonl", "events.jsonl"], pattern: /(?:^|[-_])(?:metrics|events)\.jsonl$/i },
 ] as const
+type ArtifactKey = typeof ARTIFACT_SPECS[number]["key"]
+const KEY_FILES = ARTIFACT_SPECS.map(({ key, label }) => [key, label] as const)
 
 let indexCache:
   | {
@@ -460,47 +466,151 @@ async function mapWithConcurrency<T, R>(
   return results
 }
 
-async function listFiles(dir: string) {
-  const entries = await readdir(dir, { withFileTypes: true })
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => entry.name)
-    .filter((file) => /\.(md|ya?ml|json|jsonl|mmd|svg)$/i.test(file))
-    .sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))
-}
-
 function isReservedDirName(name: string) {
   // Skip metadata/archive dirs: `_smoke-fixture`, `_archived`, `_baseline`,
   // `_v1-pre-*`, `.cache`, etc. Only artifact-bearing run dirs should surface.
   return name.startsWith("_") || name.startsWith(".")
 }
 
+function artifactSpecForFile(file: string) {
+  const name = path.basename(file)
+  return ARTIFACT_SPECS.find((spec) => spec.aliases.some((alias) => alias === name) || spec.pattern.test(name))
+}
+
+function resolveArtifactFile(files: string[], key: ArtifactKey) {
+  return resolveArtifactFiles(files, key)[0]
+}
+
+function resolveArtifactFiles(files: string[], key: ArtifactKey) {
+  const spec = ARTIFACT_SPECS.find((item) => item.key === key)
+  if (!spec) return []
+  return files.filter((file) => {
+    const name = path.basename(file)
+    return spec.aliases.some((alias) => alias === name) || spec.pattern.test(name)
+  })
+}
+
+function hasArtifact(files: string[], key: ArtifactKey) {
+  return Boolean(resolveArtifactFile(files, key))
+}
+
+function hasRunSignal(files: string[]) {
+  return files.some((file) => {
+    const name = path.basename(file)
+    return Boolean(artifactSpecForFile(name)) || /^sinkra-output(?:[-_].*)?\.(?:md|ya?ml)$/i.test(name) || /^mission-output(?:[-_].*)?\.ya?ml$/i.test(name)
+  })
+}
+
+async function listFiles(dir: string, rel = "", depth = 0): Promise<string[]> {
+  const full = path.join(dir, rel)
+  const entries = await readdir(full, { withFileTypes: true })
+  const files = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.join(rel, entry.name))
+    .filter((file) => /\.(md|ya?ml|json|jsonl|mmd|svg)$/i.test(file))
+
+  if (depth >= MAX_RUN_FILE_DEPTH) {
+    return files.sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))
+  }
+
+  const dirs = entries.filter((entry) => entry.isDirectory() && !isReservedDirName(entry.name))
+  const nested = (await Promise.all(dirs.map((entry) => listFiles(dir, path.join(rel, entry.name), depth + 1)))).flat()
+  return [...files, ...nested].sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))
+}
+
+function isCurrentRunAlias(name: string) {
+  return CURRENT_RUN_ALIASES.has(name)
+}
+
+function isDatedRunDirName(name: string) {
+  return /^\d{8}(?:-\d{6})?(?:[-_].*)?$/.test(name) || /^\d{4}-\d{2}-\d{2}(?:[-_].*)?$/.test(name)
+}
+
+function splitRunSlug(slug: string) {
+  return slug.split(/[\\/]+/).filter(Boolean)
+}
+
+function currentGroupKey(slug: string) {
+  const parts = splitRunSlug(slug)
+  const aliasIndex = parts.findIndex((part, index) => index > 0 && isCurrentRunAlias(part))
+  if (aliasIndex > 0) return parts.slice(0, aliasIndex).join(path.sep)
+
+  const datedIndex = parts.findIndex((part, index) => index > 0 && isDatedRunDirName(part))
+  if (datedIndex > 0) return parts.slice(0, datedIndex).join(path.sep)
+
+  return slug
+}
+
+function isCurrentRunSlug(slug: string) {
+  return splitRunSlug(slug).some(isCurrentRunAlias)
+}
+
+async function safeDirectoryStat(dir: string) {
+  try {
+    const st = await stat(dir)
+    return st.isDirectory() ? st : null
+  } catch {
+    return null
+  }
+}
+
 async function listRunDirs(root: string, rel = "", depth = 0): Promise<string[]> {
-  if (depth > 4) return []
+  if (depth > MAX_RUN_SCAN_DEPTH) return []
   const full = path.join(root, rel)
   const entries = await readdir(full, { withFileTypes: true })
   const fileNames = entries.filter((entry) => entry.isFile()).map((entry) => entry.name)
-  const hasSignal = KEY_FILES.some(([file]) => fileNames.includes(file)) ||
-    fileNames.includes("sinkra-output.yaml") ||
-    fileNames.includes("mission-output.yaml")
-  const dirs = entries.filter((entry) => entry.isDirectory() && !isReservedDirName(entry.name))
-  const nested = (await Promise.all(dirs.map((entry) => listRunDirs(root, path.join(rel, entry.name), depth + 1)))).flat()
-  return hasSignal && rel ? [rel, ...nested] : nested
+  const hasSignal = hasRunSignal(fileNames)
+  const hasRunCollectionChild = entries.some((entry) => entry.isDirectory() && /^(map|validate)$/i.test(entry.name))
+  if (hasSignal && rel && !hasRunCollectionChild) return [rel]
+  const childDirs = await mapWithConcurrency(
+    entries.filter((entry) =>
+      !isReservedDirName(entry.name) && (entry.isDirectory() || (entry.isSymbolicLink() && isCurrentRunAlias(entry.name))),
+    ),
+    RUN_SCAN_CONCURRENCY,
+    async (entry) => {
+      if (entry.isDirectory()) return entry.name
+      const st = await safeDirectoryStat(path.join(full, entry.name))
+      return st ? entry.name : ""
+    },
+  )
+  const dirs = childDirs.filter(Boolean)
+  const aliases = dirs.filter(isCurrentRunAlias)
+  const scanDirs = aliases.length > 0 ? aliases : dirs
+  const nested = (await Promise.all(scanDirs.map((entry) => listRunDirs(root, path.join(rel, entry), depth + 1)))).flat()
+  return nested
+}
+
+async function selectCurrentRunDirs(root: string, slugs: string[]) {
+  const grouped = new Map<string, string[]>()
+  for (const slug of slugs) {
+    const group = currentGroupKey(slug)
+    grouped.set(group, [...(grouped.get(group) ?? []), slug])
+  }
+
+  const selected = await mapWithConcurrency(
+    [...grouped.values()],
+    INDEX_BUILD_CONCURRENCY,
+    async (groupSlugs) => {
+      const current = groupSlugs.filter(isCurrentRunSlug).sort((a, b) => a.localeCompare(b))[0]
+      if (current) return current
+
+      const ranked = await mapWithConcurrency(groupSlugs, RUN_SCAN_CONCURRENCY, async (slug) => {
+        const st = await safeDirectoryStat(path.join(root, slug))
+        return { slug, mtimeMs: st?.mtimeMs ?? 0 }
+      })
+      return ranked.sort((a, b) => b.mtimeMs - a.mtimeMs || b.slug.localeCompare(a.slug))[0]?.slug
+    },
+  )
+
+  return selected.filter(Boolean).sort((a, b) => a.localeCompare(b))
 }
 
 function priority(file: string) {
-  if (file === "observatory_map.yaml") return -1
-  if (file === "sinkra-output.md") return 0
-  if (file === "sinkra-output.yaml") return 1
-  if (file === "composition_map.yaml") return 2
-  if (file === "token_assignments.yaml") return 3
-  if (file === "workflow_definition.yaml") return 4
-  if (file === "task_definitions.yaml") return 5
-  if (file === "quality_gates.yaml") return 6
-  if (file === "score_card.yaml") return 7
-  if (file === "process_map.yaml") return 8
-  if (file === "domain_map.yaml") return 9
-  if (file === "dependency_graph.yaml") return 10
+  const name = path.basename(file)
+  const artifactIndex = ARTIFACT_SPECS.findIndex((spec) => spec.aliases.some((alias) => alias === name) || spec.pattern.test(name))
+  if (artifactIndex >= 0) return artifactIndex + 2
+  if (/^sinkra-output(?:[-_].*)?\.md$/i.test(name)) return 0
+  if (/^sinkra-output(?:[-_].*)?\.ya?ml$/i.test(name)) return 1
   return 20
 }
 
@@ -565,12 +675,29 @@ function asArray(value: unknown): unknown[] {
 
 function asString(value: unknown, fallback = "") {
   if (value === null || value === undefined || value === "") return fallback
+  if (typeof value === "object") return fallback
   return String(value)
 }
 
 function asNumber(value: unknown): number | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>
+    for (const key of ["value", "score", "current", "numeric", "overall", "compliance_score", "final_score", "weighted_average"]) {
+      const parsed = asNumber(record[key])
+      if (parsed !== null) return parsed
+    }
+    return null
+  }
   const n = Number(value)
   return Number.isFinite(n) ? n : null
+}
+
+function scoreLabel(value: unknown, fallback = "--") {
+  const n = asNumber(value)
+  if (n !== null) {
+    return Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10)
+  }
+  return asString(value, fallback)
 }
 
 async function readYaml(runPath: string, file: string): Promise<Record<string, unknown>> {
@@ -580,6 +707,33 @@ async function readYaml(runPath: string, file: string): Promise<Record<string, u
   } catch {
     return {}
   }
+}
+
+async function readYamlArtifact(runPath: string, files: string[], key: ArtifactKey, view?: ReaderMode) {
+  if (!shouldLoadStructuredFile(view, key)) return {}
+  for (const file of resolveArtifactFiles(files, key)) {
+    const parsed = await readYaml(runPath, file)
+    if (Object.keys(parsed).length > 0) return parsed
+  }
+  return {}
+}
+
+async function readJsonArtifact(runPath: string, files: string[], key: ArtifactKey, view?: ReaderMode) {
+  if (!shouldLoadStructuredFile(view, key)) return {}
+  for (const file of resolveArtifactFiles(files, key)) {
+    const parsed = await readJson(runPath, file)
+    if (Object.keys(parsed).length > 0) return parsed
+  }
+  return {}
+}
+
+async function readJsonlArtifact(runPath: string, files: string[], key: ArtifactKey, view?: ReaderMode) {
+  if (!shouldLoadStructuredFile(view, key)) return []
+  for (const file of resolveArtifactFiles(files, key)) {
+    const parsed = await readJsonl(runPath, file)
+    if (parsed.length > 0) return parsed
+  }
+  return []
 }
 
 async function readJson(runPath: string, file: string): Promise<Record<string, unknown>> {
@@ -604,33 +758,67 @@ async function readJsonl(runPath: string, file: string): Promise<unknown[]> {
   }
 }
 
+function collectArrays(...values: unknown[]) {
+  return values.flatMap((value) => {
+    const direct = asArray(value)
+    if (direct.length > 0) return direct
+    const record = asRecord(value)
+    return Object.values(record).flatMap((nested) => asArray(nested))
+  })
+}
+
+function firstNonEmptyArray(...values: unknown[]) {
+  for (const value of values) {
+    const array = asArray(value)
+    if (array.length > 0) return array
+  }
+  return []
+}
+
+function asStringList(value: unknown) {
+  const array = asArray(value)
+  if (array.length > 0) return array.map((item) => asString(item)).filter(Boolean)
+  const text = asString(value, "")
+  return text ? [text] : []
+}
+
 function extractSteps(workflow: Record<string, unknown>) {
-  return asArray(workflow.steps).map((raw, index) => {
+  const stateMachine = asRecord(workflow.state_machine)
+  const steps = firstNonEmptyArray(
+    workflow.steps,
+    workflow.phases,
+    workflow.stages,
+    workflow.nodes,
+    stateMachine.transitions,
+  )
+  return steps.map((raw, index) => {
     const step = asRecord(raw)
     const guardrails = asRecord(step.guardrails)
+    const checks = firstNonEmptyArray(step.checks, step.criteria, step.outputs, step.saida)
     return {
-      id: asString(step.step_id, `s_${String(index + 1).padStart(2, "0")}`),
-      phase: asString(step.phase_id, ""),
-      task: asString(step.task_id, ""),
-      name: asString(step.name, asString(step.task_id, "Step")),
-      executor: asString(step.executor_type, "—"),
-      outputCount: asArray(step.outputs).length,
-      guardrailCount: Object.keys(guardrails).length,
+      id: asString(step.step_id ?? step.id ?? step.task_id ?? step.source, `s_${String(index + 1).padStart(2, "0")}`),
+      phase: asString(step.phase_id ?? step.phase ?? step.source, ""),
+      task: asString(step.task_id ?? step.task ?? step.dest, ""),
+      name: asString(step.name ?? step.description ?? step.task_id ?? step.dest, "Step"),
+      executor: asString(step.executor_type ?? step.executor, "—"),
+      outputCount: firstNonEmptyArray(step.outputs, step.saida, step.output).length,
+      guardrailCount: Object.keys(guardrails).length + checks.length,
     }
   })
 }
 
 function extractAutomationSpecs(automationYaml: Record<string, unknown>): SinkraAutomationSpec[] {
-  return asArray(automationYaml.automation_specs).map((raw, index) => {
+  const specs = collectArrays(automationYaml.automation_specs, automationYaml.automation, automationYaml.specs)
+  return specs.map((raw, index) => {
     const spec = asRecord(raw)
     return {
-      taskId: asString(spec.task_id, `task-${index + 1}`),
-      taskName: asString(spec.task_name, asString(spec.task_id, `Task ${index + 1}`)),
+      taskId: asString(spec.task_id ?? spec.id ?? spec.task, `task-${index + 1}`),
+      taskName: asString(spec.task_name ?? spec.name ?? spec.task, asString(spec.task_id, `Task ${index + 1}`)),
       executorType: asString(spec.executor_type, "—"),
       automationType: asString(spec.automation_type, "—"),
       frequency: asString(spec.frequency, "—"),
       impact: asString(spec.impact, "—"),
-      automatability: asNumber(spec.automatabilidade ?? spec.automatability),
+      automatability: asNumber(spec.automatabilidade ?? spec.automatability ?? spec.automation_score),
       standardization: asNumber(spec.standardization_score),
       checkpointStatus: asString(spec.checkpoint_status, "—"),
       guardrailsPresent: asArray(spec.guardrails_present).map((item) => asString(item)).filter(Boolean),
@@ -642,13 +830,14 @@ function extractAutomationSpecs(automationYaml: Record<string, unknown>): Sinkra
 }
 
 function extractAccountability(raciYaml: Record<string, unknown>): SinkraAccountabilityRow[] {
-  return asArray(raciYaml.raci_matrix).map((raw, index) => {
+  const rows = collectArrays(raciYaml.raci_matrix, raciYaml.assignments, raciYaml.rows, raciYaml.raci)
+  return rows.map((raw, index) => {
     const row = asRecord(raw)
     return {
-      taskId: asString(row.task_id, `task-${index + 1}`),
-      taskName: asString(row.task_name, asString(row.task_id, `Task ${index + 1}`)),
-      responsible: asString(row.responsible, "—"),
-      responsibleType: asString(row.responsible_executor_type, "—"),
+      taskId: asString(row.task_id ?? row.id ?? row.task, `task-${index + 1}`),
+      taskName: asString(row.task_name ?? row.name ?? row.task, asString(row.task_id, `Task ${index + 1}`)),
+      responsible: asString(row.responsible ?? row.r, "—"),
+      responsibleType: asString(row.responsible_executor_type ?? row.responsible_type, "—"),
       accountable: asString(row.accountable, "—"),
       consulted: asArray(row.consulted).map((item) => asString(item)).filter(Boolean),
       informed: asArray(row.informed).map((item) => asString(item)).filter(Boolean),
@@ -657,18 +846,25 @@ function extractAccountability(raciYaml: Record<string, unknown>): SinkraAccount
 }
 
 function extractGaps(gapsYaml: Record<string, unknown>): SinkraGap[] {
-  return asArray(gapsYaml.capability_gaps).map((raw, index) => {
+  const gaps = collectArrays(gapsYaml.capability_gaps, gapsYaml.gaps, gapsYaml.gap_analysis, gapsYaml.findings)
+  return gaps.map((raw, index) => {
     const gap = asRecord(raw)
     return {
-      id: asString(gap.gap_id, `GAP-${String(index + 1).padStart(3, "0")}`),
-      title: asString(gap.title, "Gap"),
-      severity: asString(gap.severity, "—"),
-      category: asString(gap.category, "—"),
-      blockers: asArray(gap.blocker_for).map((item) => asString(item)).filter(Boolean),
-      executorTypes: asArray(gap.affects_executor_types).map((item) => asString(item)).filter(Boolean),
-      impact: asString(gap.impact, ""),
-      resolution: asString(gap.resolution, ""),
-      fallback: asString(gap.fallback_until_resolved, ""),
+      id: asString(gap.gap_id ?? gap.id ?? gap.capability_name, `GAP-${String(index + 1).padStart(3, "0")}`),
+      title: compactTitle(asString(gap.title ?? gap.finding ?? gap.name ?? gap.description ?? gap.capability_name, "Gap")),
+      severity: asString(gap.severity ?? gap.priority ?? gap.blocker_severity, "—"),
+      category: asString(gap.category ?? gap.current_state ?? gap.ids_decision ?? gap.spec_ref, "—"),
+      blockers: [
+        ...asStringList(gap.blocker_for ?? gap.blocks),
+        ...asStringList(gap.blocks_phase ?? gap.needed_by),
+      ],
+      executorTypes: [
+        ...asStringList(gap.affects_executor_types ?? gap.executors),
+        ...asStringList(gap.resolution_owner ?? gap.assigned_phase),
+      ],
+      impact: asString(gap.impact ?? gap.rationale ?? gap.description, ""),
+      resolution: asString(gap.resolution ?? gap.resolution_path ?? gap.acceptance ?? gap.action ?? gap.target, ""),
+      fallback: asString(gap.fallback_until_resolved ?? gap.fallback, ""),
     }
   })
 }
@@ -676,12 +872,38 @@ function extractGaps(gapsYaml: Record<string, unknown>): SinkraGap[] {
 function extractCompliance(complianceYaml: Record<string, unknown>, scoreYaml: Record<string, unknown>) {
   const verdict = asRecord(complianceYaml.verdict)
   const overall = asRecord(scoreYaml.overall)
+  const complianceScore = asRecord(scoreYaml.compliance_score)
   const scores = asRecord(scoreYaml.scores)
+  const scoreSummary = asRecord(scoreYaml.summary)
+  const scoreDimensions = collectArrays(scoreYaml.dimensions).map((raw, index) => {
+    const dimension = asRecord(raw)
+    const id = asString(dimension.dimension ?? dimension.id ?? dimension.name, `dimension-${index + 1}`)
+    const score = asNumber(dimension.base_score ?? dimension.score)
+    const max = asNumber(dimension.max_base ?? dimension.max) ?? 100
+    return {
+      id,
+      label: id.replace(/_/g, " "),
+      score,
+      max,
+      weight: asNumber(dimension.weight),
+      status: asString(dimension.status ?? (score !== null && score >= max * 0.7 ? "PASS" : "REVIEW"), ""),
+      findings: asArray(dimension.findings).map((item) => asString(item)).filter(Boolean),
+    }
+  })
+  const scoreBreakdownSource = Object.keys(scores).length > 0
+    ? scores
+    : asRecord(complianceScore.breakdown ?? scoreYaml.breakdown ?? complianceYaml.scores)
   return {
-    status: asString(verdict.status ?? overall.status, "—"),
+    status: asString(verdict.status ?? overall.status ?? scoreYaml.status ?? scoreSummary.status, "—"),
     handoffBlocked: Boolean(verdict.handoff_blocked ?? overall.auto_fail),
-    currentScore: asNumber(verdict.current_compliance_score ?? overall.score),
-    dimensions: asArray(complianceYaml.dimension_results).map((raw) => {
+    currentScore: asNumber(
+      verdict.current_compliance_score ??
+      overall.score ??
+      scoreYaml.compliance_score ??
+      complianceYaml.compliance_score ??
+      scoreSummary.deterministic_score,
+    ),
+    dimensions: collectArrays(complianceYaml.dimension_results, complianceYaml.dimensions).map((raw) => {
       const dimension = asRecord(raw)
       return {
         id: asString(dimension.id, ""),
@@ -692,7 +914,7 @@ function extractCompliance(complianceYaml: Record<string, unknown>, scoreYaml: R
         rationale: asString(dimension.rationale, ""),
       }
     }),
-    blockingIssues: asArray(complianceYaml.blocking_issues).map((raw) => {
+    blockingIssues: collectArrays(complianceYaml.blocking_issues, complianceYaml.issues, complianceYaml.findings).map((raw) => {
       const issue = asRecord(raw)
       return {
         id: asString(issue.id, ""),
@@ -702,19 +924,19 @@ function extractCompliance(complianceYaml: Record<string, unknown>, scoreYaml: R
         impact: asString(issue.impact, ""),
       }
     }),
-    scoreBreakdown: Object.entries(scores).map(([id, raw]) => {
+    scoreBreakdown: scoreDimensions.length > 0 ? scoreDimensions : Object.entries(scoreBreakdownSource).map(([id, raw]) => {
       const score = asRecord(raw)
       return {
         id,
         label: id.replace(/_/g, " "),
-        score: asNumber(score.score),
-        max: asNumber(score.max),
+        score: asNumber(score.score ?? raw),
+        max: asNumber(score.max) ?? 100,
         weight: asNumber(score.weight),
         status: asString(score.status ?? (asNumber(score.score) === asNumber(score.max) ? "PASS" : "REVIEW"), ""),
         findings: asArray(score.findings).map((item) => asString(item)).filter(Boolean),
       }
     }),
-    remediationItems: asArray(scoreYaml.remediation_items).map((raw) => {
+    remediationItems: collectArrays(scoreYaml.remediation_items, scoreYaml.recommendations, complianceYaml.remediation_items).map((raw) => {
       const item = asRecord(raw)
       return {
         priority: asString(item.priority, ""),
@@ -727,49 +949,88 @@ function extractCompliance(complianceYaml: Record<string, unknown>, scoreYaml: R
 }
 
 function extractComposition(compositionYaml: Record<string, unknown>) {
-  const hierarchy = asRecord(compositionYaml.hierarchy)
-  const template = asRecord(asArray(hierarchy.templates)[0] ?? hierarchy.template)
-  const organisms = asArray(hierarchy.organisms).map((raw) => asRecord(raw))
-  const molecules = asArray(hierarchy.molecules).map((raw) => asRecord(raw))
-  const atoms = asArray(hierarchy.atoms).map((raw) => asRecord(raw))
-  const validation = asRecord(compositionYaml.validation)
+  const roots = [
+    asRecord(compositionYaml.hierarchy),
+    asRecord(compositionYaml.phase_4_5),
+    asRecord(compositionYaml.composition_map),
+    asRecord(compositionYaml.composition),
+    compositionYaml,
+  ]
+  const source = roots.find((root) =>
+    asArray(root.organisms).length > 0 ||
+    asArray(root.molecules).length > 0 ||
+    asArray(root.atoms).length > 0 ||
+    Object.keys(asRecord(root.template)).length > 0 ||
+    asArray(root.templates).length > 0,
+  ) ?? {}
+  const template = asRecord(asArray(source.templates)[0] ?? source.template ?? {
+    template_id: source.template_id,
+    name: source.template_name,
+  })
+  const organisms = asArray(source.organisms).map((raw) => asRecord(raw))
+  const molecules = asArray(source.molecules).map((raw) => asRecord(raw))
+  const nestedMolecules = organisms.flatMap((organism) =>
+    asArray(organism.molecules)
+      .map((raw) => {
+        const molecule = asRecord(raw)
+        if (Object.keys(molecule).length === 0) return null
+        return { ...molecule, organism_ref: molecule.organism_ref ?? molecule.organism_id ?? organism.organism_id ?? organism.id }
+      })
+      .filter(Boolean) as Record<string, unknown>[],
+  )
+  const allMolecules = [...molecules, ...nestedMolecules]
+  const atoms = [
+    ...asArray(source.atoms).map((raw) => asRecord(raw)),
+    ...allMolecules.flatMap((molecule) =>
+      asArray(molecule.atoms)
+        .map((raw) => {
+          const atom = asRecord(raw)
+          if (Object.keys(atom).length === 0) return null
+          return { ...atom, molecule_ref: atom.molecule_ref ?? atom.molecule_id ?? molecule.molecule_id ?? molecule.id }
+        })
+        .filter(Boolean) as Record<string, unknown>[],
+    ),
+  ]
+  const validation = asRecord(compositionYaml.validation ?? source.validation)
   const nodes: SinkraCompositionNode[] = []
 
   if (Object.keys(template).length > 0) {
+    const templateId = asString(template.template_id ?? template.id, "template")
     nodes.push({
-      id: asString(template.template_id, "template"),
+      id: templateId,
       name: asString(template.name, "Template"),
       level: "template",
       parentId: "",
       count: organisms.length,
     })
   }
+  const templateId = asString(template.template_id ?? template.id, "template")
   nodes.push(...organisms.map((organism) => ({
-    id: asString(organism.organism_id, ""),
+    id: asString(organism.organism_id ?? organism.id, ""),
     name: asString(organism.name, ""),
     level: "organism" as const,
-    parentId: asString(template.template_id, "template"),
+    parentId: templateId,
     count: asArray(organism.molecules).length,
   })))
-  nodes.push(...molecules.map((molecule) => ({
-    id: asString(molecule.molecule_id, ""),
+  nodes.push(...allMolecules.map((molecule) => ({
+    id: asString(molecule.molecule_id ?? molecule.id, ""),
     name: asString(molecule.name, ""),
     level: "molecule" as const,
-    parentId: asString(molecule.organism_id, ""),
+    parentId: asString(molecule.organism_id ?? molecule.organism_ref, ""),
     count: asArray(molecule.atoms).length,
   })))
   nodes.push(...atoms.map((atom) => ({
-    id: asString(atom.atom_id, ""),
-    name: asString(atom.task_name, asString(atom.task_id, "")),
+    id: asString(atom.atom_id ?? atom.id, ""),
+    name: asString(atom.task_name ?? atom.name, asString(atom.task_id, "")),
     level: "atom" as const,
-    parentId: asString(atom.molecule_id, ""),
-    count: asArray(atom.outputs).length,
+    parentId: asString(atom.molecule_id ?? atom.molecule_ref, ""),
+    count: asArray(atom.outputs ?? atom.saida).length,
   })))
 
   return {
     nodes: nodes.filter((node) => node.id),
-    organismSequence: asArray(compositionYaml.organism_sequence).map((item) => asString(item)).filter(Boolean),
-    handoffPackets: asArray(compositionYaml.handoff_packets).map((raw) => {
+    organismSequence: asArray(compositionYaml.organism_sequence ?? source.organism_sequence).map((item) => asString(item)).filter(Boolean),
+    handoffPackets: asArray(compositionYaml.handoff_packets ?? source.handoff_packets).map((raw) => {
       const packet = asRecord(raw)
       return {
         from: asString(packet.from, ""),
@@ -831,16 +1092,28 @@ function hasDriftSignal(raw: string) {
 }
 
 function extractProcessPhases(processYaml: Record<string, unknown>): SinkraProcessPhase[] {
-  return asArray(processYaml.phases).map((raw, index) => {
+  const process = asRecord(processYaml.process)
+  const processMap = asRecord(processYaml.process_map)
+  const nestedProcesses = [...asArray(process.processes), ...asArray(processMap.processes)].map((item) => asRecord(item))
+  const phases = [
+    ...firstNonEmptyArray(processYaml.phases, process.phases, processMap.phases),
+    ...nestedProcesses.flatMap((item) =>
+      asArray(item.phases).map((phase) => ({
+        ...asRecord(phase),
+        process_name: asString(item.name ?? item.id, ""),
+      })),
+    ),
+  ]
+  return phases.map((raw, index) => {
     const phase = asRecord(raw)
-    const drift = asString(phase.drift_delta, "")
-    const painPoints = asArray(phase.pain_points).map((item) => asString(item)).filter(Boolean)
+    const drift = asString(phase.drift_delta ?? phase.drift ?? phase.gap ?? phase.risk, "")
+    const painPoints = asArray(phase.pain_points ?? phase.painpoints ?? phase.risks).map((item) => asString(item)).filter(Boolean)
     return {
-      id: asString(phase.phase_id, `phase_${String(index + 1).padStart(2, "0")}`),
-      name: asString(phase.name, `Phase ${index + 1}`),
+      id: asString(phase.phase_id ?? phase.id, `phase_${String(index + 1).padStart(2, "0")}`),
+      name: asString(phase.name ?? phase.description ?? phase.process_name, `Phase ${index + 1}`),
       executor: asString(phase.executor_type ?? phase.executor_atual, "—"),
       drift,
-      observed: asString(phase.observed_behavior, ""),
+      observed: asString(phase.observed_behavior ?? phase.description, ""),
       painPoints,
       hasDrift: hasDriftSignal(drift) || painPoints.length > 0,
     }
@@ -849,9 +1122,17 @@ function extractProcessPhases(processYaml: Record<string, unknown>): SinkraProce
 
 function extractDomains(domainYaml: Record<string, unknown>): SinkraDomainGroup[] {
   const groups = new Map<string, Array<Record<string, unknown>>>()
-  for (const raw of asArray(domainYaml.domain_mapping)) {
+  const domainMap = asRecord(domainYaml.domain_map)
+  const entries = [
+    ...asArray(domainYaml.domain_mapping),
+    ...asArray(domainMap.domain_mapping),
+    ...asArray(domainMap.bounded_contexts),
+    ...asArray(domainYaml.bounded_contexts),
+    ...asArray(domainYaml.contexts),
+  ]
+  for (const raw of entries) {
     const item = asRecord(raw)
-    const domain = asString(item.domain, "Unclassified")
+    const domain = asString(item.domain ?? item.context ?? item.name, "Unclassified")
     groups.set(domain, [...(groups.get(domain) ?? []), item])
   }
 
@@ -860,9 +1141,9 @@ function extractDomains(domainYaml: Record<string, unknown>): SinkraDomainGroup[
     total: items.length,
     gapClosed: items.filter((item) => Boolean(asString(item.gap_closed, ""))).length,
     samples: items.slice(0, 6).map((item) => ({
-      id: asString(item.task_id, "—"),
-      name: asString(item.task_name, "—"),
-      level: asString(item.hierarchy_level, "—"),
+      id: asString(item.task_id ?? item.id, "—"),
+      name: asString(item.task_name ?? item.name, "—"),
+      level: asString(item.hierarchy_level ?? item.level, "—"),
       type: asString(item.type, "standard"),
       gap: asString(item.gap_closed, ""),
     })),
@@ -871,21 +1152,26 @@ function extractDomains(domainYaml: Record<string, unknown>): SinkraDomainGroup[
 
 function extractDependencies(dependencyYaml: Record<string, unknown>): SinkraDependencyGraph {
   const graph = asRecord(dependencyYaml.graph)
-  const validation = asRecord(dependencyYaml.dag_validation)
+  const dependencyGraph = asRecord(dependencyYaml.dependency_graph)
+  const source = Object.keys(graph).length > 0 ? graph : dependencyGraph
+  const validation = asRecord(dependencyYaml.dag_validation ?? source.validation)
+  const nodes = firstNonEmptyArray(source.nodes, source.tasks, dependencyYaml.nodes).map((raw) => {
+    const node = asRecord(raw)
+    return {
+      id: asString(node.task_id ?? node.id ?? node.name, "—"),
+      dependsOn: asArray(node.depends_on ?? node.dependencies).map((item) => asString(item)).filter(Boolean),
+      feedsInto: asArray(node.feeds_into ?? node.dependents).map((item) => asString(item)).filter(Boolean),
+      loop: Boolean(node.loop_edge ?? node.loop),
+    }
+  })
+  const roots = asArray(source.roots).map((item) => asString(item)).filter(Boolean)
+  const leaves = asArray(source.leaves).map((item) => asString(item)).filter(Boolean)
   return {
-    type: asString(graph.type ?? dependencyYaml.type, "DAG"),
-    validated: Boolean(graph.validated ?? dependencyYaml.validated),
-    roots: asArray(graph.roots).map((item) => asString(item)).filter(Boolean),
-    leaves: asArray(graph.leaves).map((item) => asString(item)).filter(Boolean),
-    nodes: asArray(graph.nodes).map((raw) => {
-      const node = asRecord(raw)
-      return {
-        id: asString(node.task_id, "—"),
-        dependsOn: asArray(node.depends_on).map((item) => asString(item)).filter(Boolean),
-        feedsInto: asArray(node.feeds_into).map((item) => asString(item)).filter(Boolean),
-        loop: Boolean(node.loop_edge),
-      }
-    }),
+    type: asString(source.type ?? dependencyYaml.type, "DAG"),
+    validated: Boolean(source.validated ?? dependencyYaml.validated ?? validation.valid),
+    roots: roots.length > 0 ? roots : nodes.filter((node) => node.dependsOn.length === 0).map((node) => node.id),
+    leaves: leaves.length > 0 ? leaves : nodes.filter((node) => node.feedsInto.length === 0).map((node) => node.id),
+    nodes,
     strictDag: asString(validation.strict_dag_without_runtime_loop_edges, "—"),
     guardedLoops: Boolean(validation.runtime_loop_edges_are_guarded),
   }
@@ -1042,8 +1328,9 @@ async function readStructuredTitle(runPath: string, files: string[], slug: strin
     "score_card.yaml",
   ]
 
-  for (const file of titleSources) {
-    if (!files.includes(file)) continue
+  for (const key of titleSources) {
+    const file = resolveArtifactFile(files, key as ArtifactKey)
+    if (!file) continue
     const title = structuredProcessName(await readYaml(runPath, file))
     if (title) return title
   }
@@ -1069,10 +1356,17 @@ function extractStructured(
   stateJson: Record<string, unknown>,
   metricsJsonl: unknown[],
 ): SinkraMapStructured {
-  const workflows = asArray(workflowYaml.workflows).map((raw, index) => {
+  const workflowRoot = asRecord(workflowYaml.workflow)
+  const workflowDefinitionRoot = asRecord(workflowYaml.workflow_definition)
+  const workflowItems = [
+    ...asArray(workflowYaml.workflows),
+    ...(Object.keys(workflowRoot).length > 0 ? [workflowRoot] : []),
+    ...(Object.keys(workflowDefinitionRoot).length > 0 ? [workflowDefinitionRoot] : []),
+  ]
+  const workflows = workflowItems.map((raw, index) => {
     const workflow = asRecord(raw)
     return {
-      id: asString(workflow.workflow_id, `WF-${index + 1}`),
+      id: asString(workflow.workflow_id ?? workflow.id, `WF-${index + 1}`),
       name: asString(workflow.name, "Workflow"),
       layer: asString(workflow.layer, ""),
       trigger: asString(workflow.trigger, ""),
@@ -1082,11 +1376,13 @@ function extractStructured(
     }
   })
 
-  const tasks = asArray(tasksYaml.tasks).map((raw, index) => {
+  const taskRoot = asRecord(tasksYaml.task_definitions)
+  const taskItems = collectArrays(tasksYaml.tasks, tasksYaml.new_tasks, tasksYaml.adapted_tasks, tasksYaml.updated_tasks, taskRoot.tasks)
+  const tasks = taskItems.map((raw, index) => {
     const task = asRecord(raw)
     const post = asRecord(task.post_conditions)
     return {
-      id: asString(task.task, `task-${index + 1}`),
+      id: asString(task.task ?? task.task_id ?? task.id, `task-${index + 1}`),
       layer: asString(task.atomic_layer, ""),
       executor: asString(task.responsavel_type, ""),
       inputCount: asArray(task.entrada).length,
@@ -1096,25 +1392,30 @@ function extractStructured(
     }
   })
 
-  const gates = asArray(gatesYaml.quality_gates).map((raw, index) => {
+  const gatesRoot = asRecord(gatesYaml.quality_gates)
+  const gateItems = collectArrays(gatesYaml.quality_gates, gatesYaml.gates, gatesRoot)
+  const gates = gateItems.map((raw, index) => {
     const gate = asRecord(raw)
+    const criteria = firstNonEmptyArray(gate.criteria, gate.checks, gate.gate_criteria)
     return {
-      id: asString(gate.gate_id, `QG-${index + 1}`),
+      id: asString(gate.gate_id ?? gate.id, `QG-${index + 1}`),
       name: asString(gate.name, "Gate"),
       position: asString(gate.position, ""),
       type: asString(gate.type, ""),
       executor: asString(gate.executor, ""),
       threshold: asString(gate.threshold, "—"),
-      veto: Boolean(gate.veto_power),
-      criteriaCount: asArray(gate.criteria).length,
+      veto: Boolean(gate.veto_power ?? gate.veto ?? /blocking|veto/i.test(asString(gate.severity, ""))),
+      criteriaCount: criteria.length,
     }
   })
 
   const overall = asRecord(scoreYaml.overall)
+  const scoreSummary = asRecord(scoreYaml.summary)
+  const complianceScore = scoreYaml.compliance_score
   const score = {
-    score: asNumber(overall.score ?? scoreYaml.compliance_score),
-    result: asString(overall.result ?? scoreYaml.result ?? scoreYaml.quality_gate, "—"),
-    structuralIntegrity: asNumber(overall.structural_integrity),
+    score: asNumber(overall.score ?? complianceScore ?? scoreYaml.score ?? scoreSummary.deterministic_score),
+    result: asString(overall.result ?? overall.status ?? scoreYaml.result ?? scoreYaml.verdict ?? scoreYaml.quality_gate, "—"),
+    structuralIntegrity: asNumber(overall.structural_integrity ?? scoreYaml.structural_integrity),
     qualityGate: asString(scoreYaml.quality_gate, ""),
   }
 
@@ -1157,7 +1458,7 @@ function extractStructured(
     composition: extractComposition(compositionYaml),
     tokenFlow: extractTokenFlow(tokenYaml),
     execution: extractExecution(stateJson, metricsJsonl),
-    artifactCoverage: KEY_FILES.map(([key, label]) => ({ key, label, present: files.includes(key) })),
+    artifactCoverage: KEY_FILES.map(([key, label]) => ({ key, label, present: hasArtifact(files, key), file: resolveArtifactFile(files, key) })),
   }
 }
 
@@ -1225,22 +1526,22 @@ async function buildRunPayload(root: string, slug: string, view?: ReaderMode) {
     stateJson,
     metricsJsonl,
   ] = await Promise.all([
-    files.includes("workflow_definition.yaml") && shouldLoadStructuredFile(view, "workflow_definition.yaml") ? readYaml(runPath, "workflow_definition.yaml") : Promise.resolve({}),
-    files.includes("task_definitions.yaml") && shouldLoadStructuredFile(view, "task_definitions.yaml") ? readYaml(runPath, "task_definitions.yaml") : Promise.resolve({}),
-    files.includes("quality_gates.yaml") && shouldLoadStructuredFile(view, "quality_gates.yaml") ? readYaml(runPath, "quality_gates.yaml") : Promise.resolve({}),
-    files.includes("score_card.yaml") && shouldLoadStructuredFile(view, "score_card.yaml") ? readYaml(runPath, "score_card.yaml") : Promise.resolve({}),
-    files.includes("process_map.yaml") && shouldLoadStructuredFile(view, "process_map.yaml") ? readYaml(runPath, "process_map.yaml") : Promise.resolve({}),
-    files.includes("domain_map.yaml") && shouldLoadStructuredFile(view, "domain_map.yaml") ? readYaml(runPath, "domain_map.yaml") : Promise.resolve({}),
-    files.includes("dependency_graph.yaml") && shouldLoadStructuredFile(view, "dependency_graph.yaml") ? readYaml(runPath, "dependency_graph.yaml") : Promise.resolve({}),
-    files.includes("observatory_map.yaml") && shouldLoadStructuredFile(view, "observatory_map.yaml") ? readYaml(runPath, "observatory_map.yaml") : Promise.resolve({}),
-    files.includes("automation_specs.yaml") && shouldLoadStructuredFile(view, "automation_specs.yaml") ? readYaml(runPath, "automation_specs.yaml") : Promise.resolve({}),
-    files.includes("raci_matrix.yaml") && shouldLoadStructuredFile(view, "raci_matrix.yaml") ? readYaml(runPath, "raci_matrix.yaml") : Promise.resolve({}),
-    files.includes("capability_gaps.yaml") && shouldLoadStructuredFile(view, "capability_gaps.yaml") ? readYaml(runPath, "capability_gaps.yaml") : Promise.resolve({}),
-    files.includes("compliance_score.yaml") && shouldLoadStructuredFile(view, "compliance_score.yaml") ? readYaml(runPath, "compliance_score.yaml") : Promise.resolve({}),
-    files.includes("composition_map.yaml") && shouldLoadStructuredFile(view, "composition_map.yaml") ? readYaml(runPath, "composition_map.yaml") : Promise.resolve({}),
-    files.includes("token_assignments.yaml") && shouldLoadStructuredFile(view, "token_assignments.yaml") ? readYaml(runPath, "token_assignments.yaml") : Promise.resolve({}),
-    files.includes("sinkra-state.json") && shouldLoadStructuredFile(view, "sinkra-state.json") ? readJson(runPath, "sinkra-state.json") : Promise.resolve({}),
-    files.includes("metrics.jsonl") && shouldLoadStructuredFile(view, "metrics.jsonl") ? readJsonl(runPath, "metrics.jsonl") : Promise.resolve([]),
+    readYamlArtifact(runPath, files, "workflow_definition.yaml", view),
+    readYamlArtifact(runPath, files, "task_definitions.yaml", view),
+    readYamlArtifact(runPath, files, "quality_gates.yaml", view),
+    readYamlArtifact(runPath, files, "score_card.yaml", view),
+    readYamlArtifact(runPath, files, "process_map.yaml", view),
+    readYamlArtifact(runPath, files, "domain_map.yaml", view),
+    readYamlArtifact(runPath, files, "dependency_graph.yaml", view),
+    readYamlArtifact(runPath, files, "observatory_map.yaml", view),
+    readYamlArtifact(runPath, files, "automation_specs.yaml", view),
+    readYamlArtifact(runPath, files, "raci_matrix.yaml", view),
+    readYamlArtifact(runPath, files, "capability_gaps.yaml", view),
+    readYamlArtifact(runPath, files, "compliance_score.yaml", view),
+    readYamlArtifact(runPath, files, "composition_map.yaml", view),
+    readYamlArtifact(runPath, files, "token_assignments.yaml", view),
+    readJsonArtifact(runPath, files, "sinkra-state.json", view),
+    readJsonlArtifact(runPath, files, "metrics.jsonl", view),
   ])
 
   const payload = {
@@ -1275,25 +1576,27 @@ async function buildSummary(root: string, slug: string): Promise<Omit<SinkraMapR
   const runPath = path.join(root, slug)
   const files = await listFiles(runPath)
   const st = await stat(runPath)
-  const hasWorkflow = files.includes("workflow_definition.yaml")
-  const hasTasks = files.includes("task_definitions.yaml")
-  const hasGates = files.includes("quality_gates.yaml")
-  const hasScore = files.includes("score_card.yaml")
-  const hasProcess = files.includes("process_map.yaml")
-  const hasDeps = files.includes("dependency_graph.yaml")
-  const hasDomain = files.includes("domain_map.yaml")
-  const hasObservatory = files.includes("observatory_map.yaml")
-  const hasAutomation = files.includes("automation_specs.yaml")
-  const hasRaci = files.includes("raci_matrix.yaml")
-  const hasGaps = files.includes("capability_gaps.yaml")
-  const hasCompliance = files.includes("compliance_score.yaml")
-  const hasComposition = files.includes("composition_map.yaml")
-  const hasTokens = files.includes("token_assignments.yaml")
-  const hasState = files.includes("sinkra-state.json")
-  const hasMetrics = files.includes("metrics.jsonl")
-  const scoreYaml = hasScore ? await readYaml(runPath, "score_card.yaml") : {}
+  const hasWorkflow = hasArtifact(files, "workflow_definition.yaml")
+  const hasTasks = hasArtifact(files, "task_definitions.yaml")
+  const hasGates = hasArtifact(files, "quality_gates.yaml")
+  const hasScore = hasArtifact(files, "score_card.yaml")
+  const hasProcess = hasArtifact(files, "process_map.yaml")
+  const hasDeps = hasArtifact(files, "dependency_graph.yaml")
+  const hasDomain = hasArtifact(files, "domain_map.yaml")
+  const hasObservatory = hasArtifact(files, "observatory_map.yaml")
+  const hasAutomation = hasArtifact(files, "automation_specs.yaml")
+  const hasRaci = hasArtifact(files, "raci_matrix.yaml")
+  const hasGaps = hasArtifact(files, "capability_gaps.yaml")
+  const hasCompliance = hasArtifact(files, "compliance_score.yaml")
+  const hasComposition = hasArtifact(files, "composition_map.yaml")
+  const hasTokens = hasArtifact(files, "token_assignments.yaml")
+  const hasState = hasArtifact(files, "sinkra-state.json")
+  const hasMetrics = hasArtifact(files, "metrics.jsonl")
+  const scoreFile = resolveArtifactFile(files, "score_card.yaml")
+  const scoreYaml = scoreFile ? await readYaml(runPath, scoreFile) : {}
   const overall = asRecord(scoreYaml.overall)
-  const score = asString(overall.score ?? scoreYaml.compliance_score, "--")
+  const scoreSummary = asRecord(scoreYaml.summary)
+  const score = scoreLabel(overall.score ?? scoreYaml.compliance_score ?? scoreYaml.score ?? scoreSummary.deterministic_score, "--")
   const complete = hasWorkflow && hasTasks && hasGates
   const title = await readStructuredTitle(runPath, files, slug)
   return {
@@ -1345,6 +1648,21 @@ function chooseDefaultSlug(summaries: Omit<SinkraMapRunSummary, "active">[]) {
     })[0]?.slug
 }
 
+function chooseSelectedSlug(
+  requestedSlug: string | undefined,
+  slugs: string[],
+  summaries: Omit<SinkraMapRunSummary, "active">[],
+) {
+  if (requestedSlug && slugs.includes(requestedSlug)) return requestedSlug
+  if (requestedSlug) {
+    const requestedGroup = currentGroupKey(requestedSlug)
+    const groupSummaries = summaries.filter((summary) => currentGroupKey(summary.slug) === requestedGroup)
+    const currentSlug = groupSummaries.find((summary) => isCurrentRunSlug(summary.slug))?.slug
+    return currentSlug ?? chooseDefaultSlug(groupSummaries)
+  }
+  return chooseDefaultSlug(summaries)
+}
+
 async function getSinkraMapIndex(root: string): Promise<{
   slugs: string[]
   summaries: Omit<SinkraMapRunSummary, "active">[]
@@ -1357,7 +1675,7 @@ async function getSinkraMapIndex(root: string): Promise<{
     }
   }
 
-  const slugs = await listRunDirs(root)
+  const slugs = await selectCurrentRunDirs(root, await listRunDirs(root))
   const summaries = await mapWithConcurrency(slugs, INDEX_BUILD_CONCURRENCY, (s) => buildSummary(root, s))
   indexCache = {
     root,
@@ -1372,7 +1690,7 @@ export async function getSinkraMapsObservatoryData(slug?: string, file?: string,
   const root = resolveDashPath("outputs", "sinkra-squad")
   const { slugs, summaries } = await getSinkraMapIndex(root)
   if (summaries.length === 0) throw new EmptyObservatorySourceError("sinkra-maps")
-  const selectedSlug = slug && slugs.includes(slug) ? slug : chooseDefaultSlug(summaries)
+  const selectedSlug = chooseSelectedSlug(slug, slugs, summaries)
   if (!selectedSlug) throw new EmptyObservatorySourceError("sinkra-maps")
 
   const runs = summaries

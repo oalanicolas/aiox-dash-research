@@ -4,7 +4,7 @@ import { readdir, readFile, stat } from "node:fs/promises"
 import path from "node:path"
 import YAML from "yaml"
 import type { ReaderMode } from "@/components/observatory/foundations/types"
-import { EmptyObservatorySourceError } from "./observatory.server"
+import { EmptyObservatorySourceError } from "./observatory-errors.server"
 import { resolveDashPath } from "./workspace-root.server"
 
 export type ResearchDocument = {
@@ -110,6 +110,7 @@ export type ResearchRunSummary = {
   waves: number
   sources: string
   files: number
+  sampleFiles: string[]
   schema: string
   hasCore: boolean
   hasMetrics: boolean
@@ -290,6 +291,21 @@ function schemaForRun({
   return "partial"
 }
 
+function sampleRunFiles(files: string[]) {
+  const priority = [
+    "README.md",
+    "02-research-report.md",
+    "03-recommendations.md",
+    "metrics.yaml",
+    "sources.yaml",
+    "pipeline-state.yaml",
+    "execution-log.jsonl",
+  ]
+  const prioritized = priority.filter((file) => files.includes(file))
+  const remaining = files.filter((file) => !prioritized.includes(file))
+  return [...prioritized, ...remaining].slice(0, 10)
+}
+
 async function readIndex(researchRoot: string) {
   try {
     const raw = await readFile(path.join(researchRoot, "_index.json"), "utf8")
@@ -363,6 +379,7 @@ async function buildRunSummary(runPath: string, slug: string, indexEntry?: Index
     waves: Number(waves ?? 0),
     sources: formatValue(indexEntry?.sources_total),
     files: files.length,
+    sampleFiles: sampleRunFiles(files),
     schema: schemaForRun({ hasCore, hasMetrics, hasState, hasLog, waves: Number(waves ?? 0) }),
     hasCore,
     hasMetrics,
@@ -593,6 +610,20 @@ async function getCachedRunSummaries(researchRoot: string, index: Map<string, In
   return summaries
 }
 
+export async function getRecentResearchRunSummaries(limit = 3): Promise<ResearchRunSummary[]> {
+  const researchRoot = resolveDashPath("docs", "research")
+  try {
+    const index = await readIndex(researchRoot)
+    const summaries = await getCachedRunSummaries(researchRoot, index)
+    return [...summaries]
+      .sort((a, b) => compareRecentResearchRuns(a, b))
+      .slice(0, Math.max(0, limit))
+  } catch (caught) {
+    if (isMissingPathError(caught)) return []
+    throw caught
+  }
+}
+
 export async function getResearchObservatoryData(selectedSlug?: string, selectedFile?: string, view?: ReaderMode): Promise<ResearchObservatoryData> {
   const researchRoot = resolveDashPath("docs", "research")
   const index = await readIndex(researchRoot)
@@ -647,4 +678,23 @@ export async function getResearchObservatoryData(selectedSlug?: string, selected
     topSources,
     players,
   }
+}
+
+function compareRecentResearchRuns(a: ResearchRunSummary, b: ResearchRunSummary) {
+  const dateCompare = sortableResearchDate(b.date).localeCompare(sortableResearchDate(a.date))
+  return dateCompare || b.slug.localeCompare(a.slug)
+}
+
+function sortableResearchDate(value: string) {
+  if (!value || value === "undated" || value === "undefined" || value === "—") return "0000-00-00"
+  return value
+}
+
+function isMissingPathError(caught: unknown) {
+  return Boolean(
+    caught &&
+      typeof caught === "object" &&
+      "code" in caught &&
+      ((caught as { code?: unknown }).code === "ENOENT" || (caught as { code?: unknown }).code === "ENOTDIR"),
+  )
 }
