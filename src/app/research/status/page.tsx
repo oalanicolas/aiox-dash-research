@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 const STATUS_THEME = {
   "--paper": "#050505",
   "--surface": "#0F0F11",
-  "--surface-console": "#12130F",
+  "--surface-console": "#111113",
   "--ink": "rgb(244, 244, 232)",
   "--ink-2": "rgba(244, 244, 232, 0.70)",
   "--ink-3": "rgba(244, 244, 232, 0.55)",

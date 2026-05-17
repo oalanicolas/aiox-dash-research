@@ -63,7 +63,8 @@ export function Observatory({
   /* ── URL-as-state for shareable filters ── */
   const sort = ((searchParams?.get("sort") as SortKey | null) ?? "recent") as SortKey
   const statusF = ((searchParams?.get("status") as StatusKey | null) ?? "all") as StatusKey
-  const group = ((searchParams?.get("group") as GroupKey | null) ?? "category") as GroupKey
+  const groupParam = searchParams?.get("group") as GroupKey | null
+  const group = (groupParam ?? (data.source === "bench" ? "none" : "category")) as GroupKey
   const quality = ((searchParams?.get("quality") as QualityKey | null) ?? "all") as QualityKey
   const requestedView = searchParams?.get("view") as ReaderMode | null
   const urlMode = requestedView && data.availableModes.includes(requestedView) ? requestedView : null
@@ -183,7 +184,8 @@ export function Observatory({
     const q = query.trim().toLowerCase()
     let list = data.runs.filter((r) => {
       if (!q) return true
-      return `${r.slug} ${r.title} ${r.schema} ${r.status}`.toLowerCase().includes(q)
+      const subjects = Array.isArray(r.extras?.subjects) ? r.extras.subjects.join(" ") : ""
+      return `${r.slug} ${r.title} ${r.schema} ${r.status} ${r.category ?? ""} ${subjects}`.toLowerCase().includes(q)
     })
     if (statusF !== "all") list = list.filter((r) => statusKeyFromRaw(r.status) === statusF)
     if (quality !== "all") {
@@ -380,9 +382,13 @@ export function Observatory({
       router.push("/research")
       return
     }
+    if (data.source === "bench") {
+      router.push("/research?type=bench")
+      return
+    }
 
     const command =
-      data.source === "bench" || data.source === "demo"
+      data.source === "demo"
         ? `claude && /spy *bench "<player-a>" "<player-b>" "Compare estes players e gere bench-output-dash.json em ${data.sourceRoot}/<slug>/."`
         : data.source === "sinkra-maps"
           ? `claude && *map "<processo-ou-missão>" "Mapeie com SINKRA e gere workflow_definition.yaml, task_definitions.yaml, quality_gates.yaml e score_card.yaml em ${data.sourceRoot}/<slug>/."`
@@ -656,7 +662,7 @@ function qualityClass(run: ObservatoryRunSummary): QualityKey {
 
 function defaultReaderMode(data: ObservatoryData): ReaderMode {
   if (data.source === "bench" || data.source === "demo") {
-    const priority: ReaderMode[] = ["map", "slides", "roadmap", "evidence", "matrix", "duel", "personas", "tco", "coverage", "decision", "weights", "score"]
+    const priority: ReaderMode[] = ["map", "slides", "roadmap", "personas", "decision", "evidence", "matrix", "duel", "document", "tco", "coverage"]
     for (const m of priority) {
       if (data.availableModes.includes(m)) return m
     }

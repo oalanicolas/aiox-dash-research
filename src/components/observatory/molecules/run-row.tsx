@@ -30,6 +30,7 @@ export function RunRow({
   coverage,
   status,
   coverageInferred,
+  categoryTag,
   subjects,
   isActive,
   onSelect,
@@ -42,6 +43,7 @@ export function RunRow({
   coverage: string
   status: string
   coverageInferred?: boolean
+  categoryTag?: string
   /* Optional list of subject names — when provided, colored chips render below
      the title. Used by bench rows; research rows leave it undefined. */
   subjects?: string[]
@@ -101,9 +103,17 @@ export function RunRow({
         >
           {fmtDateShort(date)} · {files} arquivos · #{pad2(num)} · {statusLabel(status)}
         </span>
-        {subjects && subjects.length > 0 && (
-          <span className="mt-1.5 flex flex-wrap items-center gap-1" aria-label="Subjects">
-            {subjects.slice(0, 5).map((subject, idx) => (
+        {(categoryTag || (subjects && subjects.length > 0)) && (
+          <span className="mt-1.5 flex flex-wrap items-center gap-1" aria-label="Metadados do benchmark">
+            {categoryTag ? (
+              <span
+                className="inline-flex items-center border border-[var(--rule-soft)] bg-[var(--surface-hover)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--lime-ink)]"
+                style={{ fontFamily: MONO_FONT }}
+              >
+                {categoryTag}
+              </span>
+            ) : null}
+            {subjects?.slice(0, 5).map((subject, idx) => (
               <span
                 key={`${subject}-${idx}`}
                 className="inline-flex items-center gap-1 border border-[var(--rule-soft)] bg-[var(--paper-alt)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.06em] text-[var(--ink-2)]"
@@ -117,7 +127,7 @@ export function RunRow({
                 <span className="max-w-[52px] truncate xl:max-w-[64px]">{subject}</span>
               </span>
             ))}
-            {subjects.length > 5 && (
+            {subjects && subjects.length > 5 && (
               <span
                 className="text-[9px] tracking-[0.06em] text-[var(--ink-dim)]"
                 style={{ fontFamily: MONO_FONT }}

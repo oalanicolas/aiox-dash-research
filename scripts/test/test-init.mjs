@@ -94,21 +94,21 @@ async function testResearchRich() {
     assert(result.indexEntries > 0, "research indexEntries > 0")
 
     const slugDir = path.join(tmp, "2026-05-01-test-rich")
-    assert(existsSync(path.join(slugDir, "metrics.yaml")), "metrics.yaml created")
-    assert(existsSync(path.join(slugDir, "pipeline-state.yaml")), "pipeline-state.yaml created")
-    assert(existsSync(path.join(slugDir, "execution-log.jsonl")), "execution-log.jsonl created")
     assert(existsSync(path.join(slugDir, "research-graph.json")), "research-graph.json created")
-    assert(existsSync(path.join(slugDir, "curiosity_queue.yaml")), "curiosity_queue.yaml created")
-    assert(existsSync(path.join(slugDir, "quick-wins.md")), "quick-wins.md created")
     assert(existsSync(path.join(tmp, "_index.json")), "_index.json created at research root")
+    assert(!existsSync(path.join(slugDir, "metrics.yaml")), "authorial research does not get synthetic metrics.yaml")
+    assert(!existsSync(path.join(slugDir, "pipeline-state.yaml")), "authorial research does not get synthetic pipeline-state.yaml")
+    assert(!existsSync(path.join(slugDir, "execution-log.jsonl")), "authorial research does not get synthetic execution-log.jsonl")
+    assert(!existsSync(path.join(slugDir, "curiosity_queue.yaml")), "authorial research does not get synthetic curiosity_queue.yaml")
+    assert(!existsSync(path.join(slugDir, "quick-wins.md")), "authorial research does not get synthetic quick-wins.md")
 
     const indexRaw = await readFile(path.join(tmp, "_index.json"), "utf8")
     const indexParsed = JSON.parse(indexRaw)
     assert(indexParsed.generator === "scripts/init-observatory.mjs", "_index.json carries generator marker")
     assert(Array.isArray(indexParsed.entries), "_index.json has entries[]")
 
-    const metrics = await readFile(path.join(slugDir, "metrics.yaml"), "utf8")
-    assert(metrics.includes("scripts/init-observatory.mjs"), "metrics.yaml carries generator marker")
+    const graph = await readFile(path.join(slugDir, "research-graph.json"), "utf8")
+    assert(graph.includes("scripts/init-observatory.mjs"), "research-graph.json carries generator marker")
 
     // Idempotency: running twice must not flip a human-authored file.
     const humanPath = path.join(slugDir, "README.md")
@@ -117,12 +117,11 @@ async function testResearchRich() {
     const afterHuman = await readFile(humanPath, "utf8")
     assert(beforeHuman === afterHuman, "human README.md untouched across runs")
 
-    // Idempotency: generator file content stable byte-for-byte across two runs
-    // (timestamps in execution-log.jsonl are slug-date based, not now()).
-    const beforeMetrics = await readFile(path.join(slugDir, "metrics.yaml"), "utf8")
+    // Idempotency: generator file content stable byte-for-byte across two runs.
+    const beforeGraph = await readFile(path.join(slugDir, "research-graph.json"), "utf8")
     await processResearchRoot(tmp)
-    const afterMetrics = await readFile(path.join(slugDir, "metrics.yaml"), "utf8")
-    assert(beforeMetrics === afterMetrics, "metrics.yaml byte-identical across runs")
+    const afterGraph = await readFile(path.join(slugDir, "research-graph.json"), "utf8")
+    assert(beforeGraph === afterGraph, "research-graph.json byte-identical across runs")
   })
 }
 

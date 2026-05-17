@@ -205,6 +205,8 @@ O app descobre estas pastas dentro de `AIOX_RESEARCH_ROOT` em cada request:
 | Bench | `docs/bench/<slug>/` | `/observatory/bench` | Relatórios comparativos, matriz, score, personas, TCO e decisão |
 | SINKRA Maps | `outputs/sinkra-squad/<group>/map/<slug>/` | `/observatory/sinkra-maps` | Mapas visuais de processo, fluxo, automação, governança, RACI, gaps e evidências |
 
+Contrato visual: pesquisas `docs/research/<slug>/` devem seguir o contrato em [`RESEARCH-OBSERVATORY-CONTRACT.md`](./RESEARCH-OBSERVATORY-CONTRACT.md). A versão tipada para consumo por aba fica em `src/lib/research-observatory-contract.ts`.
+
 Regras de descoberta:
 
 - `Demo` sempre aparece e não depende de filesystem externo.

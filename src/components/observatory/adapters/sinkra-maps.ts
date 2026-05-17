@@ -101,6 +101,7 @@ export function mapSinkraMapsToObservatory(
   const hasFlowSignal = extras.hasObservatory || extras.hasWorkflow || extras.hasDeps || extras.hasComposition || extras.hasTokens
   const hasGovernanceSignal = extras.hasGates || extras.hasCompliance || extras.hasScore
   if (hasMapSignal) modes.push("map")
+  if (hasMapSignal || data.documents.length > 0) modes.push("slides")
   if (hasFlowSignal) modes.push("flow")
   if (extras.hasAutomation) modes.push("automation")
   if (hasGovernanceSignal) modes.push("governance")
@@ -110,7 +111,7 @@ export function mapSinkraMapsToObservatory(
   if (!extras.hasObservatory && (extras.hasScore || data.structured.artifactCoverage.length > 0)) {
     modes.push("score")
   }
-  modes.push("document")
+  if (data.documents.length > 0) modes.push("document")
 
   return {
     source: "sinkra-maps",

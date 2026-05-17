@@ -17,7 +17,6 @@ import {
   RefreshCcw,
   Search,
   Settings,
-  Sparkles,
   Square,
   Terminal,
   X,
@@ -46,6 +45,7 @@ import { DISPLAY_FONT, MONO_FONT, SANS_FONT } from "@/components/observatory/fou
 type ResearchWorkbenchProps = {
   initialDiscovery: ResearchCliDiscovery
   recentRuns?: RecentResearchRun[]
+  initialMethodId?: ResearchMethodId
   initialRunIds?: string[]
   initialConsolidationRunId?: string | null
 }
@@ -112,7 +112,6 @@ type SpeechRecognitionResultLike = {
 }
 
 type ResearchExecutionMode = "local" | "byok"
-type ResearchSidebarSort = "recent" | "score" | "category"
 
 const BYOK_STORAGE_KEY = "aiox-research:research-byok"
 const RUNTIME_STEP_TOTAL = 7
@@ -127,31 +126,39 @@ const DEFAULT_BYOK_CONFIG: ResearchByokConfig = {
 
 const QUICK_RESEARCH_SUGGESTIONS = [
   {
-    label: "Cenário competitivo",
-    prompt: "Mapear o cenário competitivo de design systems para fintechs LATAM em 2026.",
+    label: "Mapa de território",
+    methodId: "mapping",
+    prompt: "Mapear o ecossistema de ferramentas de apresentações com IA em 2026. Entregar taxonomia do mercado, principais categorias, players por categoria, sinais de tração, lacunas ainda mal resolvidas, riscos de adoção e perguntas que precisam virar benchmark depois.",
   },
   {
     label: "Top 10 + bench",
-    prompt: "Top 10 plataformas low-code para automação de back-office, com preço, integrações e benchmark.",
+    methodId: "benchmark",
+    prompt: "Fazer um benchmark Top 10 das melhores ferramentas de apresentações com IA para times de growth e founders. Comparar Gamma, Canva, Beautiful.ai, Tome, Pitch, Plus AI, Decktopus, SlidesAI, Presenton e alternativas relevantes. Incluir preço, qualidade visual, geração por prompt, edição manual, colaboração, exportação PPT/PDF, maturidade, riscos e recomendação por cenário.",
   },
   {
-    label: "Validar tese",
-    prompt: "Tese: design.md como contrato vivo entre Figma, código e LLMs. Validar.",
+    label: "Avaliação técnica",
+    methodId: "tech",
+    prompt: "Avaliar tecnicamente o Presenton como alternativa open source ao Gamma para geração de apresentações com IA. Analisar arquitetura, stack, modelo de extensibilidade, instalação local, qualidade dos exports, dependências, riscos de manutenção, segurança, custo operacional e esforço para adaptar ao ecossistema SINKRA.",
   },
   {
-    label: "Concorrentes diretos",
-    prompt: "Pesquisar concorrentes do AIOX Console em pesquisa paralela com CLIs locais.",
+    label: "Cenário competitivo",
+    methodId: "market",
+    prompt: "Analisar o cenário competitivo de ferramentas de apresentação com IA para B2B SaaS. Comparar posicionamento, ICP, pricing, canais de aquisição, narrativa de produto, diferenciais defendáveis, sinais de demanda, ameaças de incumbentes e oportunidades de entrada para uma solução local-first com design systems.",
   },
-] as const
+] as const satisfies ReadonlyArray<{
+  label: string
+  methodId: ResearchMethodId
+  prompt: string
+}>
 
 const AIOX_RESEARCH_THEME = {
   "--paper": "#050505",
   "--paper-alt": "#0F0F11",
   "--paper-deep": "#0A0A0C",
   "--surface": "#0F0F11",
-  "--surface-alt": "#1C1E19",
+  "--surface-alt": "#18181B",
   "--surface-hover": "#1E1F22",
-  "--surface-console": "#1A1C14",
+  "--surface-console": "#111113",
   "--ink": "rgb(244, 244, 232)",
   "--ink-2": "rgba(244, 244, 232, 0.70)",
   "--ink-3": "rgba(244, 244, 232, 0.55)",
@@ -170,13 +177,14 @@ const AIOX_RESEARCH_THEME = {
 export function ResearchWorkbench({
   initialDiscovery,
   recentRuns = [],
+  initialMethodId,
   initialRunIds = [],
   initialConsolidationRunId = null,
 }: ResearchWorkbenchProps) {
   const router = useRouter()
   const [discovery] = useState(initialDiscovery)
   const [query, setQuery] = useState("")
-  const [methodId, setMethodId] = useState<ResearchMethodId>("mapping")
+  const [methodId, setMethodId] = useState<ResearchMethodId>(initialMethodId ?? "mapping")
   const depth: ResearchRunRequest["depth"] = "deep"
   const [selectedCliIds, setSelectedCliIds] = useState<ResearchCliId[]>(() => [preferredCli(initialDiscovery.clis)?.id ?? "claude"])
   const [audioFile, setAudioFile] = useState<File | null>(null)
@@ -196,8 +204,6 @@ export function ResearchWorkbench({
   const [error, setError] = useState<string | null>(null)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const [methodPickerOpen, setMethodPickerOpen] = useState(false)
-  const [sidebarQuery, setSidebarQuery] = useState("")
-  const [sidebarSort, setSidebarSort] = useState<ResearchSidebarSort>("recent")
   const [executionMode, setExecutionMode] = useState<ResearchExecutionMode>("local")
   const [byokConfig, setByokConfig] = useState<ResearchByokConfig>(DEFAULT_BYOK_CONFIG)
   const audioInputRef = useRef<HTMLInputElement | null>(null)
@@ -239,31 +245,6 @@ export function ResearchWorkbench({
       .sort()
       .join(",")
   }, [visibleSessionRuns])
-  const activeSidebarSlug =
-    visibleSessionRuns.find((run) => run.runId === focusedRunId)?.outputSlug ??
-    visibleSessionRuns[0]?.outputSlug ??
-    recentRuns[0]?.slug ??
-    null
-  const sidebarRuns = useMemo(() => {
-    const needle = sidebarQuery.trim().toLocaleLowerCase("pt-BR")
-    const matches = recentRuns.filter((run) => {
-      if (!needle) return true
-      return [run.slug, run.title, run.displayTitle, run.category, run.status]
-        .join(" ")
-        .toLocaleLowerCase("pt-BR")
-        .includes(needle)
-    })
-    const sorted = [...matches]
-    if (sidebarSort === "score") {
-      sorted.sort((a, b) => (parseCoveragePercent(formatCoverage(b.coverage)) ?? -1) - (parseCoveragePercent(formatCoverage(a.coverage)) ?? -1))
-    } else if (sidebarSort === "category") {
-      sorted.sort((a, b) => `${a.category}-${a.displayTitle}`.localeCompare(`${b.category}-${b.displayTitle}`, "pt-BR"))
-    } else {
-      sorted.sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
-    }
-    return sorted
-  }, [recentRuns, sidebarQuery, sidebarSort])
-
   useEffect(() => {
     try {
       const stored = window.localStorage.getItem(BYOK_STORAGE_KEY)
@@ -831,38 +812,13 @@ export function ResearchWorkbench({
       className="min-h-screen overflow-x-hidden bg-[var(--paper)] text-[var(--ink)]"
       style={{ ...AIOX_RESEARCH_THEME, fontFamily: SANS_FONT }}
     >
-      <ResearchShellHeader
-        onOpenResearch={() => router.push("/research")}
-        onOpenBench={() => router.push("/observatory/bench")}
-        onOpenSinkraMaps={() => router.push("/observatory/sinkra-maps")}
-        onOpenDemo={() => router.push("/observatory/demo")}
-      />
-
-      <section className="relative min-h-[calc(100vh-56px)] border-b border-[var(--rule)]">
+      <section className="relative min-h-screen border-b border-[var(--rule)]">
         <div className="pointer-events-none absolute inset-0 grid grid-cols-4">
           <span className="border-l border-[var(--grid-line)]" />
           <span className="border-l border-[var(--grid-line)]" />
           <span className="border-l border-[var(--grid-line)]" />
           <span className="border-x border-[var(--grid-line)]" />
         </div>
-        <ResearchIndexSidebar
-          runs={sidebarRuns}
-          activeSlug={activeSidebarSlug}
-          query={sidebarQuery}
-          sort={sidebarSort}
-          totalRuns={recentRuns.length}
-          onQueryChange={setSidebarQuery}
-          onSortChange={setSidebarSort}
-          onOpenDash={() => router.push("/observatory")}
-          onOpenRun={(slug) => router.push(`/observatory/research?slug=${encodeURIComponent(slug)}`)}
-        />
-        <ResearchCrumbBar
-          hasResearchSession={hasResearchSession}
-          title={hasResearchSession ? query || "Execução restaurada" : "Novo prompt"}
-          score={recentRuns.find((run) => run.slug === activeSidebarSlug)?.coverage ?? "--"}
-          date={recentRuns.find((run) => run.slug === activeSidebarSlug)?.date ?? new Date().toISOString().slice(0, 10)}
-        />
-        <ResearchSectionTabs />
         {hasResearchSession ? (
           <div
             className="pointer-events-none absolute left-1/2 top-[23%] hidden -translate-x-1/2 select-none text-center text-[22vw] font-black uppercase leading-none text-[rgba(245,244,231,0.045)] lg:block"
@@ -874,11 +830,11 @@ export function ResearchWorkbench({
 
         <div
           className={cn(
-            "relative z-10 flex flex-col px-4 sm:px-5 md:px-8 lg:ml-[320px]",
+            "relative z-10 mx-auto flex w-full flex-col px-4 sm:px-5 md:px-8",
             "max-w-[1280px]",
             hasResearchSession
               ? "min-h-0 py-6 lg:py-10"
-              : "min-h-0 py-6 lg:py-12",
+              : "min-h-0 py-10 lg:py-16",
           )}
         >
           <div
@@ -916,6 +872,7 @@ export function ResearchWorkbench({
               className={cn(
                 "relative w-full border border-[var(--rule)] bg-[var(--surface)] text-left shadow-[0_28px_90px_rgba(0,0,0,0.28)]",
                 hasResearchSession ? "mt-6 sm:mt-7" : "mt-6 sm:mt-10",
+                !hasResearchSession && "mb-7 sm:mb-8",
                 isComposerDragActive && "border-[var(--lime-ink)]",
               )}
               onDragOver={handleComposerDragOver}
@@ -990,7 +947,7 @@ export function ResearchWorkbench({
                         onClick={() => fileInputRef.current?.click()}
                         className={cn(
                           "grid h-[52px] w-14 shrink-0 place-items-center border-r border-[var(--rule-soft)] text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
-                          (contextFiles.length > 0 || contextAttachments.length > 0) && "bg-[rgba(209,255,0,0.06)] text-[var(--lime-ink)]",
+                          (contextFiles.length > 0 || contextAttachments.length > 0) && "bg-[var(--surface-hover)] text-[var(--lime-ink)]",
                         )}
                         aria-label="Anexar arquivos"
                       >
@@ -1097,8 +1054,10 @@ export function ResearchWorkbench({
 
             {!hasResearchSession ? (
               <QuickSuggestionRow
-                onSelect={(nextPrompt) => {
-                  setQuery(nextPrompt)
+                onSelect={(suggestion) => {
+                  setQuery(suggestion.prompt)
+                  setMethodId(suggestion.methodId)
+                  setMethodPickerOpen(false)
                   setError(null)
                 }}
               />
@@ -1134,11 +1093,6 @@ export function ResearchWorkbench({
                 body="Buscando o estado salvo dos runs informados nesta URL."
               />
             ) : null}
-            <ResearchDocsPanel
-              runs={recentRuns}
-              onOpenDash={() => router.push("/observatory")}
-              onOpenRun={(slug) => router.push(`/observatory/research?slug=${encodeURIComponent(slug)}`)}
-            />
             <RecentResearchList
               runs={recentRuns}
               flushTop={!hasResearchSession}
@@ -1148,449 +1102,18 @@ export function ResearchWorkbench({
           </div>
         </div>
       </section>
-    </main>
-  )
-}
 
-function ResearchShellHeader({
-  onOpenResearch,
-  onOpenBench,
-  onOpenSinkraMaps,
-  onOpenDemo,
-}: {
-  onOpenResearch: () => void
-  onOpenBench: () => void
-  onOpenSinkraMaps: () => void
-  onOpenDemo: () => void
-}) {
-  return (
-    <header className="sticky top-0 z-50 grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-stretch gap-0 border-b border-[var(--rule-soft)] bg-[var(--paper)] px-3 py-2 md:grid-cols-[auto_minmax(0,1fr)_auto] md:gap-8 md:px-0 md:py-0 md:pr-5">
-      <button
-        type="button"
-        onClick={onOpenResearch}
-        className="flex min-w-0 items-center gap-3 text-left transition-colors hover:text-[var(--lime-ink)] md:h-full md:border-r md:border-[var(--rule-soft)] md:px-[22px] md:hover:bg-[var(--surface-hover)]"
-        title="Abrir Research"
-      >
-        <img src="/logo/AIOX-White.svg" alt="AIOX" className="h-[18px] w-auto shrink-0" />
-        <span className="h-4 w-px shrink-0 bg-[var(--rule-strong)]" />
-        <span
-          className="truncate text-[11px] font-bold uppercase tracking-[0.20em] text-[var(--ink)]"
-          style={{ fontFamily: MONO_FONT }}
-        >
-          Research
-        </span>
-      </button>
-
-      <ResearchNav
-        onOpenResearch={onOpenResearch}
-        onOpenBench={onOpenBench}
-        onOpenSinkraMaps={onOpenSinkraMaps}
-        onOpenDemo={onOpenDemo}
-      />
-
-      <div className="flex items-center justify-self-end">
-        <button
-          type="button"
-          onClick={onOpenResearch}
-          className="inline-flex h-[30px] items-center gap-2 bg-[var(--lime-ink)] px-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-black transition-[filter,box-shadow] hover:brightness-105 hover:shadow-[0_0_16px_rgba(209,255,0,0.25)] sm:px-3 md:h-8"
-          style={{ fontFamily: MONO_FONT }}
-          aria-label="Nova pesquisa"
-        >
-          <Plus size={13} />
-          <span>Nova pesquisa</span>
-        </button>
-      </div>
-    </header>
-  )
-}
-
-function ResearchNav({
-  onOpenResearch,
-  onOpenBench,
-  onOpenSinkraMaps,
-  onOpenDemo,
-}: {
-  onOpenResearch: () => void
-  onOpenBench: () => void
-  onOpenSinkraMaps: () => void
-  onOpenDemo: () => void
-}) {
-  const items = [
-    { order: "01", label: "Pesquisas", active: true, onClick: onOpenResearch },
-    { order: "02", label: "Bench", active: false, onClick: onOpenBench },
-    { order: "03", label: "SINKRA Maps", active: false, onClick: onOpenSinkraMaps },
-    { order: "04", label: "Demo", active: false, onClick: onOpenDemo },
-  ]
-  return (
-    <nav className="hidden min-w-0 items-stretch md:flex" aria-label="Apps">
-      {items.map((item) => {
-        return (
-          <button
-            key={item.label}
-            type="button"
-            onClick={item.onClick}
-            className={cn(
-              "relative inline-flex h-full min-w-0 items-center gap-2 px-3.5 text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors xl:px-[18px]",
-              item.active
-                ? "text-[var(--lime-ink)] after:absolute after:inset-x-3.5 after:bottom-[-1px] after:h-px after:bg-[var(--lime-ink)] after:shadow-[0_0_10px_rgba(209,255,0,0.35)] xl:after:inset-x-[18px]"
-                : "text-[var(--ink-3)] hover:text-[var(--ink)]",
-            )}
-            style={{ fontFamily: MONO_FONT }}
-          >
-            <span className={cn("hidden text-[9.5px] tracking-[0.10em] xl:inline", item.active ? "text-[var(--lime-ink)]" : "text-[var(--ink-dim)]")}>
-              {item.order}
-            </span>
-            <span className="truncate">{item.label}</span>
-          </button>
-        )
-      })}
-    </nav>
-  )
-}
-
-function ResearchIndexSidebar({
-  runs,
-  activeSlug,
-  query,
-  sort,
-  totalRuns,
-  onQueryChange,
-  onSortChange,
-  onOpenDash,
-  onOpenRun,
-}: {
-  runs: RecentResearchRun[]
-  activeSlug: string | null
-  query: string
-  sort: ResearchSidebarSort
-  totalRuns: number
-  onQueryChange: (value: string) => void
-  onSortChange: (sort: ResearchSidebarSort) => void
-  onOpenDash: () => void
-  onOpenRun: (slug: string) => void
-}) {
-  const filters: Array<{ id: ResearchSidebarSort; label: string }> = [
-    { id: "recent", label: "Recente" },
-    { id: "score", label: "Score" },
-    { id: "category", label: "Categoria" },
-  ]
-  return (
-    <aside className="fixed left-0 top-14 z-30 hidden h-[calc(100vh-56px)] w-[320px] flex-col overflow-hidden border-r border-[var(--rule-soft)] bg-[var(--surface)] lg:flex">
-      <div className="border-b border-[var(--rule-soft)] px-5 py-[18px]">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.20em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-            <b className="font-semibold text-[var(--lime-ink)]">Index</b> · Research Runs
-          </span>
-          <span className="text-[10px] tracking-[0.10em] text-[var(--ink-2)]" style={{ fontFamily: MONO_FONT }}>
-            <b className="font-medium text-[var(--ink)]">{totalRuns}</b>
-          </span>
-        </div>
-        <label className="relative flex items-center">
-          <Search size={13} className="pointer-events-none absolute left-3 text-[var(--ink-dim)]" />
-          <input
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Buscar runs..."
-            spellCheck={false}
-            className="h-8 w-full border border-[var(--rule-soft)] bg-[var(--paper)] px-8 pr-12 text-[13px] text-[var(--ink)] outline-none placeholder:text-[var(--ink-dim)] focus:border-[var(--lime-ink)]"
-          />
-          <span className="pointer-events-none absolute right-2 border border-[var(--rule-soft)] px-1.5 py-px text-[10px] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-            /
-          </span>
-        </label>
-        <div className="mt-3 grid grid-cols-3 gap-1">
-          {filters.map((filter) => (
-            <button
-              key={filter.id}
-              type="button"
-              onClick={() => onSortChange(filter.id)}
-              className={cn(
-                "h-[26px] border px-1.5 text-[9px] font-bold uppercase tracking-[0.08em] transition-colors",
-                sort === filter.id
-                  ? "border-[rgba(209,255,0,0.25)] bg-[rgba(209,255,0,0.05)] text-[var(--lime-ink)]"
-                  : "border-[var(--rule-soft)] text-[var(--ink-3)] hover:border-[var(--rule-strong)] hover:text-[var(--ink)]",
-              )}
-              style={{ fontFamily: MONO_FONT }}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto pb-20">
-        <div className="flex items-baseline justify-between px-5 pb-2 pt-4 text-[9.5px] uppercase tracking-[0.22em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-          <span>{sort === "category" ? "Agrupado" : "Recentes"}</span>
-          <span className="text-[var(--ink-2)]">{runs.length}</span>
-        </div>
-        {runs.length > 0 ? (
-          runs.map((run, index) => (
-            <ResearchSidebarRunItem
-              key={run.slug}
-              run={run}
-              index={index}
-              active={run.slug === activeSlug}
-              onOpen={() => onOpenRun(run.slug)}
-            />
-          ))
-        ) : (
-          <div className="mx-5 mt-3 border border-dashed border-[var(--rule)] bg-[var(--paper-deep)] px-4 py-6 text-center">
-            <FileText className="mx-auto mb-3 text-[var(--ink-3)]" size={20} />
-            <p className="text-[13px] font-semibold text-[var(--ink)]">Nenhum run encontrado</p>
-            <p className="mt-1 text-[11px] leading-[1.45] text-[var(--ink-3)]">Ajuste a busca para voltar ao índice.</p>
-          </div>
-        )}
-      </div>
-
-      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between border-t border-[var(--rule-soft)] bg-[var(--surface)] px-5 py-3">
-        <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-          Docs / Research
-        </span>
-        <button
-          type="button"
-          onClick={onOpenDash}
-          className="grid h-[26px] w-[26px] place-items-center border border-[var(--rule-soft)] text-[var(--ink-3)] transition-colors hover:border-[var(--lime-ink)] hover:text-[var(--lime-ink)]"
-          aria-label="Abrir Observatory"
-        >
-          <LayoutDashboard size={12} />
-        </button>
-      </div>
-    </aside>
-  )
-}
-
-function ResearchSidebarRunItem({
-  run,
-  index,
-  active,
-  onOpen,
-}: {
-  run: RecentResearchRun
-  index: number
-  active: boolean
-  onOpen: () => void
-}) {
-  const score = formatCoverage(run.coverage)
-  const scoreNumber = parseCoveragePercent(score)
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className={cn(
-        "grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-l-2 border-transparent px-5 py-3 text-left transition-colors hover:bg-[var(--surface-hover)]",
-        active && "border-l-[var(--lime-ink)] bg-[var(--paper)]",
-      )}
-    >
-      <span
-        className={cn(
-          "h-2 w-2 border border-[var(--ink-dim)]",
-          run.status === "completed" && "border-[var(--lime-ink)] bg-[var(--lime-ink)] shadow-[0_0_8px_rgba(209,255,0,0.5)]",
-          run.status === "failed" && "border-[var(--danger-ink)] bg-[var(--danger-ink)]",
-          run.status !== "completed" && run.status !== "failed" && "border-[var(--warning-ink)] bg-[var(--warning-ink)]",
-        )}
-      />
-      <span className="min-w-0">
-        <span className="line-clamp-2 block text-[14px] font-semibold leading-[1.3] text-[var(--ink)]">
-          {run.displayTitle || run.title || run.slug}
-        </span>
-        <span className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[9.5px] uppercase tracking-[0.12em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-          <span>{formatResearchDate(run.date)}</span>
-          <span className="text-[var(--rule-strong)]">·</span>
-          <span>{run.files} arq.</span>
-          <span className="text-[var(--rule-strong)]">·</span>
-          <span>#{String(index + 1).padStart(2, "0")}</span>
-        </span>
-      </span>
-      <span
-        className={cn(
-          "text-right text-[13px] font-bold tracking-normal text-[var(--ink-2)]",
-          active && "text-[var(--lime-ink)]",
-          scoreNumber !== null && scoreNumber < 70 && "text-[var(--warning-ink)]",
-        )}
+      <footer
+        className="relative z-10 mx-auto flex w-full max-w-[1280px] flex-wrap items-center justify-between gap-3 px-4 py-5 text-[10px] uppercase tracking-[0.18em] text-[var(--ink-dim)] sm:px-5 md:px-8"
         style={{ fontFamily: MONO_FONT }}
       >
-        {scoreNumber ?? "--"}
-      </span>
-    </button>
-  )
-}
-
-function ResearchCrumbBar({
-  hasResearchSession,
-  title,
-  score,
-  date,
-}: {
-  hasResearchSession: boolean
-  title: string
-  score: string
-  date: string
-}) {
-  return (
-    <div className="relative z-10 hidden min-h-11 items-center gap-3 border-b border-[var(--rule-soft)] px-7 text-[10.5px] uppercase tracking-[0.16em] text-[var(--ink-dim)] lg:ml-[320px] lg:flex" style={{ fontFamily: MONO_FONT }}>
-      <span className="inline-flex items-center gap-2 font-semibold text-[var(--lime-ink)]">
-        <span className="h-1.5 w-1.5 bg-[var(--lime-ink)] shadow-[0_0_8px_rgba(209,255,0,0.55)]" />
-        {hasResearchSession ? "Sessão" : "Selecionado"}
-      </span>
-      <span className="text-[var(--rule-strong)]">·</span>
-      <span className="min-w-0 truncate font-medium text-[var(--ink)]">{title}</span>
-      <span className="ml-auto flex shrink-0 items-center gap-5">
-        <span>Score · <b className="font-medium text-[var(--ink-2)]">{formatCoverage(score)}</b></span>
-        <span>{formatResearchDate(date)}</span>
-      </span>
-    </div>
-  )
-}
-
-function ResearchSectionTabs() {
-  const tabs = ["Map", "Ações", "Evidências", "Waves", "Fontes", "Players", "Perguntas", "Doc"]
-  return (
-    <div className="relative z-10 flex gap-1.5 overflow-x-auto border-b border-[var(--rule-soft)] bg-[var(--paper)] px-3.5 py-2.5 sm:px-4 lg:ml-[320px] lg:px-7 lg:py-3.5">
-      {tabs.map((tab, index) => (
-        <span
-          key={tab}
-          className={cn(
-            "inline-flex h-9 shrink-0 items-center gap-2.5 border px-3.5 text-[11px] font-semibold uppercase tracking-[0.16em]",
-            index === 0
-              ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black shadow-[0_0_16px_rgba(209,255,0,0.10)]"
-              : "border-[var(--rule)] bg-[var(--surface)] text-[var(--ink-2)]",
-          )}
-          style={{ fontFamily: MONO_FONT }}
-        >
-          <span className={cn("border-r pr-2 text-[10px] font-bold tracking-[0.10em]", index === 0 ? "border-black/20 text-black/60" : "border-[var(--rule-soft)] text-[var(--ink-dim)]")}>
-            {String(index + 1).padStart(2, "0")}
-          </span>
-          {tab}
+        <span className="text-[var(--ink-2)]">AIOX Pro</span>
+        <span className="flex items-center gap-3">
+          <span>Detector · {discovery.clis.filter((cli) => cli.available && cli.launchSupported).length} CLIs prontos</span>
+          <span className="border border-[var(--rule)] px-2 py-1 text-[var(--ink-2)]">v0.1.0</span>
         </span>
-      ))}
-    </div>
-  )
-}
-
-function ResearchDocsPanel({
-  runs,
-  onOpenDash,
-  onOpenRun,
-}: {
-  runs: RecentResearchRun[]
-  onOpenDash: () => void
-  onOpenRun: (slug: string) => void
-}) {
-  const selectedRun = runs[0] ?? null
-  const selectedFiles = selectedRun?.sampleFiles ?? []
-  return (
-    <section className="mt-6 overflow-hidden border border-[var(--rule)] bg-[var(--surface)] text-left sm:mt-8">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--rule)] px-4 py-3.5 sm:px-5 sm:py-4">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--lime-ink)]" style={{ fontFamily: MONO_FONT }}>
-            Docs / Research
-          </p>
-          <h2 className="mt-1 text-[22px] font-black uppercase leading-none text-[var(--ink)] sm:text-[24px]" style={{ fontFamily: DISPLAY_FONT }}>
-            Arquivos indexados
-          </h2>
-        </div>
-        <button
-          type="button"
-          onClick={onOpenDash}
-          className="inline-flex h-9 items-center gap-2.5 border border-[var(--rule-strong)] bg-[var(--paper-deep)] px-3.5 text-[9.5px] font-bold uppercase tracking-[0.18em] text-[var(--ink)] transition-colors hover:border-[var(--lime-ink)] hover:bg-[var(--lime-ink)] hover:text-black"
-          style={{ fontFamily: MONO_FONT }}
-        >
-          <LayoutDashboard size={13} />
-          Observatory
-        </button>
-      </div>
-      {selectedRun ? (
-        <div className="grid gap-[1px] bg-[var(--rule)] lg:grid-cols-[minmax(0,1fr)_300px]">
-          <button
-            type="button"
-            onClick={() => onOpenRun(selectedRun.slug)}
-            className="group grid min-h-[220px] min-w-0 content-between bg-[var(--paper-deep)] p-4 text-left transition-colors hover:bg-[var(--surface-hover)] sm:min-h-[260px] sm:p-7"
-          >
-            <span className="min-w-0">
-              <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] uppercase tracking-[0.18em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-                <span className="text-[var(--lime-ink)]">Doc reader</span>
-                <span className="text-[var(--rule-strong)]">·</span>
-                <span>{selectedRun.files} arquivos</span>
-                <span className="text-[var(--rule-strong)]">·</span>
-                <span>{compactStatus(selectedRun.status)}</span>
-              </span>
-              <h3 className="mt-4 max-w-[780px] text-[24px] font-black uppercase leading-[1.04] text-[var(--ink)] sm:mt-5 sm:text-[36px]" style={{ fontFamily: DISPLAY_FONT }}>
-                {selectedRun.displayTitle || selectedRun.title || selectedRun.slug}
-              </h3>
-              <p className="mt-3 max-w-[720px] text-[12.5px] leading-[1.55] text-[var(--ink-2)] sm:mt-4 sm:text-[13px] sm:leading-[1.6]">
-                Run local-first em <span className="text-[var(--ink)]">docs/research/{selectedRun.slug}</span>. Abra no Observatory para ler o relatório completo, fontes, recomendações e arquivos auxiliares.
-              </p>
-            </span>
-            <span className="mt-6 grid grid-cols-2 gap-[1px] bg-[var(--rule)] sm:mt-8 sm:grid-cols-4">
-              <DocMetric label="Score" value={formatCoverage(selectedRun.coverage)} />
-              <DocMetric label="Fontes" value={selectedRun.sources || "--"} />
-              <DocMetric label="Waves" value={String(selectedRun.waves)} />
-              <DocMetric label="Data" value={formatResearchDate(selectedRun.date)} />
-            </span>
-          </button>
-
-          <aside className="bg-[var(--paper-deep)]" aria-label="Arquivos do run">
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--rule-soft)] px-4 py-3.5 sm:px-5 sm:py-4">
-              <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--ink)]" style={{ fontFamily: MONO_FONT }}>
-                Arquivos do run
-              </span>
-              <span className="text-[10px] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-                {selectedRun.files}
-              </span>
-            </div>
-            <div className="max-h-[300px] overflow-y-auto sm:max-h-[360px]">
-              {selectedFiles.length > 0 ? (
-                selectedFiles.map((file, index) => (
-                  <button
-                    key={file}
-                    type="button"
-                    onClick={() => onOpenRun(selectedRun.slug)}
-                    className="group grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2.5 border-b border-[var(--rule-soft)] px-4 py-2.5 text-left transition-colors last:border-b-0 hover:bg-[var(--surface-hover)] sm:grid-cols-[28px_minmax(0,1fr)_auto] sm:gap-3 sm:px-5 sm:py-3"
-                  >
-                    <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-semibold text-[var(--ink)]">{docFileTitle(file)}</span>
-                      <span className="mt-0.5 block truncate text-[9.5px] uppercase tracking-[0.12em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-                        {docFileKind(file)} · {file}
-                      </span>
-                    </span>
-                    <ArrowRight size={13} className="text-[var(--lime-ink)] opacity-70 transition-transform group-hover:translate-x-0.5 group-hover:opacity-100" />
-                  </button>
-                ))
-              ) : (
-                <div className="px-5 py-8 text-center">
-                  <FileText className="mx-auto mb-3 text-[var(--ink-3)]" size={20} />
-                  <p className="text-[12px] text-[var(--ink-2)]">Sem lista de arquivos para este run.</p>
-                </div>
-              )}
-            </div>
-          </aside>
-        </div>
-      ) : (
-        <div className="grid min-h-32 place-items-center bg-[var(--paper-deep)] px-5 py-8 text-center">
-          <div>
-            <FileText className="mx-auto mb-3 text-[var(--ink-3)]" size={22} />
-            <p className="text-[14px] font-semibold text-[var(--ink)]">Sem docs indexados</p>
-            <p className="mt-1 text-[12px] leading-[1.45] text-[var(--ink-2)]">Os artefatos de docs/research aparecem aqui após o primeiro run.</p>
-          </div>
-        </div>
-      )}
-    </section>
-  )
-}
-
-function DocMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <span className="grid min-h-[62px] content-between bg-[var(--surface)] px-3 py-2.5 sm:min-h-[72px] sm:px-4 sm:py-3">
-      <span className="text-[9.5px] uppercase tracking-[0.16em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-        {label}
-      </span>
-      <span className="break-words text-[15px] font-black leading-tight text-[var(--ink)] sm:truncate sm:text-[17px]" style={{ fontFamily: DISPLAY_FONT }}>
-        {value}
-      </span>
-    </span>
+      </footer>
+    </main>
   )
 }
 
@@ -1632,7 +1155,7 @@ function ResearchMethodPicker({
         className={cn(
           "group relative inline-flex h-[52px] w-full min-w-0 items-center gap-3 border-r border-[var(--rule-soft)] px-4 text-[12px] font-semibold transition-colors xl:min-w-[204px] xl:px-[18px]",
           open
-            ? "bg-[rgba(209,255,0,0.05)] text-[var(--ink)]"
+            ? "bg-[var(--surface-hover)] text-[var(--ink)]"
             : "bg-[var(--paper-deep)] text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
         )}
         aria-expanded={open}
@@ -1665,7 +1188,7 @@ function ResearchMethodPicker({
                 className={cn(
                   "group relative grid min-h-12 w-full grid-cols-[10px_minmax(0,1fr)_28px] items-center gap-3 border-b border-[var(--rule)] px-4 text-left transition-colors last:border-b-0",
                   active
-                    ? "bg-[rgba(209,255,0,0.06)] text-[var(--lime-ink)]"
+                    ? "bg-[var(--surface-hover)] text-[var(--lime-ink)]"
                     : "text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
                 )}
               >
@@ -1684,7 +1207,7 @@ function ResearchMethodPicker({
   )
 }
 
-function QuickSuggestionRow({ onSelect }: { onSelect: (prompt: string) => void }) {
+function QuickSuggestionRow({ onSelect }: { onSelect: (suggestion: (typeof QUICK_RESEARCH_SUGGESTIONS)[number]) => void }) {
   return (
     <div className="mb-9 mt-4 grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-3 text-left sm:mb-20 sm:flex sm:flex-wrap sm:gap-x-1.5 sm:gap-y-2">
       <span className="text-[10px] font-bold uppercase tracking-[0.20em] text-[var(--ink-dim)] sm:mr-2" style={{ fontFamily: MONO_FONT }}>
@@ -1695,13 +1218,16 @@ function QuickSuggestionRow({ onSelect }: { onSelect: (prompt: string) => void }
           <button
             key={suggestion.label}
             type="button"
-            onClick={() => onSelect(suggestion.prompt)}
+            onClick={() => onSelect(suggestion)}
             className="inline-flex min-h-9 shrink-0 items-center gap-2 whitespace-nowrap border border-[var(--rule)] bg-transparent px-3 text-[13px] font-medium text-[var(--ink-2)] transition-colors hover:border-[var(--rule-strong)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]"
           >
             <span className="text-[var(--lime-ink)]" style={{ fontFamily: MONO_FONT }}>
               ›
             </span>
             {suggestion.label}
+            <span className="border-l border-[var(--rule)] pl-2 text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
+              {methodDisplayName(researchMethodLabel(suggestion.methodId))}
+            </span>
           </button>
         ))}
       </div>
@@ -1801,9 +1327,9 @@ function ComposerModelPicker({
         type="button"
         onClick={() => onOpenChange(!open)}
         className={cn(
-          "relative inline-flex h-[52px] w-full min-w-0 items-center gap-2.5 border-l border-[var(--rule-soft)] border-r border-[var(--rule-soft)] bg-[rgba(209,255,0,0.04)] px-3 text-[12px] font-semibold text-[var(--ink)] transition-colors hover:bg-[rgba(209,255,0,0.08)] sm:gap-3 sm:px-[18px] xl:max-w-[204px]",
+          "relative inline-flex h-[52px] w-full min-w-0 items-center gap-2.5 border-l border-[var(--rule-soft)] border-r border-[var(--rule-soft)] bg-[var(--paper-deep)] px-3 text-[12px] font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--surface-hover)] sm:gap-3 sm:px-[18px] xl:max-w-[204px]",
           open
-            ? "bg-[rgba(209,255,0,0.08)]"
+            ? "bg-[var(--surface-hover)]"
             : "",
         )}
         aria-expanded={open}
@@ -1819,7 +1345,7 @@ function ComposerModelPicker({
 
       {open && (
         <div
-          className="fixed z-50 border border-[var(--rule-strong)] bg-[var(--surface-console)] text-left shadow-[0_24px_70px_rgba(0,0,0,0.62)]"
+          className="fixed z-50 border border-[var(--rule-strong)] bg-[var(--surface)] text-left shadow-[0_24px_70px_rgba(0,0,0,0.62)]"
           style={popoverStyle}
         >
           <span className="pointer-events-none absolute -bottom-px -right-px h-3 w-3 border-b border-r border-[var(--lime-ink)]" />
@@ -1830,8 +1356,8 @@ function ComposerModelPicker({
               className={cn(
                 "relative h-10 border-r border-[var(--rule)] text-[10px] font-bold uppercase tracking-[0.18em] transition-colors",
                 mode === "local"
-                  ? "bg-[rgba(209,255,0,0.05)] text-[var(--lime-ink)] shadow-[inset_0_-1px_0_var(--lime-ink)]"
-                  : "text-[var(--ink-3)] hover:text-[var(--ink)]",
+                  ? "bg-[var(--surface-hover)] text-[var(--lime-ink)] shadow-[inset_0_-1px_0_var(--lime-ink)]"
+                  : "bg-[var(--paper-deep)] text-[var(--ink-3)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
               )}
               style={{ fontFamily: MONO_FONT }}
             >
@@ -1843,8 +1369,8 @@ function ComposerModelPicker({
               className={cn(
                 "h-10 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors",
                 mode === "byok"
-                  ? "bg-[rgba(209,255,0,0.05)] text-[var(--lime-ink)] shadow-[inset_0_-1px_0_var(--lime-ink)]"
-                  : "text-[var(--ink-3)] hover:text-[var(--ink)]",
+                  ? "bg-[var(--surface-hover)] text-[var(--lime-ink)] shadow-[inset_0_-1px_0_var(--lime-ink)]"
+                  : "bg-[var(--paper-deep)] text-[var(--ink-3)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]",
               )}
               style={{ fontFamily: MONO_FONT }}
             >
@@ -1856,7 +1382,7 @@ function ComposerModelPicker({
             <>
               <div className="flex items-center justify-between gap-3 border-b border-[var(--rule)] px-4 py-3">
                 <span className="text-[10px] uppercase tracking-[0.18em] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-                  <span className="font-bold text-[var(--lime-ink)]">[02]</span>
+                  <span className="font-bold text-[var(--lime-ink)]">[{String(availableClis.length).padStart(2, "0")}]</span>
                   <span className="ml-2">CLIs em paralelo</span>
                 </span>
                 <button
@@ -1882,21 +1408,14 @@ function ComposerModelPicker({
                       className={cn(
                         "relative grid min-h-12 grid-cols-[22px_minmax(0,1fr)_18px] items-center gap-3 border-b border-[var(--rule)] px-4 text-left transition-colors odd:sm:border-r",
                         active
-                          ? "bg-[rgba(209,255,0,0.05)] text-[var(--ink)] shadow-[inset_0_-2px_0_var(--lime-ink)]"
+                          ? "bg-[var(--surface-hover)] text-[var(--ink)] shadow-[inset_0_-2px_0_var(--lime-ink)]"
                           : enabled
                             ? "text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]"
                             : "cursor-not-allowed text-[var(--ink-dim)] opacity-55",
                       )}
                       aria-label={enabled ? `${compactCliLabel(cli.id)} · ${cli.launchHint}` : `${compactCliLabel(cli.id)} · ${cli.installHint}`}
                     >
-                      <span className={cn(
-                        "grid h-[18px] w-[22px] place-items-center border text-[10px] font-black",
-                        active
-                          ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black"
-                          : "border-[var(--rule-strong)] bg-[var(--paper)] text-[var(--ink-2)]",
-                      )} style={{ fontFamily: MONO_FONT }}>
-                        &gt;_
-                      </span>
+                      <CliLogo cliId={cli.id} active={active} />
                       <span className="min-w-0">
                         <span className="block truncate text-[12.5px] font-semibold">{compactCliLabel(cli.id)}</span>
                         <span className="mt-0.5 block truncate text-[9.5px] text-[var(--ink-dim)]">
@@ -1912,7 +1431,7 @@ function ComposerModelPicker({
           ) : (
             <>
               <div className="flex items-center gap-2 border-b border-[var(--rule)] bg-[var(--paper-deep)] px-4 py-4 text-[12px] font-semibold text-[var(--ink-2)]">
-                <Sparkles size={14} className="text-[var(--lime-ink)]" />
+                <OpenRouterLogo active={mode === "byok"} />
                 {OPENROUTER_CLI_LABEL}
               </div>
               <div className="grid gap-2 p-4">
@@ -1938,6 +1457,46 @@ function ComposerModelPicker({
         </div>
       )}
     </div>
+  )
+}
+
+function CliLogo({ cliId, active }: { cliId: ResearchCliId; active: boolean }) {
+  const logo = cliLogoMeta(cliId)
+  return (
+    <span
+      className={cn(
+        "grid h-6 w-6 shrink-0 place-items-center border text-[10px] font-black leading-none",
+        active
+          ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black"
+          : "border-[var(--rule-strong)] bg-[var(--paper-deep)] text-[var(--ink-2)]",
+      )}
+      style={{
+        fontFamily: logo.fontFamily ?? MONO_FONT,
+        color: active ? "#050505" : logo.color,
+      }}
+      aria-hidden="true"
+      title={logo.title}
+    >
+      {logo.mark}
+    </span>
+  )
+}
+
+function OpenRouterLogo({ active }: { active: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-grid h-6 w-6 shrink-0 place-items-center border text-[9px] font-black tracking-[-0.04em]",
+        active
+          ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black"
+          : "border-[var(--rule-strong)] bg-[var(--paper-deep)] text-[var(--ink-2)]",
+      )}
+      style={{ fontFamily: MONO_FONT }}
+      aria-hidden="true"
+      title="OpenRouter"
+    >
+      OR
+    </span>
   )
 }
 
@@ -2103,7 +1662,7 @@ function SessionPromptSummary({
         <SessionMetaCell label="Modo" value={researchMethodLabel(methodId)} />
         <SessionMetaCell label="Profundidade" value={researchDepthLabel(depth)} />
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--rule)] bg-[rgba(209,255,0,0.04)] px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--rule)] bg-[var(--surface-hover)] px-5 py-3">
         <p className="text-[10px] uppercase tracking-[0.12em] text-[var(--lime-ink)]" style={{ fontFamily: MONO_FONT }}>
           Sessão fixada pela URL · nova submissão bloqueada nesta aba.
         </p>
@@ -2396,7 +1955,7 @@ function RuntimeRunCard({
       aria-pressed={selected}
       className={cn(
         "relative grid min-h-[244px] overflow-hidden content-between gap-5 bg-[var(--surface)] p-5 text-left transition-colors hover:bg-[var(--surface-hover)]",
-        selected && "bg-[rgba(209,255,0,0.045)]",
+        selected && "bg-[var(--surface-hover)]",
       )}
     >
       {hasLiveIssue && run.status !== "failed" ? <span className="absolute inset-y-0 left-0 w-0.5 bg-[var(--warning-ink)]" /> : null}
@@ -2580,7 +2139,7 @@ function TerminalOutput({ run }: { run: ResearchRunState }) {
           <span className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
             <span className="h-2.5 w-2.5 border border-[rgba(237,70,9,0.68)] bg-[rgba(237,70,9,0.16)]" />
             <span className="h-2.5 w-2.5 border border-[rgba(245,158,11,0.62)] bg-[rgba(245,158,11,0.14)]" />
-            <span className="h-2.5 w-2.5 border border-[rgba(209,255,0,0.62)] bg-[rgba(209,255,0,0.13)]" />
+            <span className="h-2.5 w-2.5 border border-[rgba(209,255,0,0.62)] bg-[rgba(245,244,231,0.08)]" />
           </span>
           <span className="min-w-0 truncate text-[10px] uppercase tracking-[0.14em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
             Terminal · linhas de comando
@@ -2782,7 +2341,7 @@ function RuntimeStepRow({
     <article
       className={cn(
         "relative grid gap-0 border-b border-[var(--rule-soft)] last:border-b-0 lg:grid-cols-[76px_36px_minmax(0,1fr)_minmax(190px,260px)_108px]",
-        step.state === "active" && "border-l-2 border-l-[var(--lime-ink)] bg-[rgba(209,255,0,0.025)]",
+        step.state === "active" && "border-l-2 border-l-[var(--lime-ink)] bg-[var(--surface-hover)]",
         step.state === "failed" && "border-l-2 border-l-[var(--danger-ink)]",
       )}
     >
@@ -3479,6 +3038,39 @@ function categoryColorClass(value: string) {
   if (normalized.includes("market") || normalized.includes("mercado")) return "bg-[var(--lime-ink)]"
   if (normalized.includes("bench")) return "bg-[var(--warning-ink)]"
   return "bg-[var(--ink-3)]"
+}
+
+function cliLogoMeta(cliId: ResearchCliId) {
+  if (cliId === "claude") {
+    return {
+      title: "Claude",
+      mark: "C",
+      color: "#D97757",
+      fontFamily: SANS_FONT,
+    }
+  }
+  if (cliId === "codex") {
+    return {
+      title: "Codex",
+      mark: "◎",
+      color: "#F5F4E7",
+      fontFamily: MONO_FONT,
+    }
+  }
+  if (cliId === "gemini") {
+    return {
+      title: "Gemini",
+      mark: "✦",
+      color: "#8AB4F8",
+      fontFamily: SANS_FONT,
+    }
+  }
+  return {
+    title: OPENROUTER_CLI_LABEL,
+    mark: "OR",
+    color: "#F5F4E7",
+    fontFamily: MONO_FONT,
+  }
 }
 
 function formatElapsed(start: string, end: string) {

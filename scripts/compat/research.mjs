@@ -600,7 +600,7 @@ export async function processResearchRoot(researchRoot) {
     }
     files = (await readdir(dir, { withFileTypes: true }))
       .filter((entry) => entry.isFile()).map((entry) => entry.name).sort()
-    await slot("research-graph.json", await graphJson(slug, dir, files, sourcesFromMarkdown))
+    await slot("research-graph.json", await graphJson(slug, dir, files.filter((file) => file !== "research-graph.json"), sourcesFromMarkdown))
     if (tables.length > 0) await slot("matrices.yaml", matricesYaml(slug, tables))
     if (!authorial) {
       await slot("curiosity_queue.yaml", curiosityYaml(slug, questions))

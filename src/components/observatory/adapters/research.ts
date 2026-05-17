@@ -46,6 +46,7 @@ function mapRun(run: ResearchRunSummary): ObservatoryRunSummary {
     sources: Number(run.sources) || 0,
     active: run.active,
     inferred: run.inferred ?? undefined,
+    runtimeRunIds: run.runtimeRunIds,
     extras: {
       freshness: run.freshness,
       hasCore: run.hasCore,
@@ -62,11 +63,13 @@ export function mapResearchToObservatory(
 ): ObservatoryData {
   const runs = data.runs.map(mapRun)
   const selectedRun = mapRun(data.selectedRun)
-  const availableModes: ObservatoryData["availableModes"] = ["map"]
-  if (data.documents.some((doc) => doc.phase === "recommend" || /recommend|quick-win|followup|follow-up/i.test(doc.file))) {
+  const availableModes: ObservatoryData["availableModes"] = []
+  if (data.documents.length > 0 || data.topSources.length > 0 || data.players.length > 0) availableModes.push("map")
+  if (data.documents.length > 0) availableModes.push("slides")
+  if (data.documents.some((doc) => doc.phase === "recommend" || /recommend|quick-win|followup|follow-up|action-plan|risk-register|decision-ledger/i.test(doc.file))) {
     availableModes.push("recommendations")
   }
-  if (data.topSources.length > 0 || data.documents.some((doc) => doc.file === "research-graph.json")) {
+  if (data.topSources.length > 0 || data.documents.some((doc) => /^(research-graph\.json|claims\.yaml|validation-report\.yaml)$/.test(doc.file))) {
     availableModes.push("evidence")
   }
   if (selectedRun.waves > 0 || data.documents.some((doc) => doc.phase === "wave" || /wave/i.test(doc.file))) {
@@ -75,7 +78,7 @@ export function mapResearchToObservatory(
   if (data.topSources.length > 0) availableModes.push("sources")
   if (data.players.length > 0) availableModes.push("players")
   if (data.documents.some((doc) => doc.file === "curiosity_queue.yaml")) availableModes.push("curiosity")
-  availableModes.push("document")
+  if (data.documents.length > 0) availableModes.push("document")
 
   return {
     source: "research",

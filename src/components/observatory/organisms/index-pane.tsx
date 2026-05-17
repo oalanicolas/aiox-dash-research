@@ -150,7 +150,7 @@ export function IndexPane({
             className={cn(
               "mt-3 grid w-full grid-cols-[auto_1fr_auto_auto] items-center gap-2 border px-3 py-2.5 transition-colors",
               overviewActive
-                ? "border-[var(--lime-ink)] bg-[rgba(209,255,0,0.06)] text-[var(--lime-ink)]"
+                ? "border-[var(--lime-ink)] bg-[var(--surface-hover)] text-[var(--lime-ink)]"
                 : "border-[var(--rule)] bg-[var(--paper)] text-[var(--ink-3)] hover:text-[var(--ink)]",
             )}
             style={{ fontFamily: MONO_FONT }}
@@ -181,7 +181,7 @@ export function IndexPane({
               className={cn(
                 "h-7 border px-2 text-center text-[9.5px] font-semibold uppercase tracking-[0.16em] transition-colors",
                 item.active
-                  ? "border-[var(--lime-ink)] bg-[rgba(209,255,0,0.06)] text-[var(--lime-ink)]"
+                  ? "border-[var(--lime-ink)] bg-[var(--surface-hover)] text-[var(--lime-ink)]"
                   : "border-[var(--rule)] bg-transparent text-[var(--ink-dim)] hover:text-[var(--ink)]",
               )}
             >
@@ -221,6 +221,11 @@ export function IndexPane({
                       coverage={r.coverage}
                       status={r.status}
                       coverageInferred={r.inferred?.coverage_score}
+                      categoryTag={
+                        Array.isArray(r.extras?.subjects)
+                          ? categoryLabels.get(r.category ?? "") ?? r.category ?? undefined
+                          : undefined
+                      }
                       subjects={
                         Array.isArray(r.extras?.subjects)
                           ? (r.extras?.subjects as string[]).filter((s) => typeof s === "string" && s.length > 0)

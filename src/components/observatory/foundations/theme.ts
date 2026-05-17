@@ -8,7 +8,7 @@ export const observatoryThemeVars: CSSProperties = {
   "--paper-alt": "var(--surface, #0f0f11)",
   "--paper-panel": "var(--surface-panel, #18181b)",
   "--paper-deep": "var(--surface-deep, #0a0a0c)",
-  "--surface-console": "var(--surface-console, #1a1c14)",
+  "--surface-console": "var(--surface-console, #111113)",
   "--surface-hover": "var(--surface-hover, #1e1f22)",
   "--ink": "var(--cream-alt, #f5f4e7)",
   "--ink-2": "var(--fg2, rgba(244,244,232,0.70))",

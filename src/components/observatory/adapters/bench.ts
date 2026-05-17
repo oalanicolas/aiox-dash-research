@@ -47,7 +47,7 @@ function mapRun(run: BenchRunSummary): ObservatoryRunSummary {
      The dash is the source of truth — files are inputs to it. */
   const dashRows = run.dashMatrixRows ?? 0
   const dashCoverage = run.dashCoverage ?? "missing"
-  const hasDashRich = dashRows >= 4 && dashCoverage === "structured"
+  const hasDashRich = dashRows >= 4 && /^(structured|complete)$/i.test(dashCoverage)
   const hasDashPartial = dashRows > 0 || dashCoverage !== "missing"
 
   let status: string
@@ -111,21 +111,35 @@ export function mapBenchToObservatory(
   const runs = data.runs.map(mapRun)
   const selectedRun = mapRun(data.selectedRun)
   /* Derive which Reader modes are available based on what the dash carries */
-  const availableModes: ReaderMode[] = ["map", "slides", "roadmap"]
+  const availableModes: ReaderMode[] = []
   const dashMatrix = data.scoreboard
   const hasLegacyMatrix = !dashMatrix && data.matrixRows.length > 0
   const hasScore = data.scoreDimensions.length > 0 || data.scoreMetrics.length > 0
-  if (dashMatrix && dashMatrix.rows.length > 0) {
-    availableModes.push("evidence")
-    availableModes.push("matrix")
-    if (dashMatrix.players.length >= 2) availableModes.push("duel")
-  }
-  if (hasScore) availableModes.push("score")
-  if (hasLegacyMatrix) {
-    availableModes.push("evidence")
-    availableModes.push("matrix")
-  }
+  const hasMatrix = Boolean(dashMatrix && dashMatrix.rows.length > 0)
+  const hasDuel = Boolean(dashMatrix && dashMatrix.players.length >= 2)
+  const hasEvidence = hasMatrix || hasLegacyMatrix
+  const hasDecision =
+    data.categorical.length > 0 ||
+    data.tiebreakers.length > 0 ||
+    data.cliffs.length > 0 ||
+    data.decisionTree.length > 0 ||
+    Boolean(data.editorsNote)
+  const hasBenchMap = data.runs.length > 0 || data.documents.length > 0 || Boolean(dashMatrix) || hasLegacyMatrix
+  const hasSlides = data.documents.length > 0 || Boolean(dashMatrix) || data.personas.length > 0 || data.cliffs.length > 0
+  const hasRoadmap = data.gapItems.length > 0 || data.cliffs.length > 0 || data.categorical.length > 0 || Boolean(dashMatrix)
+  const isProductBench = data.typeSpecific?.product || data.selectedRun.type === "product"
+  if (hasBenchMap) availableModes.push("map")
+  if (hasSlides) availableModes.push("slides")
+  if (hasRoadmap) availableModes.push("roadmap")
   if (data.personas.length > 0) availableModes.push("personas")
+  if (hasDecision) availableModes.push("decision")
+  if (hasEvidence) availableModes.push("evidence")
+  if (hasMatrix) availableModes.push("matrix")
+  if (hasDuel) availableModes.push("duel")
+  if (hasScore && !isProductBench) availableModes.push("score")
+  if (hasLegacyMatrix && !hasMatrix) {
+    availableModes.push("matrix")
+  }
   if (data.tco && data.tco.scenarios.length > 0) availableModes.push("tco")
   const hasCodebaseCoverage = Boolean(
     data.typeSpecific?.codebase &&
@@ -134,19 +148,10 @@ export function mapBenchToObservatory(
         data.typeSpecific.codebase.knowledgeIceberg.length > 0),
   )
   if (hasCodebaseCoverage) availableModes.push("coverage")
-  if (
-    data.categorical.length > 0 ||
-    data.tiebreakers.length > 0 ||
-    data.cliffs.length > 0 ||
-    data.decisionTree.length > 0 ||
-    data.editorsNote
-  ) {
-    availableModes.push("decision")
-  }
-  if (dashMatrix && dashMatrix.rows.length > 0) {
+  if (dashMatrix && dashMatrix.rows.length > 0 && !isProductBench) {
     availableModes.push("weights")
   }
-  availableModes.push("document")
+  if (data.documents.length > 0) availableModes.push("document")
 
   const legacyPlayers = Array.from(
     new Set(data.matrixRows.flatMap((row) => row.values.map((value) => value.label))),
@@ -225,9 +230,8 @@ export function mapBenchToObservatory(
     documents: data.documents,
     selectedDocument: data.selectedDocument,
 
-    /* Sources — bench doesn't have a normalized sources.yaml; expose empty */
-    sourceSummary: [],
-    topSources: [],
+    sourceSummary: data.sourceSummary,
+    topSources: data.sources,
     /* No mentioned-players list in bench (the comparison subjects ARE the players) */
     players: [],
 
@@ -244,6 +248,10 @@ export function mapBenchToObservatory(
       id: p.id,
       label: p.label,
       sub: p.sub,
+      job: p.job,
+      mustHave: p.mustHave,
+      antiGoals: p.antiGoals,
+      decisiveDimensions: p.decisiveDimensions,
       weights: p.weights,
       totals: p.totals.map((t) => ({ player: t.label, score: Number(t.value) || 0 })),
       ranking: p.ranking,

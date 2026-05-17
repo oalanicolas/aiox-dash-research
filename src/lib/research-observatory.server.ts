@@ -85,7 +85,11 @@ export type PlayerEntry = {
   number: string
   name: string
   tier: 1 | 2 | 3 | null
+  tierMeaning: string | null
   category: string | null
+  role: string | null
+  fit: string | null
+  action: string | null
   whatItDoes: string | null
   whatItDoesNot: string | null
   insight: string | null
@@ -119,6 +123,7 @@ export type ResearchRunSummary = {
   hasSources: boolean
   active: boolean
   inferred: InferredFlags
+  runtimeRunIds: string[]
 }
 
 export type ResearchObservatoryData = {
@@ -153,6 +158,15 @@ type IndexEntry = {
   topic?: string | null
   waves?: number | null
   inferred?: InferredFlags | null
+}
+
+type MetricsSummary = {
+  coverage_score?: number | string | null
+  integrity_score?: number | string | null
+  date?: string | null
+  status?: string | null
+  sources_total?: number | string | null
+  waves?: number | null
 }
 
 const CORE_FILES = ["README.md", "00-query-original.md", "01-deep-research-prompt.md", "02-research-report.md", "03-recommendations.md"]
@@ -338,6 +352,35 @@ async function listRunFiles(runPath: string) {
   return files.sort((a, b) => a.localeCompare(b))
 }
 
+async function readMetricsSummary(runPath: string, hasMetrics: boolean): Promise<MetricsSummary> {
+  if (!hasMetrics) return {}
+
+  try {
+    const raw = await readFile(path.join(runPath, "metrics.yaml"), "utf8")
+    const parsed = YAML.parse(raw)
+    const record = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {}
+    const sources = record.sources && typeof record.sources === "object" ? record.sources as Record<string, unknown> : {}
+    const waves = Array.isArray(record.waves) ? record.waves.length : Number(record.waves)
+
+    return {
+      coverage_score: record.coverage_score as MetricsSummary["coverage_score"],
+      integrity_score: record.integrity_score as MetricsSummary["integrity_score"],
+      date: record.date as MetricsSummary["date"],
+      status: record.status as MetricsSummary["status"],
+      sources_total: sources.total as MetricsSummary["sources_total"],
+      waves: Number.isFinite(waves) ? waves : null,
+    }
+  } catch {
+    return {}
+  }
+}
+
+function numericValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string" && Number.isFinite(Number(value))) return Number(value)
+  return null
+}
+
 async function buildRunSummary(runPath: string, slug: string, indexEntry?: IndexEntry): Promise<ResearchRunSummary> {
   const files = await listRunFiles(runPath)
   const hasCore = CORE_FILES.every((file) => files.includes(file))
@@ -345,13 +388,16 @@ async function buildRunSummary(runPath: string, slug: string, indexEntry?: Index
   const hasState = files.includes("pipeline-state.yaml")
   const hasLog = files.includes("execution-log.jsonl")
   const hasSources = files.includes("sources.yaml")
-  const waves = indexEntry?.waves ?? files.filter((file) => file.includes("wave") && file.endsWith(".md")).length
+  const metrics = await readMetricsSummary(runPath, hasMetrics)
+  const indexedWaves = numericValue(indexEntry?.waves)
+  const waves = indexedWaves ?? metrics.waves ?? files.filter((file) => file.includes("wave") && file.endsWith(".md")).length
   const readme = files.includes("README.md") ? await readFile(path.join(runPath, "README.md"), "utf8") : ""
   const title = indexEntry?.topic ?? extractHeading(readme) ?? prettifySlug(slug)
   const displayTitle = indexEntry?.display_title ?? deriveDisplayTitleFallback(title)
   const freshness = hasSources ? await readFreshnessRatio(path.join(runPath, "sources.yaml")) : "--"
+  const runtimeRunIds = await readRuntimeRunIds(runPath, files, slug, title)
   const category: CategorySlug = (indexEntry?.category as CategorySlug | undefined) ?? "other"
-  const explicitCoverage = formatValue(indexEntry?.coverage_score)
+  const explicitCoverage = formatValue(indexEntry?.coverage_score ?? metrics.coverage_score)
   const inferredCoverage = inferCoverageScore({
     files,
     hasCore,
@@ -371,13 +417,13 @@ async function buildRunSummary(runPath: string, slug: string, indexEntry?: Index
     title,
     displayTitle,
     category,
-    date: indexEntry?.date ?? extractDate(slug),
-    status: indexEntry?.status ?? indexEntry?.decision ?? (hasCore ? "indexed" : "partial"),
+    date: indexEntry?.date ?? metrics.date ?? extractDate(slug),
+    status: indexEntry?.status ?? metrics.status ?? indexEntry?.decision ?? (hasCore ? "indexed" : "partial"),
     coverage: explicitCoverage === "--" ? String(inferredCoverage) : explicitCoverage,
-    integrity: formatValue(indexEntry?.integrity_score),
+    integrity: formatValue(indexEntry?.integrity_score ?? metrics.integrity_score),
     freshness,
     waves: Number(waves ?? 0),
-    sources: formatValue(indexEntry?.sources_total),
+    sources: formatValue(indexEntry?.sources_total ?? metrics.sources_total),
     files: files.length,
     sampleFiles: sampleRunFiles(files),
     schema: schemaForRun({ hasCore, hasMetrics, hasState, hasLog, waves: Number(waves ?? 0) }),
@@ -388,7 +434,97 @@ async function buildRunSummary(runPath: string, slug: string, indexEntry?: Index
     hasSources,
     active: false,
     inferred,
+    runtimeRunIds,
   }
+}
+
+async function readRuntimeRunIds(runPath: string, files: string[], slug: string, title: string): Promise<string[]> {
+  const ids = new Set<string>()
+  const failed = new Set<string>()
+
+  if (files.includes("execution-log.jsonl")) {
+    try {
+      const raw = await readFile(path.join(runPath, "execution-log.jsonl"), "utf8")
+      for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (!trimmed) continue
+        try {
+          const event = JSON.parse(trimmed) as Record<string, unknown>
+          const runId = typeof event.run_id === "string" ? event.run_id : typeof event.runId === "string" ? event.runId : ""
+          if (!runId) continue
+          ids.add(runId)
+          if (String(event.event ?? "").includes("failed")) failed.add(runId)
+        } catch {
+          // Keep log parsing best-effort; malformed lines should not hide the run.
+        }
+      }
+    } catch {
+      // Optional observability metadata.
+    }
+  }
+
+  try {
+    const runtimes = await readdir(path.join(runPath, "runtimes"), { withFileTypes: true })
+    for (const entry of runtimes) {
+      if (!entry.isDirectory()) continue
+      const statePath = path.join(runPath, "runtimes", entry.name, "pipeline-state.yaml")
+      try {
+        const parsed = YAML.parse(await readFile(statePath, "utf8")) as Record<string, unknown> | null
+        const runId = typeof parsed?.run_id === "string" ? parsed.run_id : typeof parsed?.runId === "string" ? parsed.runId : ""
+        if (runId) ids.add(runId)
+      } catch {
+        // Runtime state is optional.
+      }
+    }
+  } catch {
+    // Older runs do not have a runtimes folder.
+  }
+
+  for (const runId of await readSavedWorkbenchRunIds(slug, title)) {
+    ids.add(runId)
+  }
+
+  return [...ids].filter((id) => !failed.has(id))
+}
+
+async function readSavedWorkbenchRunIds(slug: string, title: string): Promise<string[]> {
+  const runsDir = resolveDashPath(".tmp", "aiox-research-runs")
+  const targetSlug = comparableResearchKey(slug)
+  const targetTitle = comparableResearchKey(title)
+  const ids: string[] = []
+
+  try {
+    const files = await readdir(runsDir, { withFileTypes: true })
+    for (const entry of files) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) continue
+      try {
+        const parsed = JSON.parse(await readFile(path.join(runsDir, entry.name), "utf8")) as Record<string, unknown>
+        const runId = typeof parsed.runId === "string" ? parsed.runId : ""
+        if (!runId || parsed.status === "failed") continue
+        const outputSlug = typeof parsed.outputSlug === "string" ? parsed.outputSlug : ""
+        const query = typeof parsed.query === "string" ? parsed.query : ""
+        const sameSlug = comparableResearchKey(outputSlug) === targetSlug
+        const sameTopic = targetTitle.length > 12 && comparableResearchKey(query) === targetTitle
+        if (sameSlug || sameTopic) ids.push(runId)
+      } catch {
+        // Saved run state is best-effort observability data.
+      }
+    }
+  } catch {
+    // Workbench state may not exist outside local runs.
+  }
+
+  return ids
+}
+
+function comparableResearchKey(value: string) {
+  return canonicalParallelSlug(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/^\d{4}-\d{2}-\d{2}-/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
 }
 
 async function readFreshnessRatio(sourcesYamlPath: string): Promise<string> {
@@ -476,7 +612,11 @@ async function readPlayers(playersYamlPath: string): Promise<PlayerEntry[]> {
 // Parses players.yaml shape emitted by tech-research/scripts/players_extractor.py.
 function parsePlayersYaml(raw: string): PlayerEntry[] {
   const parsed = YAML.parse(raw)
-  const rawPlayers = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>).players : null
+  const root = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {}
+  const rawPlayers = root.players
+  const tierMeaning = root.tier_meaning && typeof root.tier_meaning === "object"
+    ? root.tier_meaning as Record<string, unknown>
+    : {}
   if (!Array.isArray(rawPlayers)) return []
 
   const nullable = (value: unknown): string | null => {
@@ -497,7 +637,11 @@ function parsePlayersYaml(raw: string): PlayerEntry[] {
         number: String(entry.number ?? ""),
         name: String(entry.name),
         tier,
+        tierMeaning: tier ? nullable(tierMeaning[String(tier)]) : null,
         category: nullable(entry.category),
+        role: nullable(entry.role),
+        fit: nullable(entry.fit),
+        action: nullable(entry.action),
         whatItDoes: nullable(entry.what_it_does),
         whatItDoesNot: nullable(entry.what_it_does_not),
         insight: nullable(entry.insight),
@@ -523,6 +667,9 @@ function filesForView(view?: ReaderMode, selectedFile?: string) {
     files.add("research-graph.json")
     files.add("matrices.yaml")
     files.add("ux-patterns.yaml")
+    files.add("action-plan.yaml")
+    files.add("dashboard-manifest.yaml")
+    files.add("curiosity_queue.yaml")
     files.add("execution-log.jsonl")
     return files
   }
@@ -535,6 +682,9 @@ function filesForView(view?: ReaderMode, selectedFile?: string) {
     files.add("quick-wins.md")
     files.add("curiosity_queue.yaml")
     files.add("execution-log.jsonl")
+    files.add("action-plan.yaml")
+    files.add("risk-register.yaml")
+    files.add("decision-ledger.yaml")
     return files
   }
   if (view === "waves") {
@@ -543,10 +693,21 @@ function filesForView(view?: ReaderMode, selectedFile?: string) {
   }
   if (view === "sources") {
     files.add("sources.yaml")
+    files.add("metrics.yaml")
+    files.add("research-graph.json")
+    return files
+  }
+  if (view === "evidence") {
+    files.add("sources.yaml")
+    files.add("metrics.yaml")
+    files.add("research-graph.json")
+    files.add("claims.yaml")
+    files.add("validation-report.yaml")
     return files
   }
   if (view === "players") {
     files.add("players.yaml")
+    files.add("decision-rubric.yaml")
     return files
   }
   return files

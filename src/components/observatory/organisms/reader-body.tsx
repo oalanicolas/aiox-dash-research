@@ -1,6 +1,6 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode, type RefObject } from "react"
+import { Fragment, useEffect, useMemo, useState, type CSSProperties, type ReactNode, type RefObject } from "react"
 import dynamic from "next/dynamic"
-import { ExternalLink } from "lucide-react"
+import { ArrowLeftRight, ChevronDown, ExternalLink, Trophy } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import YAML from "yaml"
@@ -33,7 +33,7 @@ import type {
 } from "../foundations/types"
 import type { ObservatorySource, ReaderMode } from "../foundations/constants"
 import { coverageNumeric, formatBytes, statusKeyFromRaw } from "../foundations/utils"
-import { DISPLAY_FONT, MONO_FONT, SERIF_FONT, observatoryDarkThemeVars } from "../foundations/theme"
+import { DISPLAY_FONT, MONO_FONT, SANS_FONT, SERIF_FONT, observatoryDarkThemeVars } from "../foundations/theme"
 
 const MatrixView = dynamic(() => import("./matrix-view").then((mod) => mod.MatrixView), {
   loading: () => <ReportLoader label="Matrix" />,
@@ -141,6 +141,7 @@ export function ReaderBody({
           categorical={categorical ?? []}
           gapItems={gapItems ?? []}
           playerProfiles={playerProfiles ?? []}
+          typeSpecific={typeSpecific ?? {}}
         />
       )
     }
@@ -157,19 +158,33 @@ export function ReaderBody({
     }
     return <SinkraMapReport sinkra={typeSpecific?.sinkra} />
   }
-  if (mode === "slides" && (source === "bench" || source === "demo")) {
+  if (mode === "slides") {
+    if (source === "bench" || source === "demo") {
+      return (
+        <BenchSlidesReport
+          runs={runs ?? []}
+          documents={documents ?? []}
+          matrix={matrix ?? null}
+          scoreDimensions={scoreDimensions ?? []}
+          personas={personas ?? []}
+          tco={tco ?? null}
+          cliffs={cliffs ?? []}
+          categorical={categorical ?? []}
+          gapItems={gapItems ?? []}
+          playerProfiles={playerProfiles ?? []}
+          typeSpecific={typeSpecific ?? {}}
+        />
+      )
+    }
     return (
-      <BenchSlidesReport
+      <OperationalSlidesReport
+        source={source ?? "research"}
         runs={runs ?? []}
         documents={documents ?? []}
-        matrix={matrix ?? null}
-        scoreDimensions={scoreDimensions ?? []}
-        personas={personas ?? []}
-        tco={tco ?? null}
-        cliffs={cliffs ?? []}
-        categorical={categorical ?? []}
-        gapItems={gapItems ?? []}
-        playerProfiles={playerProfiles ?? []}
+        sourceSummary={sourceSummary ?? []}
+        topSources={topSources ?? []}
+        researchPlayers={researchPlayers ?? []}
+        sinkra={typeSpecific?.sinkra}
       />
     )
   }
@@ -232,7 +247,7 @@ export function ReaderBody({
     return <SourcesView sources={topSources ?? []} sourceSummary={sourceSummary ?? []} />
   }
   if (mode === "players") {
-    return <ResearchPlayersView players={researchPlayers ?? []} />
+    return <ResearchPlayersView players={researchPlayers ?? []} documents={documents ?? []} />
   }
   if (mode === "score") {
     return <BenchScoreReport dimensions={scoreDimensions ?? []} scoreMetrics={scoreMetrics ?? []} matrix={matrix ?? null} playerProfiles={playerProfiles ?? []} />
@@ -365,6 +380,7 @@ function BenchMapReport({
   categorical,
   gapItems,
   playerProfiles,
+  typeSpecific,
 }: {
   runs: ObservatoryRunSummary[]
   documents: ObservatoryDocument[]
@@ -376,6 +392,7 @@ function BenchMapReport({
   categorical: ObservatoryCategoricalWinner[]
   gapItems: ObservatoryGapItem[]
   playerProfiles: ObservatoryPlayerProfile[]
+  typeSpecific: ObservatoryTypeSpecific
 }) {
   const activeRun = runs.find((run) => run.active) ?? runs[0]
   const verdict = benchVerdict(matrix, scoreDimensions, activeRun)
@@ -807,6 +824,575 @@ type BenchSlide = {
   tone?: "lime" | "warning" | "error"
 }
 
+function OperationalSlidesReport({
+  source,
+  runs,
+  documents,
+  sourceSummary,
+  topSources,
+  researchPlayers,
+  sinkra,
+}: {
+  source: ObservatorySource
+  runs: ObservatoryRunSummary[]
+  documents: ObservatoryDocument[]
+  sourceSummary: string[]
+  topSources: ObservatorySource_Entry[]
+  researchPlayers: ObservatoryPlayer[]
+  sinkra?: ObservatoryTypeSpecific["sinkra"]
+}) {
+  const activeRun = runs.find((run) => run.active) ?? runs[0]
+  const title = sinkra?.processName || activeRun?.displayTitle || activeRun?.title || "Deck"
+  const sourceLabel = source === "sinkra-maps" ? "SINKRA slides" : "Research slides"
+  const deckMark = source === "sinkra-maps" ? "S" : "R"
+  const mainDocs = documents.filter((doc) => !/sources\.yaml|execution-log\.jsonl/i.test(doc.file))
+  const reportDoc =
+    mainDocs.find((doc) => /report|readme|overview|map/i.test(doc.file)) ??
+    mainDocs[0]
+  const actionDoc =
+    mainDocs.find((doc) => /recommend|action|quick-win|roadmap|task/i.test(doc.file)) ??
+    mainDocs[1]
+  const evidenceDoc =
+    mainDocs.find((doc) => /source|evidence|metric|score|gate|state/i.test(doc.file)) ??
+    mainDocs[2]
+  const scoreValue = sinkra?.score.score === null || sinkra?.score.score === undefined ? activeRun?.coverage : sinkra?.score.score
+  const coveragePresent = sinkra?.artifactCoverage.filter((item) => item.present).length ?? 0
+  const slides = useMemo<BenchSlide[]>(() => {
+    const docSlides = mainDocs.slice(0, 4).map((doc, index) => ({
+      kicker: `artefato ${String(index + 1).padStart(2, "0")}`,
+      title: markdownTitle(doc.content) || humanizeResearchLabel(doc.file.replace(/\.[^.]+$/, "")),
+      body: markdownSummary(doc.content),
+      accent: formatBytes(doc.bytes),
+      accentLabel: doc.phase || "arquivo",
+      tone: "lime" as const,
+      bullets: extractMarkdownListItems(doc.content, ["Próximos Passos", "Next Steps", "Ações", "Recommendations"]).slice(0, 5),
+      footer: doc.file,
+    }))
+    if (source === "sinkra-maps") {
+      return [
+        {
+          kicker: "abertura",
+          title,
+          body: "Deck operacional gerado a partir do mapa SINKRA. Use para apresentar processo, workflow, governança, riscos e próximos movimentos sem abrir todos os YAMLs.",
+          accent: scoreValue === undefined || scoreValue === "" ? "—" : String(scoreValue),
+          accentLabel: "score",
+          metrics: [
+            ["workflow", sinkra?.workflows.length ?? 0],
+            ["tasks", sinkra?.tasks.length ?? 0],
+            ["gates", sinkra?.gates.length ?? 0],
+            ["artefatos", documents.length],
+          ],
+          footer: sinkra?.score.result || activeRun?.status,
+        },
+        {
+          kicker: "fluxo",
+          title: "Como o trabalho se move",
+          body: "Resumo do workflow e das fases do processo para alinhar sequência operacional, dependências e pontos de decisão.",
+          accent: String(sinkra?.processPhases.length || sinkra?.workflows.length || 0),
+          accentLabel: "fases",
+            bullets: (sinkra?.processPhases ?? []).slice(0, 6).map((phase, index) => `${index + 1}. ${phase.name}: ${phase.observed}`),
+        },
+        {
+          kicker: "governança",
+          title: "Controles e qualidade",
+          body: "Mostra quais gates e critérios sustentam a execução. Útil para discussão de prontidão antes de delegar ou automatizar.",
+          accent: String(sinkra?.gates.length ?? 0),
+          accentLabel: "gates",
+          tone: (sinkra?.gates.length ?? 0) > 0 ? "lime" : "warning",
+            bullets: (sinkra?.gates ?? []).slice(0, 6).map((gate) => `${gate.id}: ${gate.name} · ${gate.threshold}`),
+        },
+        {
+          kicker: "riscos",
+          title: "Onde o mapa ainda precisa de atenção",
+          body: "Gaps, compliance e cobertura de artefatos indicam o que pode quebrar a execução ou reduzir confiança.",
+            accent: String((sinkra?.gaps.length ?? 0) + (sinkra?.compliance.blockingIssues.length ?? 0)),
+          accentLabel: "sinais",
+          tone: (sinkra?.gaps.length ?? 0) > 0 ? "warning" : "lime",
+          bullets: [
+            ...(sinkra?.gaps ?? []).slice(0, 3).map((gap) => `${gap.id}: ${gap.title}`),
+              ...(sinkra?.compliance.blockingIssues ?? []).slice(0, 3).map((risk) => `${risk.id}: ${risk.title}`),
+          ],
+        },
+        {
+          kicker: "cobertura",
+          title: "Materialidade do pacote",
+          body: "Antes de usar o mapa como fonte operacional, valide quantos artefatos críticos existem e quais ainda estão ausentes.",
+          accent: `${coveragePresent}/${sinkra?.artifactCoverage.length ?? 0}`,
+          accentLabel: "artefatos presentes",
+          metrics: [
+            ["domínios", sinkra?.domains.length ?? 0],
+            ["deps", sinkra?.dependencies.nodes.length ?? 0],
+            ["raci", sinkra?.accountability.length ?? 0],
+            ["docs", documents.length],
+          ],
+          bullets: (sinkra?.artifactCoverage ?? []).slice(0, 6).map((item) => `${item.label}: ${item.present ? "presente" : "ausente"}`),
+        },
+        ...docSlides.slice(0, 2),
+      ]
+    }
+    return buildResearchSlides({
+      activeRun,
+      documents,
+      mainDocs,
+      reportDoc,
+      actionDoc,
+      evidenceDoc,
+      sourceSummary,
+      topSources,
+      researchPlayers,
+      title,
+    })
+  }, [activeRun, coveragePresent, documents.length, evidenceDoc?.content, mainDocs, reportDoc?.content, actionDoc?.content, actionDoc?.file, researchPlayers.length, scoreValue, sinkra, source, sourceSummary, title, topSources])
+
+  return <SlideDeckView deckLabel={sourceLabel} deckMark={deckMark} slides={slides} activeSlug={activeRun?.slug} />
+}
+
+function buildResearchSlides({
+  activeRun,
+  documents,
+  mainDocs,
+  reportDoc,
+  actionDoc,
+  evidenceDoc,
+  sourceSummary,
+  topSources,
+  researchPlayers,
+  title,
+}: {
+  activeRun?: ObservatoryRunSummary
+  documents: ObservatoryDocument[]
+  mainDocs: ObservatoryDocument[]
+  reportDoc?: ObservatoryDocument
+  actionDoc?: ObservatoryDocument
+  evidenceDoc?: ObservatoryDocument
+  sourceSummary: string[]
+  topSources: ObservatorySource_Entry[]
+  researchPlayers: ObservatoryPlayer[]
+  title: string
+}): BenchSlide[] {
+  const docMap = new Map(documents.map((doc) => [doc.file, doc]))
+  const queryDoc = findResearchDoc(mainDocs, /query|prompt|brief|pergunta/i)
+  const readmeDoc = docMap.get("README.md") ?? reportDoc
+  const recommendationsDoc = actionDoc ?? findResearchDoc(mainDocs, /recommend|action|quick-win|roadmap|follow/i)
+  const architectureDoc = docMap.get("04-architecture-blueprint.md") ?? findResearchDoc(mainDocs, /architecture|blueprint|arquitet/i)
+  const implementationDoc = docMap.get("05-implementation-plan.md") ?? findResearchDoc(mainDocs, /implementation|plano|roadmap/i)
+  const metrics = asDisplayRecord(parseOptionalArtifact(docMap.get("metrics.yaml")))
+  const actionPlan = asDisplayRecord(parseOptionalArtifact(docMap.get("action-plan.yaml")))
+  const decisionLedger = asDisplayRecord(parseOptionalArtifact(docMap.get("decision-ledger.yaml")))
+  const claimsLedger = asDisplayRecord(parseOptionalArtifact(docMap.get("claims.yaml")))
+  const riskRegister = asDisplayRecord(parseOptionalArtifact(docMap.get("risk-register.yaml")))
+  const pipelineState = asDisplayRecord(parseOptionalArtifact(docMap.get("pipeline-state.yaml")))
+  const graph = asDisplayRecord(parseOptionalArtifact(docMap.get("research-graph.json")))
+  const curiosity = asDisplayRecord(parseOptionalArtifact(docMap.get("curiosity_queue.yaml")))
+  const metricDecision = asDisplayRecord(recordValue(metrics, "decision"))
+  const actionPlanDecision = asDisplayRecord(recordValue(actionPlan, "decision"))
+  const actionPlanItems = arrayValue(actionPlan, "actions").map((item) => asDisplayRecord(item))
+  const roadmapItems = arrayValue(actionPlan, "roadmap").map((item) => asDisplayRecord(item))
+  const decisions = arrayValue(decisionLedger, "decisions").map((item) => asDisplayRecord(item))
+  const claims = arrayValue(claimsLedger, "claims").map((item) => asDisplayRecord(item))
+  const risks = arrayValue(riskRegister, "risks").map((item) => asDisplayRecord(item))
+  const graphNodes = arrayValue(graph, "nodes").map((item) => asDisplayRecord(item))
+  const graphEdges = researchGraphEdges(graph)
+  const questions = arrayValue(curiosity, "questions").map((item) => asDisplayRecord(item))
+  const highQuestions = questions.filter((question) => stringValue(question, "priority", "").toUpperCase() === "HIGH")
+  const phases = arrayValue(pipelineState, "phases").map((item) => asDisplayRecord(item))
+  const waves = arrayValue(pipelineState, "waves").map((item) => asDisplayRecord(item))
+
+  const queryText =
+    extractMarkdownSection(queryDoc?.content ?? "", ["Pergunta", "Query Original", "Pergunta Original", "Briefing"]) ||
+    markdownSummary(queryDoc?.content ?? "")
+  const queryEvolution = extractMarkdownListItems(queryDoc?.content ?? "", ["Evolução da Pergunta", "Camadas", "Contexto Local"]).slice(0, 5)
+  const tldr =
+    extractMarkdownSection(readmeDoc?.content ?? "", ["TL;DR", "Resumo Executivo", "Executive Summary", "Síntese Executiva", "1. Síntese Executiva", "Conclusão", "Decisão"]) ||
+    extractMarkdownSection(reportDoc?.content ?? "", ["TL;DR", "Resumo Executivo", "Executive Summary", "Síntese Executiva", "1. Síntese Executiva", "Conclusão", "Decisão"]) ||
+    sentenceSummary(markdownSummary(reportDoc?.content ?? readmeDoc?.content ?? ""), 320)
+  const decision =
+    stringValue(actionPlanDecision, "recommendation", "") ||
+    stringValue(actionPlanDecision, "summary", "") ||
+    stringValue(metricDecision, "summary", "") ||
+    stringValue(metricDecision, "selected_option", "") ||
+    extractMarkdownSection(readmeDoc?.content ?? "", ["Veredito", "Decisão Arquitetural", "Próximo Comando Sugerido"]) ||
+    extractMarkdownSection(recommendationsDoc?.content ?? "", ["Decisão Recomendada", "Decisão", "Veredito"]) ||
+    extractMarkdownSection(reportDoc?.content ?? "", ["Decisão", "Veredito", "Conclusão", "4. Matriz de Decisão", "5. Arquitetura Recomendada"])
+  const selectedDecision = decisions.find((item) => /selected|accepted/i.test(stringValue(item, "status", ""))) ?? decisions[0]
+  const architecture = extractMarkdownSection(architectureDoc?.content ?? "", ["Arquitetura Recomendada", "Arquitetura", "Blueprint", "Contrato Mínimo de Estado"]) ||
+    extractMarkdownSection(reportDoc?.content ?? "", ["5. Arquitetura Recomendada", "Arquitetura Recomendada", "Contrato Mínimo de Estado"])
+  const architectureBullets = uniqueMeaningful([
+    ...decisions.slice(0, 4).map((item) => `${stringValue(item, "id", "DEC")}: ${stringValue(item, "decision", "Decisão")} → ${stringValue(item, "consequence", "consequência não registrada")}`),
+    ...extractMarkdownListItems(architectureDoc?.content ?? "", ["Arquitetura Recomendada", "Contrato Mínimo de Estado", "Componentes", "Blueprint"]),
+  ], 6)
+  const nextSteps = uniqueMeaningful([
+    ...actionPlanItems.map((item) => `${stringValue(item, "priority", "P?")}: ${stringValue(item, "title", "Ação")} · ${stringValue(item, "status", "status")}`),
+    ...roadmapItems.map((item) => `${stringValue(item, "phase", "fase")}: ${stringValue(item, "title", "Ação")} · ${stringValue(item, "status", "status")}`),
+    ...arrayValue(pipelineState, "next_actions").map((item) => String(item)),
+    ...extractMarkdownListItems(implementationDoc?.content ?? recommendationsDoc?.content ?? "", ["Próximos Passos", "Next Steps", "Ações", "Recommendations", "Implementation Roadmap", "Action Plan", "Roadmap"]),
+    ...splitOperationalChecklist(extractMarkdownSection(recommendationsDoc?.content ?? "", ["Próximos Passos", "Next Steps"])),
+  ], 7)
+  const claimBullets = uniqueMeaningful(claims.slice(0, 5).map((claim) => {
+    const implication = stringValue(claim, "implication", "")
+    return `${stringValue(claim, "id", "CL")}: ${stringValue(claim, "claim", "Claim")} ${implication ? `→ ${implication}` : ""}`
+  }), 5)
+  const evidenceBullets =
+    claimBullets.length > 0
+      ? claimBullets
+      : topSources.length > 0
+        ? topSources.slice(0, 5).map((sourceItem) => sourceItem.title || sourceItem.url)
+        : graphNodes.slice(0, 5).map((node) => `${stringValue(node, "type", "node")}: ${stringValue(node, "label", stringValue(node, "id", "sinal"))}`)
+  const questionBullets = highQuestions.length > 0
+    ? highQuestions.slice(0, 5).map((question) => `${stringValue(question, "id", "Q")}: ${stringValue(question, "question", "Pergunta aberta")}`)
+    : questions.slice(0, 5).map((question) => `${stringValue(question, "id", "Q")}: ${stringValue(question, "question", "Pergunta aberta")}`)
+  const riskBullets = uniqueMeaningful([
+    ...risks.slice(0, 5).map((risk) => `${stringValue(risk, "id", "R")}: ${stringValue(risk, "risk", "Risco")} · mitigação: ${stringValue(risk, "mitigation", "não registrada")}`),
+    ...questionBullets,
+  ], 6)
+  const artifactBullets = mainDocs.slice(0, 7).map((doc) => `${doc.file} · ${formatBytes(doc.bytes)}`)
+  const status = stringValue(pipelineState, "status", stringValue(metrics, "status", activeRun?.status ?? "—"))
+  const runtimeContract = stringValue(pipelineState, "runtime_contract", stringValue(metrics, "runtime_contract", "—"))
+  const coverageScore = stringValue(pipelineState, "coverage_score", stringValue(metrics, "coverage_score", activeRun?.coverage ?? "—"))
+  const integrityScore = stringValue(pipelineState, "integrity_score", stringValue(metrics, "integrity_score", "—"))
+  const citationVerified = stringValue(pipelineState, "citation_verified", stringValue(metrics, "citation_verified", "—"))
+  const actionDecisionTitle = stringValue(actionPlanDecision, "title", stringValue(selectedDecision, "decision", "Decisão principal"))
+  const actionDecisionSummary = stringValue(actionPlanDecision, "summary", decision)
+  const acceptedDecisions = decisions.filter((item) => /accepted|selected/i.test(stringValue(item, "status", ""))).length
+  const highRisks = risks.filter((risk) => /high|alta/i.test(stringValue(risk, "severity", ""))).length
+  const completedPhases = phases.filter((phase) => /completed/i.test(stringValue(phase, "status", ""))).length
+  const completedWaves = waves.filter((wave) => /completed/i.test(stringValue(wave, "status", ""))).length
+
+  return compactSlides([
+    {
+      kicker: "briefing",
+      title,
+      body: sentenceSummary(queryText || tldr, 340),
+      accent: coverageScore,
+      accentLabel: "score",
+      metrics: [
+        ["arquivos", documents.length],
+        ["fontes", topSources.length || activeRun?.sources || 0],
+        ["waves", completedWaves || activeRun?.waves || 0],
+        ["status", status],
+      ],
+      bullets: uniqueMeaningful(queryEvolution.length > 0 ? queryEvolution : sourceSummary, 5),
+      footer: queryDoc?.file ?? activeRun?.schema,
+    },
+    {
+      kicker: "veredito",
+      title: actionDecisionTitle,
+      body: sentenceSummary(actionDecisionSummary || tldr, 360),
+      accent: stringValue(actionPlanDecision, "confidence", stringValue(selectedDecision, "confidence", status)),
+      accentLabel: "confiança",
+      tone: /parcial|missing|fail|erro/i.test(`${activeRun?.status ?? ""}`) ? "warning" : "lime",
+      bullets: uniqueMeaningful([
+        ...extractMarkdownListItems(readmeDoc?.content ?? "", ["Veredito", "TL;DR", "Decisão Arquitetural"]).slice(0, 4),
+        ...extractMarkdownListItems(reportDoc?.content ?? "", ["1. Síntese Executiva", "4. Matriz de Decisão", "5. Arquitetura Recomendada"]).slice(0, 4),
+      ], 5),
+      footer: readmeDoc?.file ?? reportDoc?.file,
+    },
+    {
+      kicker: "arquitetura",
+      title: runtimeContract !== "—" ? runtimeContract : "Modelo operacional recomendado",
+      body: sentenceSummary(architecture || decision, 360),
+      accent: String(acceptedDecisions || decisions.length || "—"),
+      accentLabel: "decisões",
+      bullets: architectureBullets,
+      footer: architectureDoc?.file ?? "decision-ledger.yaml",
+    },
+    {
+      kicker: "evidência",
+      title: "Por que acreditar nesta leitura",
+      body: claims.length > 0
+        ? "A prova útil não é uma lista de links: são claims rastreados para artefatos, implicações e lacunas explícitas."
+        : graphNodes.length > 0
+          ? "A conclusão está ancorada em um grafo de artefatos, fontes e sinais extraídos do run."
+          : "A conclusão está ancorada nos documentos e fontes preservados pelo run.",
+      accent: claims.length > 0 ? String(claims.length) : topSources.length > 0 ? String(topSources.length) : String(graphNodes.length || documents.length),
+      accentLabel: claims.length > 0 ? "claims" : topSources.length > 0 ? "fontes" : graphNodes.length > 0 ? "nós" : "docs",
+      metrics: [
+        ["claims", claims.length],
+        ["grafo", graphNodes.length],
+        ["relações", graphEdges.length],
+        ["citação", citationVerified],
+      ],
+      bullets: evidenceBullets,
+      footer: docMap.has("claims.yaml") ? "claims.yaml" : evidenceDoc?.file ?? "evidence layer",
+    },
+    {
+      kicker: "risco",
+      title: stringValue(asDisplayRecord(recordValue(riskRegister, "summary")), "top_risk", "O que ainda pode quebrar"),
+      body: stringValue(asDisplayRecord(recordValue(riskRegister, "summary")), "mitigation_strategy", "Use o registro de riscos e a curiosity queue para reduzir incerteza antes de transformar pesquisa em implementação."),
+      accent: String(highRisks || risks.length || highQuestions.length || questions.length),
+      accentLabel: risks.length > 0 ? "riscos" : "perguntas",
+      tone: highRisks > 0 || highQuestions.length > 0 ? "warning" : "lime",
+      bullets: riskBullets.length > 0 ? riskBullets : artifactBullets.slice(0, 5),
+      footer: docMap.has("risk-register.yaml") ? "risk-register.yaml" : docMap.has("curiosity_queue.yaml") ? "curiosity_queue.yaml" : "artifact review",
+    },
+    {
+      kicker: "plano",
+      title: "O que fazer agora",
+      body: "Transforme a pesquisa em decisão executável: ADR primeiro, contrato de estado depois, smoke mission antes de qualquer skill de produção.",
+      accent: String(nextSteps.length || actionPlanItems.length),
+      accentLabel: "próximas ações",
+      tone: nextSteps.length > 0 ? "lime" : "warning",
+      metrics: [
+        ["ações", actionPlanItems.length],
+        ["roadmap", roadmapItems.length],
+        ["fases", completedPhases || phases.length],
+        ["integridade", integrityScore],
+      ],
+      bullets: nextSteps.length > 0 ? nextSteps : artifactBullets,
+      footer: actionDoc?.file ?? implementationDoc?.file ?? "action-plan.yaml",
+    },
+  ])
+}
+
+function compactSlides(slides: BenchSlide[]) {
+  return slides.filter((slide) => {
+    const hasBody = cleanMarkdownText(slide.body, 80).length > 12
+    const hasBullets = (slide.bullets ?? []).some((bullet) => cleanMarkdownText(bullet, 80).length > 8)
+    const hasMetrics = (slide.metrics ?? []).some(([, value]) => String(value).trim() !== "" && String(value).trim() !== "0")
+    return hasBody || hasBullets || hasMetrics
+  })
+}
+
+function uniqueMeaningful(items: string[], limit = 6) {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const item of items) {
+    const clean = cleanMarkdownText(item, 360)
+    if (!clean || clean.length < 8) continue
+    const key = clean.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(clean)
+    if (result.length >= limit) break
+  }
+  return result
+}
+
+function findResearchDoc(documents: ObservatoryDocument[], pattern: RegExp) {
+  return documents.find((doc) => pattern.test(`${doc.file} ${doc.phase} ${markdownTitle(doc.content)}`))
+}
+
+function SlideDeckView({
+  deckLabel,
+  deckMark,
+  slides,
+  activeSlug,
+}: {
+  deckLabel: string
+  deckMark: string
+  slides: BenchSlide[]
+  activeSlug?: string
+}) {
+  const [current, setCurrent] = useState(0)
+  const [overviewOpen, setOverviewOpen] = useState(false)
+  const slide = slides[current] ?? slides[0]
+  const progress = Math.round(((current + 1) / Math.max(1, slides.length)) * 100)
+
+  useEffect(() => {
+    setCurrent(0)
+    setOverviewOpen(false)
+  }, [activeSlug])
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "ArrowRight" || event.key === "PageDown") {
+        event.preventDefault()
+        setCurrent((value) => Math.min(slides.length - 1, value + 1))
+      }
+      if (event.key === "ArrowLeft" || event.key === "PageUp") {
+        event.preventDefault()
+        setCurrent((value) => Math.max(0, value - 1))
+      }
+      if (event.key === "m" || event.key === "M") {
+        event.preventDefault()
+        setOverviewOpen((value) => !value)
+      }
+      if (event.key === "Escape") setOverviewOpen(false)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [slides.length])
+
+  if (!slide) {
+    return (
+      <div className="grid min-h-0 flex-1 place-items-center bg-[#050505] p-8 text-center text-[#f5f4e7]/55">
+        Sem conteúdo suficiente para gerar slides deste artefato.
+      </div>
+    )
+  }
+
+  return (
+    <div className="aiox-report-dark flex min-h-0 flex-1 flex-col bg-[#050505] text-[#f5f4e7]" style={observatoryDarkThemeVars}>
+      <div className="h-1 bg-[#f5f4e7]/10">
+        <div className="h-full bg-[#d1ff00] transition-all duration-300" style={{ width: `${progress}%` }} />
+      </div>
+      <header className="flex shrink-0 items-center justify-between gap-4 border-b border-[#f5f4e7]/12 bg-[#050505] px-4 py-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center bg-[#d1ff00] text-[15px] font-black text-[#231d05]" style={{ fontFamily: DISPLAY_FONT }}>
+            {deckMark}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-[11px] uppercase tracking-[0.18em] text-[#f5f4e7]/50" style={{ fontFamily: MONO_FONT }}>
+              {deckLabel}
+            </div>
+            <div className="truncate text-[12px] uppercase tracking-[0.12em] text-[#f5f4e7]/32" style={{ fontFamily: MONO_FONT }}>
+              {slide.title}
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setOverviewOpen((value) => !value)}
+            className="cursor-pointer border border-[#f5f4e7]/18 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/62 transition-colors hover:border-[#d1ff00] hover:text-[#d1ff00]"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            Mapa
+          </button>
+          <div className="min-w-[72px] text-right text-[12px] uppercase tracking-[0.14em] text-[#f5f4e7]/50" style={{ fontFamily: MONO_FONT }}>
+            <span className="font-black text-[#d1ff00]" style={{ fontFamily: DISPLAY_FONT }}>{String(current + 1).padStart(2, "0")}</span>
+            <span className="mx-2 text-[#f5f4e7]/25">/</span>
+            {String(slides.length).padStart(2, "0")}
+          </div>
+        </div>
+      </header>
+      <main className="relative flex min-h-0 flex-1 overflow-hidden">
+        <button
+          type="button"
+          aria-label="Slide anterior"
+          disabled={current === 0}
+          onClick={() => setCurrent((value) => Math.max(0, value - 1))}
+          className="absolute left-3 top-1/2 z-10 hidden h-12 w-12 -translate-y-1/2 cursor-pointer items-center justify-center border border-[#f5f4e7]/18 bg-[#0f0f11]/90 text-[26px] text-[#f5f4e7] transition-colors hover:border-[#d1ff00] hover:bg-[#d1ff00] hover:text-[#231d05] disabled:pointer-events-none disabled:opacity-20 lg:flex"
+        >
+          ‹
+        </button>
+        <button
+          type="button"
+          aria-label="Próximo slide"
+          disabled={current === slides.length - 1}
+          onClick={() => setCurrent((value) => Math.min(slides.length - 1, value + 1))}
+          className="absolute right-3 top-1/2 z-10 hidden h-12 w-12 -translate-y-1/2 cursor-pointer items-center justify-center border border-[#f5f4e7]/18 bg-[#0f0f11]/90 text-[26px] text-[#f5f4e7] transition-colors hover:border-[#d1ff00] hover:bg-[#d1ff00] hover:text-[#231d05] disabled:pointer-events-none disabled:opacity-20 lg:flex"
+        >
+          ›
+        </button>
+
+        {overviewOpen && (
+          <div className="absolute inset-0 z-20 overflow-auto bg-[#050505]/95 p-4 backdrop-blur sm:p-8">
+            <div className="mx-auto max-w-[1280px]">
+              <div className="mb-5 flex items-end justify-between gap-4 border-b border-[#f5f4e7]/12 pb-4">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>mapa de slides</div>
+                  <h2 className="mt-2 text-[34px] font-black leading-none tracking-[-0.05em]" style={{ fontFamily: DISPLAY_FONT }}>Navegação do deck</h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOverviewOpen(false)}
+                  className="cursor-pointer border border-[#f5f4e7]/18 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/62 hover:border-[#d1ff00] hover:text-[#d1ff00]"
+                  style={{ fontFamily: MONO_FONT }}
+                >
+                  fechar
+                </button>
+              </div>
+              <div className="grid gap-px bg-[#f5f4e7]/10 p-px sm:grid-cols-2 xl:grid-cols-4">
+                {slides.map((item, index) => (
+                  <button
+                    key={`${item.kicker}-${item.title}`}
+                    type="button"
+                    onClick={() => {
+                      setCurrent(index)
+                      setOverviewOpen(false)
+                    }}
+                    className={cn(
+                      "min-h-[180px] cursor-pointer bg-[#0f0f11] p-5 text-left transition-colors hover:bg-[#161618]",
+                      index === current && "bg-[#d1ff00] text-[#231d05] hover:bg-[#d1ff00]",
+                    )}
+                  >
+                    <div className={cn("text-[10px] uppercase tracking-[0.14em]", index === current ? "text-[#231d05]/58" : "text-[#d1ff00]")} style={{ fontFamily: MONO_FONT }}>
+                      {String(index + 1).padStart(2, "0")} / {String(slides.length).padStart(2, "0")} · {item.kicker}
+                    </div>
+                    <div className="aiox-safe-text mt-4 text-[22px] font-black leading-tight tracking-[-0.04em]" style={{ fontFamily: DISPLAY_FONT }}>{item.title}</div>
+                    <p className={cn("mt-3 line-clamp-3 text-[13px] leading-[1.5]", index === current ? "text-[#231d05]/72" : "text-[#f5f4e7]/54")}>{item.body}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <LightScrollArea className="flex-1" viewportClassName="px-6 py-8 sm:px-10 lg:px-20 lg:py-14" fadeColor="#050505">
+          <article className="mx-auto grid min-h-[calc(100vh-190px)] max-w-[1420px] content-center gap-8">
+            <div className="grid gap-10 xl:grid-cols-[minmax(0,1.2fr)_420px] xl:items-center">
+              <section>
+                <div className="mb-6 flex items-center gap-4 text-[11px] uppercase tracking-[0.2em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                  <span className="h-px w-10 bg-[#d1ff00]" />
+                  {slide.kicker}
+                </div>
+                <h1 className="aiox-safe-text text-[clamp(42px,6vw,86px)] font-black leading-[0.92] tracking-[-0.065em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+                  {slide.title}
+                </h1>
+                <p className="mt-7 max-w-[980px] text-[clamp(18px,1.55vw,25px)] leading-[1.5] text-[#f5f4e7]/62">
+                  {slide.body}
+                </p>
+                {slide.bullets && slide.bullets.length > 0 && (
+                  <div className="mt-10 grid gap-4">
+                    {slide.bullets.slice(0, 6).map((bullet, index) => (
+                      <div key={`${bullet}-${index}`} className="grid grid-cols-[46px_minmax(0,1fr)] gap-4 border-t border-[#f5f4e7]/12 pt-4">
+                        <div className="text-[28px] font-black leading-none tracking-[-0.05em] text-[#d1ff00]" style={{ fontFamily: DISPLAY_FONT }}>
+                          {String(index + 1).padStart(2, "0")}
+                        </div>
+                        <p className="text-[clamp(15px,1.1vw,20px)] font-bold leading-[1.45] text-[#f5f4e7]/82">{bullet}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <aside className="grid gap-px bg-[#f5f4e7]/10 p-px">
+                <div className={cn(
+                  "min-h-[230px] p-7",
+                  slide.tone === "error" ? "bg-[#ef4444] text-[#f5f4e7]" : slide.tone === "warning" ? "bg-[#f5b340] text-[#231d05]" : "bg-[#d1ff00] text-[#231d05]",
+                )}>
+                  <div className="text-[11px] uppercase tracking-[0.16em] opacity-65" style={{ fontFamily: MONO_FONT }}>
+                    {slide.accentLabel ?? "sinal"}
+                  </div>
+                  <div className="aiox-safe-text mt-5 text-[clamp(48px,5vw,82px)] font-black leading-[0.92] tracking-[-0.07em]" style={{ fontFamily: DISPLAY_FONT }}>
+                    {slide.accent ?? "—"}
+                  </div>
+                </div>
+                {slide.metrics && slide.metrics.length > 0 && (
+                  <div className="grid grid-cols-2 gap-px bg-[#f5f4e7]/10">
+                    {slide.metrics.slice(0, 6).map(([label, value]) => (
+                      <div key={label} className="bg-[#0f0f11] p-5">
+                        <div className="text-[10px] uppercase tracking-[0.14em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>{label}</div>
+                        <div className="aiox-safe-text mt-2 text-[28px] font-black leading-none tracking-[-0.045em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+                          {value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {slide.footer && (
+                  <div className="bg-[#0f0f11] p-5 text-[15px] font-bold leading-[1.45] text-[#f5f4e7]/72">
+                    {slide.footer}
+                  </div>
+                )}
+              </aside>
+            </div>
+          </article>
+        </LightScrollArea>
+      </main>
+      <footer className="flex shrink-0 items-center justify-between gap-4 border-t border-[#f5f4e7]/12 bg-[#0f0f11] px-4 py-3 text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/42 sm:px-6" style={{ fontFamily: MONO_FONT }}>
+        <div className="truncate">Próximo: <span className="text-[#f5f4e7]/70">{slides[current + 1]?.title ?? "fim do deck"}</span></div>
+        <div className="hidden gap-4 md:flex">
+          <span>← → navegar</span>
+          <span>M mapa</span>
+          <span>ESC fechar mapa</span>
+        </div>
+      </footer>
+    </div>
+  )
+}
+
 function BenchSlidesReport({
   runs,
   documents,
@@ -818,6 +1404,7 @@ function BenchSlidesReport({
   categorical,
   gapItems,
   playerProfiles,
+  typeSpecific,
 }: {
   runs: ObservatoryRunSummary[]
   documents: ObservatoryDocument[]
@@ -829,6 +1416,7 @@ function BenchSlidesReport({
   categorical: ObservatoryCategoricalWinner[]
   gapItems: ObservatoryGapItem[]
   playerProfiles: ObservatoryPlayerProfile[]
+  typeSpecific: ObservatoryTypeSpecific
 }) {
   const activeRun = runs.find((run) => run.active) ?? runs[0]
   const verdict = benchVerdict(matrix, scoreDimensions, activeRun)
@@ -857,6 +1445,25 @@ function BenchSlidesReport({
     [biggestGaps, categorical, documents, evidencePct, gapItems, matrix?.players.length, matrix?.rows.length, playerProfiles.length, verdict],
   )
   const slides = useMemo<BenchSlide[]>(() => {
+    const productRecord = typeSpecific.product && typeof typeSpecific.product === "object" ? typeSpecific.product : {}
+    const rawStoryline: unknown[] = Array.isArray(productRecord.slide_storyline) ? productRecord.slide_storyline : []
+    const customStoryline = rawStoryline
+          .filter((item: unknown): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+          .map((item) => ({
+            kicker: String(item.kicker ?? "storyline"),
+            title: String(item.title ?? ""),
+            body: String(item.body ?? ""),
+            accent: String(item.accent ?? ""),
+            accentLabel: String(item.accent_label ?? ""),
+            tone: /warning|error|lime/.test(String(item.tone ?? "")) ? String(item.tone) as BenchSlide["tone"] : "lime",
+            bullets: Array.isArray(item.bullets) ? item.bullets.map((bullet) => String(bullet)).filter(Boolean).slice(0, 6) : [],
+            metrics: Array.isArray(item.metrics)
+              ? item.metrics
+                  .filter((metric): metric is unknown[] => Array.isArray(metric) && metric.length >= 2)
+                  .map((metric) => [String(metric[0]), String(metric[1])] as [string, string])
+              : undefined,
+          }))
+          .filter((item) => item.title && item.body)
     const topGap = biggestGaps[0]
     const leadingActions = roadmapItems.slice(0, 3)
     const ranking = matrix?.totals
@@ -864,11 +1471,27 @@ function BenchSlidesReport({
       .sort((a, b) => b.score - a.score)
       .slice(0, 4)
       .map((total, index) => `${index + 1}. ${displayBenchPlayer(total.player, playerProfiles)} · ${formatBenchNumber(total.score)}`) ?? []
-    return [
+    const scenarioBullets = uniqueMeaningful([
+      ...personas.slice(0, 3).map((persona) => `${persona.label}: ${persona.winner || "sem vencedor explícito"}`),
+      ...(tco?.scenarios ?? []).slice(0, 3).map((scenario) => {
+        const winner = [...scenario.rows]
+          .filter((row) => row.low !== null || row.high !== null)
+          .sort((a, b) => ((a.low ?? a.high ?? 0) + (a.high ?? a.low ?? 0)) - ((b.low ?? b.high ?? 0) + (b.high ?? b.low ?? 0)))[0]
+        return `${scenario.label}: ${winner ? displayBenchPlayer(winner.player, playerProfiles) : "sem vencedor explícito"} vence por TCO`
+      }),
+      ...cliffs.slice(0, 3).map((cliff) => `${displayBenchPlayer(cliff.player, playerProfiles)}: ${cliff.trigger}`),
+    ], 6)
+    const gapBullets = uniqueMeaningful(biggestGaps.slice(0, 5).map((row) => {
+      const winner = [...row.cells].sort((a, b) => b.score - a.score)[0]
+      return `${row.label}: gap ${formatBenchNumber(benchScoreGap(row))}${winner ? ` · líder: ${displayBenchPlayer(winner.player, playerProfiles)}` : ""}`
+    }), 5)
+    const decisionBullets = uniqueMeaningful(tldrCards.slice(1, 5).map((card) => `${card.label}: ${card.value} — ${card.sub}`), 5)
+    return compactSlides([
+      ...customStoryline,
       {
         kicker: "abertura",
-        title: activeRun?.displayTitle ?? "Benchmark",
-        body: "Deck executivo gerado a partir do benchmark. A ideia é apresentar decisão, risco e plano sem obrigar a audiência a ler a matriz inteira.",
+        title: verdict.status === "empate" ? "Empate técnico: decisão condicional" : `${verdict.leader} lidera o benchmark`,
+        body: verdict.summary,
         accent: verdict.leader,
         accentLabel: "recomendação",
         tone: verdict.status === "empate" ? "warning" : "lime",
@@ -878,21 +1501,23 @@ function BenchSlidesReport({
           ["evidência", `${evidencePct}%`],
           ["arquivos", documents.length],
         ],
-        footer: verdict.summary,
+        footer: activeRun?.displayTitle ?? "Benchmark",
       },
       {
         kicker: "decisão",
-        title: "O que a comparação está dizendo",
-        body: verdict.summary,
+        title: "O que muda na escolha",
+        body: topGap
+          ? `A escolha deve ser julgada principalmente por ${topGap.label}; é a dimensão que mais separa os players neste bench.`
+          : "A matriz ainda não trouxe distância suficiente para transformar a comparação em escolha final sem nova evidência.",
         accent: verdict.gap,
         accentLabel: "gap para o runner-up",
         tone: verdict.status === "empate" ? "warning" : "lime",
-        bullets: tldrCards.slice(1, 5).map((card) => `${card.label}: ${card.value} — ${card.sub}`),
+        bullets: decisionBullets,
       },
-      {
+      ranking.length > 0 ? {
         kicker: "ranking",
         title: "Quem lidera e por quanto",
-        body: "Use este slide para alinhar se estamos diante de uma liderança real, empate técnico ou recomendação condicional.",
+        body: "Ranking só é útil se mostrar magnitude: liderança pequena vira empate técnico; liderança ampla vira direção de escolha.",
         accent: verdict.score,
         accentLabel: "score do líder",
         metrics: [
@@ -900,34 +1525,32 @@ function BenchSlidesReport({
           ["runner", verdict.runner],
           ["status", verdict.status],
         ],
-        bullets: ranking.length > 0 ? ranking : ["Sem ranking consolidado neste bench."],
-      },
-      {
+        bullets: ranking,
+      } : null,
+      topGap ? {
         kicker: "tensão",
-        title: topGap ? `A decisão muda em ${topGap.label}` : "Onde a decisão pode mudar",
-        body: topGap
-          ? "A maior distância entre players é o melhor ponto para debate: é onde a comparação deixa de ser intercambiável."
-          : "Este bench não trouxe matriz suficiente para detectar a dimensão crítica automaticamente.",
-        accent: topGap ? formatBenchNumber(benchScoreGap(topGap)) : "—",
+        title: `A decisão muda em ${topGap.label}`,
+        body: "A maior distância entre players é o melhor ponto para debate: é onde a comparação deixa de ser intercambiável.",
+        accent: formatBenchNumber(benchScoreGap(topGap)),
         accentLabel: "maior diferença",
-        tone: topGap && benchScoreGap(topGap) > 25 ? "warning" : "lime",
-        bullets: biggestGaps.slice(0, 5).map((row) => `${row.label}: gap ${formatBenchNumber(benchScoreGap(row))}`),
-      },
-      {
+        tone: benchScoreGap(topGap) > 25 ? "warning" : "lime",
+        bullets: gapBullets,
+      } : null,
+      leadingActions.length > 0 ? {
         kicker: "ação",
         title: "O que fazer depois do bench",
-        body: "Roadmap resumido para transformar comparação em decisão operacional. Ações são derivadas dos gaps, cliffs e maiores diferenças da matriz.",
+        body: "Roadmap enxuto para transformar comparação em decisão operacional. As ações vêm dos gaps, cliffs e maiores diferenças da matriz.",
         accent: String(roadmapItems.length),
         accentLabel: "ações sugeridas",
-        tone: roadmapItems.length > 0 ? "lime" : "warning",
-        bullets: leadingActions.length > 0
-          ? leadingActions.map((item) => `${item.wave}: ${item.title} — ${item.roi}`)
-          : ["Sem roadmap estruturado. Próximo passo: gerar gaps, won't-fix e critérios de decisão."],
-      },
-      {
-        kicker: "evidência",
-        title: "Qual é a confiança desta leitura",
-        body: "Antes de vender a conclusão, mostre a materialidade: quantas células têm nota/fonte e quantos artefatos sustentam a análise.",
+        tone: "lime",
+        bullets: leadingActions.map((item) => `${item.wave}: ${item.title} — ${item.roi}`),
+      } : null,
+      evidenceCapacity > 0 ? {
+        kicker: "confiança",
+        title: evidencePct >= 70 ? "Evidência suficiente para decisão" : "Evidência ainda limita a decisão",
+        body: evidencePct >= 70
+          ? "A cobertura permite usar o benchmark como base de priorização, mantendo revisão pontual dos gaps mais sensíveis."
+          : "Antes de vender a conclusão, aumente a materialidade: células sem prova reduzem confiança e podem mudar o veredito.",
         accent: `${evidencePct}%`,
         accentLabel: "cobertura de evidência",
         tone: evidencePct >= 70 ? "lime" : evidencePct >= 40 ? "warning" : "error",
@@ -938,34 +1561,32 @@ function BenchSlidesReport({
           ["gaps", gapItems.length],
         ],
         bullets: documents.slice(0, 5).map((doc) => doc.file),
-      },
-      {
+      } : null,
+      scenarioBullets.length > 0 ? {
         kicker: "cenários",
-        title: "Quando a recomendação deixa de valer",
-        body: "Personas, TCO e cliffs dizem em quais contextos o vencedor pode não ser a escolha correta.",
-        accent: String(personas.length + (tco?.scenarios.length ?? 0) + cliffs.length),
-        accentLabel: "cenários e cliffs",
+        title: "Quando a recomendação muda",
+        body: "Personas, TCO e cliffs dizem em quais contextos o vencedor geral pode não ser a escolha correta.",
+        accent: String(scenarioBullets.length),
+        accentLabel: "cenários úteis",
         tone: cliffs.length > 0 ? "warning" : "lime",
-        bullets: [
-          ...personas.slice(0, 3).map((persona) => `${persona.label}: ${persona.winner || "sem vencedor explícito"}`),
-          ...cliffs.slice(0, 3).map((cliff) => `${displayBenchPlayer(cliff.player, playerProfiles)}: ${cliff.trigger}`),
-        ],
-      },
+        bullets: scenarioBullets,
+      } : null,
       {
-        kicker: "fechamento",
+        kicker: "handoff",
         title: "Resumo para decisão",
-        body: "Se a audiência só lembrar de um ponto, este é o ponto: use o líder como hipótese, a maior lacuna como pergunta e o roadmap como próximo movimento.",
+        body: "Use o líder como hipótese, a maior lacuna como pergunta crítica e o roadmap como próximo movimento verificável.",
         accent: verdict.leader,
         accentLabel: "hipótese de escolha",
         tone: "lime",
-        bullets: [
+        bullets: uniqueMeaningful([
           `Escolha provável: ${verdict.leader}`,
           `Pergunta crítica: ${topGap?.label ?? "validar matriz e evidências"}`,
           `Próximo movimento: ${roadmapItems[0]?.title ?? "rodar aprofundamento do bench"}`,
-        ],
+          ...documents.slice(0, 3).map((doc) => `Abrir: ${doc.file}`),
+        ], 6),
       },
-    ]
-  }, [activeRun?.displayTitle, biggestGaps, cliffs, documents, evidenceCapacity, evidenceCount, evidencePct, gapItems.length, matrix, personas, playerProfiles, roadmapItems, scoreDimensions.length, tco, tldrCards, verdict])
+    ].filter(Boolean) as BenchSlide[])
+  }, [activeRun?.displayTitle, biggestGaps, cliffs, documents, evidenceCapacity, evidenceCount, evidencePct, gapItems.length, matrix, personas, playerProfiles, roadmapItems, scoreDimensions.length, tco?.scenarios, tldrCards, typeSpecific.product, verdict])
   const [current, setCurrent] = useState(0)
   const [overviewOpen, setOverviewOpen] = useState(false)
   const slide = slides[current] ?? slides[0]
@@ -1187,7 +1808,7 @@ function BenchVerdictBar({
       "mt-6 border p-5 md:p-6",
       isWarning
         ? "border-[#f5b340]/55 bg-[#f5b340]/[0.045]"
-        : "border-[#d1ff00]/30 bg-[#d1ff00]/[0.035]",
+        : "border-[#d1ff00]/30 bg-[#111113]",
     )}>
       <div className="grid gap-5 md:grid-cols-[220px_minmax(0,1fr)_260px] md:items-center">
         <div>
@@ -1286,7 +1907,7 @@ function buildBenchTldrCards({
 
 function BenchTldrPanel({ cards }: { cards: BenchTldrCard[] }) {
   return (
-    <section className="mt-6 border-y border-[#d1ff00]/35 bg-[#d1ff00]/[0.025] py-5">
+    <section className="mt-6 border-y border-[#d1ff00]/35 bg-[#111113] py-5">
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3 border-b border-[#f5f4e7]/10 pb-3">
         <div className="text-[11px] uppercase tracking-[0.18em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
           bench em 60 segundos
@@ -1851,6 +2472,41 @@ function BenchPersonasReport({
                       </div>
                     ))}
                   </div>
+                  {(persona.job || persona.decisiveDimensions.length > 0) && (
+                    <div className="mt-4 grid gap-3 border border-[#f5f4e7]/10 bg-[#0b0b0b] p-3">
+                      {persona.job && (
+                        <p className="text-[12px] leading-[1.5] text-[#f5f4e7]/62">
+                          <span className="font-black text-[#f5f4e7]">Job: </span>{persona.job}
+                        </p>
+                      )}
+                      {persona.decisiveDimensions.length > 0 && (
+                        <div className="grid gap-1.5">
+                          {persona.decisiveDimensions.slice(0, 4).map((dimension) => (
+                            <div key={`${persona.id}-${dimension.id}`} className="grid grid-cols-[minmax(0,1fr)_48px] items-center gap-3">
+                              <span className="truncate text-[11px] text-[#f5f4e7]/52">{dimension.label}</span>
+                              <span className="text-right text-[11px] uppercase tracking-[0.1em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{formatBenchNumber(dimension.weight)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {(persona.mustHave.length > 0 || persona.antiGoals.length > 0) && (
+                    <div className="mt-3 grid gap-2 md:grid-cols-2">
+                      {persona.mustHave.length > 0 && (
+                        <div className="border border-[#d1ff00]/20 bg-[#d1ff00]/5 p-3">
+                          <div className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>must-have</div>
+                          <p className="mt-2 text-[12px] leading-[1.45] text-[#f5f4e7]/62">{persona.mustHave.slice(0, 4).join(" · ")}</p>
+                        </div>
+                      )}
+                      {persona.antiGoals.length > 0 && (
+                        <div className="border border-[#f5b340]/20 bg-[#f5b340]/5 p-3">
+                          <div className="text-[10px] uppercase tracking-[0.12em] text-[#f5b340]" style={{ fontFamily: MONO_FONT }}>anti-goals</div>
+                          <p className="mt-2 text-[12px] leading-[1.45] text-[#f5f4e7]/62">{persona.antiGoals.slice(0, 3).join(" · ")}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {persona.tiebreaker && <p className="mt-4 border-l border-[#d1ff00]/45 pl-3 text-[13px] leading-[1.5] text-[#f5f4e7]/62">{persona.tiebreaker}</p>}
                 </article>
               ))}
@@ -1869,108 +2525,665 @@ function BenchDuelReport({
   matrix: ObservatoryMatrix
   playerProfiles: ObservatoryPlayerProfile[]
 }) {
-  const pairs = matrix.players.flatMap((a, index) =>
-    matrix.players.slice(index + 1).map((b) => {
-      const rows = matrix.rows.map((row) => {
-        const aCell = row.cells.find((cell) => cell.player === a)
-        const bCell = row.cells.find((cell) => cell.player === b)
-        const aScore = aCell?.score ?? 0
-        const bScore = bCell?.score ?? 0
+  const totalsByPlayer = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const total of matrix.totals) map.set(total.player, total.score)
+    return map
+  }, [matrix.totals])
+  const players = useMemo(
+    () => [...matrix.players].sort((a, b) => (totalsByPlayer.get(b) ?? 0) - (totalsByPlayer.get(a) ?? 0)),
+    [matrix.players, totalsByPlayer],
+  )
+  const [left, setLeft] = useState(players[0] ?? "")
+  const [right, setRight] = useState(players[1] ?? players[0] ?? "")
+
+  useEffect(() => {
+    setLeft(players[0] ?? "")
+    setRight(players[1] ?? players[0] ?? "")
+  }, [players])
+
+  const profileByKey = useMemo(() => new Map(playerProfiles.map((profile) => [profile.key, profile])), [playerProfiles])
+  const playerName = (key: string) => displayBenchPlayer(key, playerProfiles)
+  const duelPlayerName = (key: string) => playerName(key).replace(/[_-]+/g, " ")
+  const playerColor = (key: string) => key === right ? "#3b82f6" : "#ef4444"
+  const playerMeta = (key: string) => {
+    const profile = profileByKey.get(key)
+    return [profile?.category, profile?.license, profile?.tag].filter(Boolean).join(" · ") || key
+  }
+
+  const selectLeft = (next: string) => {
+    setLeft(next)
+    if (next === right) {
+      setRight(players.find((player) => player !== next) ?? next)
+    }
+  }
+  const selectRight = (next: string) => {
+    setRight(next)
+    if (next === left) {
+      setLeft(players.find((player) => player !== next) ?? next)
+    }
+  }
+  const swapPlayers = () => {
+    setLeft(right)
+    setRight(left)
+  }
+
+  const duel = useMemo(() => {
+    const rows = matrix.rows
+      .map((row) => {
+        const leftCell = row.cells.find((cell) => cell.player === left)
+        const rightCell = row.cells.find((cell) => cell.player === right)
+        const leftScore = leftCell?.score ?? 0
+        const rightScore = rightCell?.score ?? 0
+        const delta = leftScore - rightScore
+        const winner = delta === 0 ? "tie" : delta > 0 ? left : right
         return {
           row,
-          aScore,
-          bScore,
-          delta: aScore - bScore,
-          winner: aScore === bScore ? "tie" : aScore > bScore ? a : b,
-          note: aScore >= bScore ? aCell?.notes || aCell?.source : bCell?.notes || bCell?.source,
+          leftScore,
+          rightScore,
+          delta,
+          winner,
+          note: delta >= 0 ? leftCell?.notes || leftCell?.source : rightCell?.notes || rightCell?.source,
+          leftNote: leftCell?.notes || leftCell?.source || "",
+          rightNote: rightCell?.notes || rightCell?.source || "",
         }
       })
-      const winsA = rows.filter((row) => row.winner === a).length
-      const winsB = rows.filter((row) => row.winner === b).length
-      const ties = rows.filter((row) => row.winner === "tie").length
-      const totalA = matrix.totals.find((total) => total.player === a)?.score ?? rows.reduce((sum, row) => sum + row.aScore, 0)
-      const totalB = matrix.totals.find((total) => total.player === b)?.score ?? rows.reduce((sum, row) => sum + row.bScore, 0)
-      return {
-        a,
-        b,
-        winsA,
-        winsB,
-        ties,
-        totalA,
-        totalB,
-        rows: rows.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta)).slice(0, 5),
-      }
-    }),
-  ).sort((x, y) => Math.abs(y.totalA - y.totalB) - Math.abs(x.totalA - x.totalB))
-  const leadPair = pairs[0]
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    const leftWins = rows.filter((row) => row.winner === left)
+    const rightWins = rows.filter((row) => row.winner === right)
+    const ties = rows.filter((row) => row.winner === "tie")
+    const totalLeft = totalsByPlayer.get(left) ?? rows.reduce((sum, row) => sum + row.leftScore, 0)
+    const totalRight = totalsByPlayer.get(right) ?? rows.reduce((sum, row) => sum + row.rightScore, 0)
+    const leader = totalLeft === totalRight ? "tie" : totalLeft > totalRight ? left : right
+    return {
+      rows,
+      leftWins,
+      rightWins,
+      ties,
+      totalLeft,
+      totalRight,
+      gap: Math.abs(totalLeft - totalRight),
+      leader,
+      decisiveRows: rows.filter((row) => Math.abs(row.delta) > 0).slice(0, 6),
+    }
+  }, [left, matrix.rows, right, totalsByPlayer])
+  const strongestDriver = duel.decisiveRows[0]
+  const totalWinCount = Math.max(1, matrix.rows.length)
+  const leftWinPct = (duel.leftWins.length / totalWinCount) * 100
+  const tiePct = (duel.ties.length / totalWinCount) * 100
+  const rightWinPct = (duel.rightWins.length / totalWinCount) * 100
+  const leftStrong = formatDuelStrongDimensions(duel.leftWins)
+  const rightStrong = formatDuelStrongDimensions(duel.rightWins)
+  const scaledTotalLeft = scaleDuelTotal(duel.totalLeft)
+  const scaledTotalRight = scaleDuelTotal(duel.totalRight)
+  const scaledGap = Math.abs(scaledTotalLeft - scaledTotalRight)
+
+  if (players.length < 2 || !left || !right || left === right) {
+    return (
+      <LightScrollArea className="aiox-report-dark flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="var(--report-bg)" style={observatoryDarkThemeVars}>
+        <article className="aiox-report-shell" style={observatoryDarkThemeVars}>
+          <ResearchCompactIntro
+            eyebrow="duelo"
+            title="Benchmark sem duelo suficiente"
+            copy="O modo duelo precisa de pelo menos dois players com células comparáveis na matriz."
+            accentValue={String(players.length)}
+            accentLabel="players"
+            metrics={[
+              ["Players", players.length],
+              ["Dimensões", matrix.rows.length],
+            ]}
+          />
+        </article>
+      </LightScrollArea>
+    )
+  }
 
   return (
-    <LightScrollArea className="aiox-report-dark flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="var(--report-bg)" style={observatoryDarkThemeVars}>
-      <article className="aiox-report-shell" style={observatoryDarkThemeVars}>
-        <ResearchCompactIntro
-          eyebrow="duelo"
-          title="Confrontos diretos"
-          copy="Duelo responde uma pergunta diferente da matriz: quando comparo dois players, onde exatamente um abre distância do outro?"
-          accentValue={leadPair ? formatBenchNumber(Math.abs(leadPair.totalA - leadPair.totalB)) : "—"}
-          accentLabel="maior distância"
-          metrics={[
-            ["Duels", pairs.length],
-            ["Players", matrix.players.length],
-            ["Dimensões", matrix.rows.length],
-          ]}
-        />
+    <LightScrollArea className="aiox-report-dark flex-1" viewportClassName="pb-12 pt-0" fadeColor="var(--report-bg)" style={observatoryDarkThemeVars}>
+      <article className="aiox-report-shell max-w-none" style={observatoryDarkThemeVars}>
+        <div className="aiox-duel-toolbar">
+          <div className="aiox-duel-toolbar-label">
+            duelo
+          </div>
+          <div className="aiox-duel-picker min-w-0 flex-wrap">
+            <BenchDuelToolbarSelect
+              side="A"
+              value={left}
+              players={players}
+              disabledPlayer={right}
+              playerProfiles={playerProfiles}
+              onChange={selectLeft}
+            />
+            <div className="aiox-duel-picker-vs grid place-items-center">
+              VS
+            </div>
+            <BenchDuelToolbarSelect
+              side="B"
+              value={right}
+              players={players}
+              disabledPlayer={left}
+              playerProfiles={playerProfiles}
+              onChange={selectRight}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={swapPlayers}
+            className="aiox-duel-swap inline-flex items-center gap-2 transition-colors hover:border-[#d1ff00] hover:text-[#d1ff00]"
+          >
+            <ArrowLeftRight className="h-3.5 w-3.5" />
+            inverter
+          </button>
+          <div className="aiox-duel-toolbar-right">
+            <span>rounds <strong className="ml-1 text-[#f5f4e7]">{matrix.rows.length}</strong></span>
+            <span>score <strong className="ml-1 text-[#f5f4e7]">{formatDuelScore(scaledTotalLeft)}</strong> <span className="text-[#d1ff00]">vs</span> <strong className="ml-1 text-[#f5f4e7]">{formatDuelScore(scaledTotalRight)}</strong></span>
+            <span>gap <strong className="ml-1 text-[#d1ff00]">{formatDuelScore(scaledGap)}</strong></span>
+            <span>conf <strong className="ml-1 text-[#d1ff00]">alta</strong></span>
+          </div>
+        </div>
 
-        <div className="mt-6 grid gap-8">
-          <ResearchStorySection step="01" title="Head-to-head" copy="Cada bloco mostra placar por dimensão e os drivers que explicam a distância.">
-            <div className="grid gap-5 xl:grid-cols-2">
-              {pairs.map((pair) => {
-                const aWins = pair.totalA >= pair.totalB
-                const leader = aWins ? pair.a : pair.b
-                const gap = Math.abs(pair.totalA - pair.totalB)
+        <div className="aiox-duel-titlebar">
+          <div className="inline-flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f5f4e7]/40" style={{ fontFamily: MONO_FONT }}>
+            <span className="text-[#d1ff00]">Duelo</span>
+            <span className="text-[#f5f4e7]/24">·</span>
+            <span>Head-to-head</span>
+            <span className="text-[#f5f4e7]/24">·</span>
+            <span>{matrix.rows.length} dimensões</span>
+          </div>
+          <h1 className="m-0 mt-2 text-[28px] font-black uppercase leading-none tracking-[-0.025em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+            Duelo
+          </h1>
+        </div>
+
+        <section className="aiox-duel-arena">
+          <div className="aiox-duel-arena-grid">
+            <BenchDuelArenaPlayer
+              side="left"
+              label="P01 · Player A"
+              value={left}
+              playerProfiles={playerProfiles}
+              color={playerColor(left)}
+              meta={playerMeta(left)}
+              score={duel.totalLeft}
+              displayScore={scaledTotalLeft}
+              wins={duel.leftWins.length}
+              gap={scaledTotalLeft - scaledTotalRight}
+              strongDimensions={leftStrong}
+              dimensions={matrix.rows.length}
+              active={duel.leader === left}
+              displayName={duelPlayerName(left)}
+            />
+            <div className="aiox-vs-blade">
+              <span className="aiox-vs-badge">
+                Round {String(matrix.rows.length).padStart(2, "0")}/{String(matrix.rows.length).padStart(2, "0")}
+              </span>
+              <span className="aiox-vs-mark">
+                VS
+              </span>
+              <span className="aiox-vs-delta">
+                Δ +{formatDuelScore(scaledGap)}
+              </span>
+            </div>
+            <BenchDuelArenaPlayer
+              side="right"
+              label="P02 · Player B"
+              value={right}
+              playerProfiles={playerProfiles}
+              color={playerColor(right)}
+              meta={playerMeta(right)}
+              score={duel.totalRight}
+              displayScore={scaledTotalRight}
+              wins={duel.rightWins.length}
+              gap={scaledTotalRight - scaledTotalLeft}
+              strongDimensions={rightStrong}
+              dimensions={matrix.rows.length}
+              active={duel.leader === right}
+              displayName={duelPlayerName(right)}
+            />
+          </div>
+        </section>
+        <div>
+          <BenchDuelWinStrip
+            leftLabel={duelPlayerName(left)}
+            rightLabel={duelPlayerName(right)}
+            leftColor={playerColor(left)}
+            rightColor={playerColor(right)}
+            rows={duel.rows}
+            leftWins={duel.leftWins.length}
+            rightWins={duel.rightWins.length}
+            ties={duel.ties.length}
+            leftPct={leftWinPct}
+            rightPct={rightWinPct}
+            tiePct={tiePct}
+          />
+        </div>
+
+        <section className="aiox-duel-section">
+          <BenchDuelSectionHead
+            ord="01"
+            title={<>Round<br />by round</>}
+            copy="Cada dimensão é um round. Quanto maior o gap, mais decisiva — e menos intercambiáveis os players. Olhe primeiro para os rounds com maior delta."
+          />
+          <div className="aiox-duel-rounds-grid">
+              {duel.decisiveRows.map((item) => {
+                const rowLeader = item.winner === "tie" ? "empate" : item.winner === left ? left : right
+                const isRightWinner = item.winner !== "tie" && item.winner === right
                 return (
-                  <section key={`${pair.a}-${pair.b}`} className="aiox-panel bg-[#0f0f11]">
-                    <ResearchPanelHead
-                      eyebrow={`${displayBenchPlayer(pair.a, playerProfiles)} vs ${displayBenchPlayer(pair.b, playerProfiles)}`}
-                      title={displayBenchPlayer(leader, playerProfiles)}
-                      meta={`gap ${formatBenchNumber(gap)}`}
-                    />
-                    <div className="grid gap-px bg-[#f5f4e7]/10 p-px sm:grid-cols-3">
-                      <ResearchDarkMetric label={displayBenchPlayer(pair.a, playerProfiles)} value={formatBenchNumber(pair.totalA)} />
-                      <ResearchDarkMetric label="Empates" value={String(pair.ties)} />
-                      <ResearchDarkMetric label={displayBenchPlayer(pair.b, playerProfiles)} value={formatBenchNumber(pair.totalB)} />
+                  <article key={`${left}-${right}-${item.row.id}`} className={cn("aiox-duel-round-card", Math.abs(item.delta) >= 12 && "standout")}>
+                    <div className="aiox-duel-rc-head">
+                      <div className="aiox-duel-rc-meta">
+                        <span className="aiox-duel-rc-eyebrow">
+                          <b>R{String(duel.rows.indexOf(item) + 1).padStart(2, "0")}</b> · {item.row.id} · Peso {formatBenchNumber(item.row.weight)}
+                        </span>
+                        <h3 className="aiox-duel-rc-title aiox-safe-text">
+                          {item.row.label}
+                        </h3>
+                      </div>
+                      <span className={cn("aiox-duel-rc-verdict", isRightWinner && "b", item.winner === "tie" && "tie")}>
+                        {rowLeader === "empate" ? "Empate" : `${duelPlayerName(rowLeader)} +${formatDuelScore(scaleDuelTotal(Math.abs(item.delta)))}`}
+                      </span>
                     </div>
-                    <div className="grid gap-3 p-4">
-                      {pair.rows.map((row) => {
-                        const rowLeader = row.delta === 0 ? "empate" : row.delta > 0 ? pair.a : pair.b
-                        return (
-                          <article key={`${pair.a}-${pair.b}-${row.row.id}`} className="border border-[#f5f4e7]/10 bg-[#050505] p-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div className="text-[10px] uppercase tracking-[0.14em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
-                                {row.row.id} · {rowLeader === "empate" ? "empate" : displayBenchPlayer(rowLeader, playerProfiles)}
-                              </div>
-                              <div className="text-[10px] uppercase tracking-[0.14em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>
-                                Δ {formatBenchNumber(Math.abs(row.delta))}
-                              </div>
-                            </div>
-                            <h3 className="aiox-safe-text mt-2 text-[17px] font-black text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>{row.row.label}</h3>
-                            <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                              <ResearchBar label={displayBenchPlayer(pair.a, playerProfiles)} value={Math.max(0, Math.min(100, row.aScore))} />
-                              <span className="text-[11px] uppercase tracking-[0.12em] text-[#f5f4e7]/32" style={{ fontFamily: MONO_FONT }}>vs</span>
-                              <ResearchBar label={displayBenchPlayer(pair.b, playerProfiles)} value={Math.max(0, Math.min(100, row.bScore))} />
-                            </div>
-                            {row.note && <p className="mt-3 line-clamp-2 text-[12.5px] leading-[1.45] text-[#f5f4e7]/52">{row.note}</p>}
-                          </article>
-                        )
-                      })}
+                    <div className="aiox-duel-rc-bars">
+                      <BenchDuelScoreBar side="a" label={duelPlayerName(left)} value={item.leftScore} />
+                      <BenchDuelScoreBar side="b" label={duelPlayerName(right)} value={item.rightScore} />
                     </div>
-                  </section>
+                    {item.note && <p className="aiox-duel-rc-note">{item.note}</p>}
+                  </article>
                 )
               })}
+          </div>
+        </section>
+
+        <section className="aiox-duel-section">
+          <BenchDuelSectionHead
+            ord="02"
+            title={<>Matriz<br />de features</>}
+            copy={`${duel.rows.length} dimensões comparadas lado a lado. ✓ presente · score consolidado · vencedor à direita. Use para auditar antes de comprar ou substituir.`}
+          />
+          <div className="aiox-duel-fmx-wrap">
+            <div className="aiox-duel-fmx-head">
+              <span className="cell">Feature</span>
+              <span className="cell plyr"><span className="dot" />{duelPlayerName(left)}</span>
+              <span className="cell plyr"><span className="dot b" />{duelPlayerName(right)}</span>
+              <span className="cell win">Vence</span>
             </div>
-          </ResearchStorySection>
-        </div>
+            <div className="aiox-duel-fmx-cat">
+              <span className="id">C01</span>
+              Dimensões
+              <span className="count"><b>{duel.rows.length}</b> features</span>
+            </div>
+              {duel.rows.map((item) => {
+                const winner = item.winner === "tie" ? "empate" : duelPlayerName(item.winner)
+                const leftWinsRow = item.delta > 0
+                const rightWinsRow = item.delta < 0
+                return (
+                  <div key={`${left}-${right}-all-${item.row.id}`} className="aiox-duel-fmx-row">
+                    <div className="lab">
+                      <span className="nm">{item.row.label}</span>
+                      <span className="sub">{item.row.id} · peso {formatBenchNumber(item.row.weight)}</span>
+                    </div>
+                    <BenchDuelMatrixCell side="a" score={item.leftScore} active={leftWinsRow} />
+                    <BenchDuelMatrixCell side="b" score={item.rightScore} active={rightWinsRow} />
+                    <div className={cn("winner", leftWinsRow && "a", rightWinsRow && "b")}>
+                      {winner}
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        </section>
       </article>
     </LightScrollArea>
+  )
+}
+
+function BenchDuelSelect({
+  label,
+  value,
+  players,
+  disabledPlayer,
+  playerProfiles,
+  totalsByPlayer,
+  onChange,
+  compact = false,
+}: {
+  label: string
+  value: string
+  players: string[]
+  disabledPlayer: string
+  playerProfiles: ObservatoryPlayerProfile[]
+  totalsByPlayer: Map<string, number>
+  onChange: (value: string) => void
+  compact?: boolean
+}) {
+  const selectedProfile = playerProfiles.find((profile) => profile.key === value)
+  return (
+    <label className="block min-w-0">
+      {!compact && (
+        <span className="mb-3 block text-[10px] uppercase tracking-[0.16em] text-[#f5f4e7]/42" style={{ fontFamily: MONO_FONT }}>
+          {label}
+        </span>
+      )}
+      <div className="relative border border-[#f5f4e7]/14 bg-[#0f0f11] transition-colors focus-within:border-[#d1ff00]/70">
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-1" style={{ background: selectedProfile?.color ?? "#d1ff00" }} />
+        <div className="grid grid-cols-[minmax(0,1fr)_88px_28px] items-center gap-3 px-4 py-4">
+          <div className="min-w-0">
+            <select
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              className={cn(
+                "w-full min-w-0 appearance-none bg-transparent pr-2 font-black leading-none tracking-[-0.04em] text-[#f5f4e7] outline-none",
+                compact ? "text-[22px]" : "text-[24px]",
+              )}
+              style={{ fontFamily: DISPLAY_FONT }}
+            >
+              {players.map((player) => (
+                <option key={player} value={player} disabled={player === disabledPlayer}>
+                  {displayBenchPlayer(player, playerProfiles)}
+                </option>
+              ))}
+            </select>
+            <div className="mt-2 truncate text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/32" style={{ fontFamily: MONO_FONT }}>
+              {[selectedProfile?.category, selectedProfile?.license, selectedProfile?.tag].filter(Boolean).join(" · ") || value}
+            </div>
+          </div>
+          <div className="border-l border-[#f5f4e7]/10 pl-3 text-right">
+            <div className="text-[9px] uppercase tracking-[0.12em] text-[#f5f4e7]/32" style={{ fontFamily: MONO_FONT }}>score</div>
+            <div className="mt-1 text-[24px] font-black leading-none text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+              {formatBenchNumber(totalsByPlayer.get(value) ?? 0)}
+            </div>
+          </div>
+          <ChevronDown className="h-4 w-4 text-[#f5f4e7]/36" />
+        </div>
+      </div>
+    </label>
+  )
+}
+
+function BenchDuelSectionHead({
+  ord,
+  title,
+  copy,
+}: {
+  ord: string
+  title: ReactNode
+  copy: string
+}) {
+  return (
+    <div className="aiox-duel-section-head">
+      <span className="text-[56px] font-black leading-none tracking-[-0.04em] text-[#d1ff00]" style={{ fontFamily: DISPLAY_FONT }}>
+        {ord}
+      </span>
+      <h2 className="m-0 text-[clamp(32px,3.4vw,42px)] font-black uppercase leading-none tracking-[-0.03em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+        {title}
+      </h2>
+      <p className="m-0 pt-2 text-[14px] leading-[1.55] text-[#f5f4e7]/62" style={{ fontFamily: SANS_FONT }}>
+        {copy}
+      </p>
+    </div>
+  )
+}
+
+function BenchDuelMatrixCell({
+  side,
+  score,
+  active,
+}: {
+  side: "a" | "b"
+  score: number
+  active: boolean
+}) {
+  return (
+    <div className={cn("pcell", active && "win", side)}>
+      <span className="aiox-duel-fmx-mark yes">✓</span>
+      <span className="val">
+        {formatDuelScore(scaleDuelTotal(score))}
+      </span>
+    </div>
+  )
+}
+
+function BenchDuelToolbarSelect({
+  side,
+  value,
+  players,
+  disabledPlayer,
+  playerProfiles,
+  onChange,
+}: {
+  side: "A" | "B"
+  value: string
+  players: string[]
+  disabledPlayer: string
+  playerProfiles: ObservatoryPlayerProfile[]
+  onChange: (value: string) => void
+}) {
+  const cleanName = displayBenchPlayer(value, playerProfiles).replace(/[_-]+/g, " ")
+  return (
+    <label className="aiox-duel-side">
+      <span className={cn("aiox-duel-side-dot", side === "B" && "b")} />
+      <span>{cleanName}</span>
+      <span className="aiox-duel-side-arr">▾</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="aiox-duel-side-select"
+        aria-label={`Selecionar player ${side}`}
+      >
+        {players.map((player) => (
+          <option key={player} value={player} disabled={player === disabledPlayer}>
+            {displayBenchPlayer(player, playerProfiles).replace(/[_-]+/g, " ")}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+function BenchDuelArenaPlayer({
+  side,
+  label,
+  value,
+  playerProfiles,
+  color,
+  meta,
+  score,
+  displayScore,
+  wins,
+  gap,
+  strongDimensions,
+  dimensions,
+  active,
+  displayName,
+}: {
+  side: "left" | "right"
+  label: string
+  value: string
+  playerProfiles: ObservatoryPlayerProfile[]
+  color: string
+  meta: string
+  score: number
+  displayScore: number
+  wins: number
+  gap: number
+  strongDimensions: string
+  dimensions: number
+  active: boolean
+  displayName: string
+}) {
+  const alignRight = side === "right"
+  const profile = playerProfiles.find((item) => item.key === value)
+  const tagline = [profile?.type, profile?.origin, profile?.category, profile?.tag].filter(Boolean).join(" · ") || meta
+  const role = active ? "Vencedor" : score >= 0 ? "Runner-up" : "Challenger"
+  return (
+    <section className={cn("aiox-duel-corner", alignRight ? "right" : "left", active && "winner")} style={{ "--duel-player-color": color } as CSSProperties}>
+      <span className="aiox-duel-corner-tag">
+          <span className="opacity-70">{label.replace(/ · .+$/, "")}</span> · {role}
+      </span>
+      <h2 className="aiox-duel-corner-name aiox-safe-text">
+        {displayName}
+      </h2>
+      <span className="aiox-duel-corner-handle">
+        {meta}
+      </span>
+      <p className="aiox-duel-corner-tagline">
+        {tagline}
+      </p>
+      <div className="aiox-duel-corner-score">
+        <span className="aiox-duel-score-num">
+          {formatDuelScore(displayScore)}
+        </span>
+        <span className="aiox-duel-score-unit">
+          score
+        </span>
+      </div>
+      <div className={cn("aiox-duel-corner-stats", alignRight && "right")}>
+        <div className="aiox-duel-cs-cell">
+          <div className="aiox-duel-cs-k">Rounds</div>
+          <div className="aiox-duel-cs-v player">{wins}</div>
+        </div>
+        <div className="aiox-duel-cs-cell">
+          <div className="aiox-duel-cs-k">Gap médio</div>
+          <div className="aiox-duel-cs-v">{gap > 0 ? "+" : ""}{formatDuelScore(dimensions > 0 ? gap / dimensions : gap)}</div>
+        </div>
+        <div className="aiox-duel-cs-cell">
+          <div className="aiox-duel-cs-k">Dim. fortes</div>
+          <div className="aiox-duel-cs-v">{strongDimensions}</div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function BenchDuelWinStrip({
+  leftLabel,
+  rightLabel,
+  leftColor,
+  rightColor,
+  rows,
+  leftWins,
+  rightWins,
+  ties,
+  leftPct,
+  rightPct,
+  tiePct,
+}: {
+  leftLabel: string
+  rightLabel: string
+  leftColor: string
+  rightColor: string
+  rows: Array<{
+    row: ObservatoryMatrixRow
+    leftScore: number
+    rightScore: number
+    delta: number
+    winner: string
+  }>
+  leftWins: number
+  rightWins: number
+  ties: number
+  leftPct: number
+  rightPct: number
+  tiePct: number
+}) {
+  return (
+    <div className="aiox-duel-scoreboard">
+      <div className={cn("aiox-duel-sb-side left", leftWins >= rightWins && "lead")}>
+        <span className="aiox-duel-sb-k">{leftLabel} · vence</span>
+        <span className="aiox-duel-sb-v">{leftWins} · {rightWins}</span>
+      </div>
+      <div className="aiox-duel-sb-rounds overflow-x-auto">
+        <div className="flex min-w-max flex-1">
+          {rows.map((item, index) => {
+            const leftWidth = Math.max(4, Math.min(96, item.leftScore))
+            const rightWidth = Math.max(4, Math.min(96, item.rightScore))
+            const winner = item.winner === "tie" ? "empate" : item.delta > 0 ? leftLabel : rightLabel
+            return (
+              <button key={`${item.row.id}-${index}`} type="button" className={cn("aiox-duel-sb-round", item.delta > 0 ? "wina" : item.delta < 0 ? "winb" : "tie")}>
+                <span className="aiox-duel-rid">R{String(index + 1).padStart(2, "0")} · {item.row.id}</span>
+                <span className="aiox-duel-bar2">
+                  <span className="l" style={{ "--w": `${leftWidth}%` } as CSSProperties} />
+                  <span className="r" style={{ "--w": `${rightWidth}%` } as CSSProperties} />
+                </span>
+                <span className={cn("aiox-duel-rwin", item.delta > 0 ? "a" : item.delta < 0 ? "b" : "tie")}>{winner}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div className={cn("aiox-duel-sb-side right", rightWins > leftWins && "lead")}>
+        <span className="aiox-duel-sb-k">{rightLabel} · vence</span>
+        <span className="aiox-duel-sb-v">{rightWins} · {leftWins}</span>
+      </div>
+    </div>
+  )
+}
+
+function BenchDuelPlayerPanel({
+  align,
+  color,
+  name,
+  meta,
+  score,
+  wins,
+  dimensions,
+  active,
+}: {
+  align: "left" | "right"
+  color: string
+  name: string
+  meta: string
+  score: number
+  wins: number
+  dimensions: number
+  active: boolean
+}) {
+  return (
+    <section className={cn("relative overflow-hidden bg-[#0f0f11] p-5", align === "right" && "text-right")}>
+      <div className="absolute inset-x-0 top-0 h-1" style={{ background: color }} />
+      {active && (
+        <div className={cn(
+          "absolute top-4 flex items-center gap-1 border border-[#d1ff00]/45 bg-[#d1ff00] px-2 py-1 text-[9px] uppercase tracking-[0.12em] text-[#050505]",
+          align === "right" ? "left-4" : "right-4",
+        )} style={{ fontFamily: MONO_FONT }}>
+          <Trophy className="h-3 w-3" />
+          líder
+        </div>
+      )}
+      <div className={cn("flex items-center gap-3", align === "right" && "justify-end")}>
+        {align === "left" && <span className="h-3 w-3 shrink-0" style={{ background: color }} />}
+        <h3 className="aiox-safe-text text-[30px] font-black leading-none tracking-[-0.055em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+          {name}
+        </h3>
+        {align === "right" && <span className="h-3 w-3 shrink-0" style={{ background: color }} />}
+      </div>
+      <p className="mt-2 text-[11px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>{meta}</p>
+      <div className="mt-8 text-[68px] font-black leading-none tracking-[-0.07em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+        {formatBenchNumber(score)}
+      </div>
+      <div className={cn("mt-4 grid grid-cols-2 gap-px bg-[#f5f4e7]/10", active && "outline outline-1 outline-[#d1ff00]/50")}>
+        <ResearchDarkMetric label="vitórias" value={`${wins}/${dimensions}`} />
+        <ResearchDarkMetric label="status" value={active ? "líder" : "challenger"} />
+      </div>
+    </section>
+  )
+}
+
+function BenchDuelScoreBar({
+  side,
+  label,
+  value,
+}: {
+  side: "a" | "b"
+  label: string
+  value: number
+}) {
+  return (
+    <div className={cn("aiox-duel-rc-bar", side)}>
+      <span className="lbl">{label}</span>
+      <span className="tr" style={{ "--w": `${Math.max(0, Math.min(100, value))}%` } as CSSProperties} />
+      <span className="v">{formatBenchNumber(value)}</span>
+    </div>
   )
 }
 
@@ -2303,6 +3516,28 @@ function formatBenchNumber(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(2).replace(/\.00$/, "")
 }
 
+function scaleDuelTotal(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.abs(value) > 100 ? value / 100 : value
+}
+
+function formatDuelScore(value: number) {
+  if (!Number.isFinite(value)) return "0"
+  const sign = value < 0 ? "-" : ""
+  const abs = Math.abs(value)
+  if (abs >= 100) return `${sign}${String(Math.round(abs)).slice(0, 3)}`
+  if (abs >= 10) return `${sign}${abs.toFixed(1).replace(/\.0$/, "")}`
+  return `${sign}${abs.toFixed(2).replace(/\.00$/, "").replace(/0$/, "")}`
+}
+
+function formatDuelStrongDimensions(rows: Array<{ row: ObservatoryMatrixRow }>) {
+  const labels = rows
+    .slice(0, 2)
+    .map((item) => item.row.label || humanizeResearchLabel(item.row.id))
+    .filter(Boolean)
+  return labels.length > 0 ? labels.join(" · ") : "—"
+}
+
 function formatBenchMoney(low: number, high: number, currency: string) {
   const prefix = currency ? `${currency} ` : ""
   const fmt = (value: number) => Number.isFinite(value) ? value.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) : "—"
@@ -2365,25 +3600,29 @@ function ResearchMapReport({
   const docMap = new Map(documents.map((doc) => [doc.file, doc]))
   const metrics = asDisplayRecord(parseOptionalArtifact(docMap.get("metrics.yaml")))
   const pipeline = asDisplayRecord(parseOptionalArtifact(docMap.get("pipeline-state.yaml")))
+  const actionPlan = asDisplayRecord(parseOptionalArtifact(docMap.get("action-plan.yaml")))
   const graph = asDisplayRecord(parseOptionalArtifact(docMap.get("research-graph.json")))
+  const dashboardManifest = asDisplayRecord(parseOptionalArtifact(docMap.get("dashboard-manifest.yaml")))
   const matrices = asDisplayRecord(parseOptionalArtifact(docMap.get("matrices.yaml")))
   const curiosity = asDisplayRecord(parseOptionalArtifact(docMap.get("curiosity_queue.yaml")))
   const uxPatterns = asDisplayRecord(parseOptionalArtifact(docMap.get("ux-patterns.yaml")))
   const events = parseJsonl(docMap.get("execution-log.jsonl")?.content ?? "")
 
   const breakdown = asDisplayRecord(recordValue(metrics, "coverage_breakdown"))
-  const phases = asDisplayRecord(recordValue(pipeline, "phases"))
-  const questions = arrayValue(curiosity, "questions").map((item) => asDisplayRecord(item))
+  const phaseRows = researchPhaseRows(recordValue(pipeline, "phases"))
+  const questions = mergeResearchQuestions(curiosity)
   const matrixItems = arrayValue(matrices, "matrices").map((item) => asDisplayRecord(item))
   const patterns = arrayValue(uxPatterns, "patterns").map((item) => asDisplayRecord(item))
   const graphNodes = arrayValue(graph, "nodes").map((item) => asDisplayRecord(item))
-  const graphEdges = arrayValue(graph, "edges").map((item) => asDisplayRecord(item))
+  const graphEdges = researchGraphEdges(graph)
+  const manifestTabs = asDisplayRecord(recordValue(dashboardManifest, "tabs"))
+  const qualityBars = asDisplayRecord(recordValue(dashboardManifest, "quality_bars"))
   const highPriorityQuestions = questions.filter((q) => stringValue(q, "priority", "").toUpperCase() === "HIGH")
   const highCredibilitySources = sources.filter((source) => source.credibility === "HIGH")
   const coverage = numberValue(metrics, "coverage_score") ?? coverageNumeric(activeRun?.coverage) ?? 0
   const integrity = numberValue(metrics, "integrity_score") ?? coverageNumeric(activeRun?.integrity) ?? 0
-  const decision = stringValue(metrics, "decision", activeRun?.status ?? "—")
-  const stopReason = stringValue(metrics, "stop_reason", "Sem stop reason estruturado.")
+  const decision = researchDecisionTitle(actionPlan, metrics, activeRun?.status ?? "—")
+  const stopReason = researchDecisionSummary(actionPlan, metrics)
 
   return (
     <LightScrollArea className="aiox-report-dark flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="var(--report-bg)" style={observatoryDarkThemeVars}>
@@ -2433,16 +3672,16 @@ function ResearchMapReport({
           >
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
               <section className="aiox-panel bg-[#0f0f11]">
-            <ResearchPanelHead eyebrow="pipeline" title="Fases e execução" meta={`${events.length} eventos`} />
+            <ResearchPanelHead eyebrow="pipeline" title="Fases e execução" meta={`${phaseRows.length} fases · ${events.length} eventos`} />
             <div className="grid gap-px bg-[#f5f4e7]/10 md:grid-cols-2">
-              {Object.entries(phases).map(([phase, status], index) => (
-                <div key={phase} className="grid grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-3 bg-[#050505] p-4">
+              {phaseRows.map((phase, index) => (
+                <div key={phase.id} className="grid grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-3 bg-[#050505] p-4">
                   <span className="text-[24px] font-black leading-none text-[#f5f4e7]/25" style={{ fontFamily: DISPLAY_FONT }}>{String(index + 1).padStart(2, "0")}</span>
                   <div className="min-w-0">
-                    <div className="aiox-safe-text text-[15px] font-black text-[#f5f4e7]">{humanizeResearchLabel(phase)}</div>
-                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>{phase}</div>
+                    <div className="aiox-safe-text text-[15px] font-black text-[#f5f4e7]">{phase.label}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>{phase.id}</div>
                   </div>
-                  <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{String(status)}</span>
+                  <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{phase.status}</span>
                 </div>
               ))}
             </div>
@@ -2451,11 +3690,11 @@ function ResearchMapReport({
                 <div key={`${stringValue(event, "ts", String(index))}-${index}`} className="grid gap-3 border border-[#f5f4e7]/10 bg-[#050505] p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/45" style={{ fontFamily: MONO_FONT }}>{stringValue(event, "ts", "—").replace("T", " ").replace("Z", "")}</div>
-                    <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{stringValue(event, "status", "—")}</span>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{researchEventStatus(event)}</span>
                   </div>
                   <div className="min-w-0">
                     <div className="aiox-safe-text text-[14px] font-black text-[#f5f4e7]">{humanizeResearchLabel(stringValue(event, "phase", "evento"))}</div>
-                    <p className="mt-1 line-clamp-2 text-[12.5px] leading-[1.45] text-[#f5f4e7]/58">{stringValue(event, "notes", stringValue(event, "action", ""))}</p>
+                    <p className="mt-1 line-clamp-2 text-[12.5px] leading-[1.45] text-[#f5f4e7]/58">{researchEventSummary(event)}</p>
                   </div>
                 </div>
               ))}
@@ -2468,15 +3707,62 @@ function ResearchMapReport({
               score={coverage}
               items={Object.entries(breakdown).map(([key, value]) => ({
                 label: humanizeResearchLabel(key),
-                value: Number(value) || 0,
+                value: normalizeResearchScore(value),
               }))}
             />
               </section>
             </div>
           </ResearchStorySection>
 
+          {(Object.keys(manifestTabs).length > 0 || Object.keys(qualityBars).length > 0) && (
+            <ResearchStorySection
+              step="02"
+              title="Readiness do dashboard"
+              copy="O manifesto mostra se cada aba tem artefatos suficientes e transforma score em completude visual auditável."
+            >
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+                {Object.keys(manifestTabs).length > 0 && (
+                  <section className="aiox-panel bg-[#0f0f11]">
+                    <ResearchPanelHead eyebrow="manifest" title="Status por aba" meta={`${Object.keys(manifestTabs).length} abas`} />
+                    <div className="grid gap-px bg-[#f5f4e7]/10 p-px md:grid-cols-2">
+                      {Object.entries(manifestTabs).map(([tab, raw]) => {
+                        const item = asDisplayRecord(raw)
+                        return (
+                          <article key={tab} className="bg-[#050505] p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                                {humanizeResearchLabel(tab)}
+                              </span>
+                              <span className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>
+                                {stringValue(item, "status", "status n/a")}
+                              </span>
+                            </div>
+                            <p className="mt-3 text-[14px] font-black leading-[1.35] text-[#f5f4e7]">
+                              {stringValue(item, "expected_value", "Sem valor esperado declarado.")}
+                            </p>
+                          </article>
+                        )
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {Object.keys(qualityBars).length > 0 && (
+                  <section className="aiox-panel bg-[#0f0f11]">
+                    <ResearchPanelHead eyebrow="quality bars" title="Score visual" meta="manifest" />
+                    <div className="grid gap-3 p-4">
+                      {Object.entries(qualityBars).map(([label, raw]) => (
+                        <ResearchBar key={label} label={humanizeResearchLabel(label)} value={normalizeResearchScore(raw)} />
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
+            </ResearchStorySection>
+          )}
+
           <ResearchStorySection
-            step="02"
+            step={Object.keys(manifestTabs).length > 0 || Object.keys(qualityBars).length > 0 ? "03" : "02"}
             title="O que a descoberta revelou"
             copy="Aqui ficam os aprendizados de produto: gaps, padrões e oportunidades que transformam dados brutos em decisão de design ou engenharia."
           >
@@ -2506,7 +3792,7 @@ function ResearchMapReport({
           </ResearchStorySection>
 
           <ResearchStorySection
-            step="03"
+            step={Object.keys(manifestTabs).length > 0 || Object.keys(qualityBars).length > 0 ? "04" : "03"}
             title="O que ainda precisa ser decidido"
             copy="Feche o mapa olhando para perguntas abertas e cobertura de artefatos. Se algo aqui estiver fraco, a próxima ação deve nascer na aba Ações."
           >
@@ -2566,7 +3852,9 @@ function ResearchEvidenceReport({
   const metrics = asDisplayRecord(parseOptionalArtifact(docMap.get("metrics.yaml")))
   const graph = asDisplayRecord(parseOptionalArtifact(docMap.get("research-graph.json")))
   const graphNodes = arrayValue(graph, "nodes").map((item) => asDisplayRecord(item))
-  const graphEdges = arrayValue(graph, "edges").map((item) => asDisplayRecord(item))
+  const graphEdges = researchGraphEdges(graph)
+  const claims = arrayValue(asDisplayRecord(parseOptionalArtifact(docMap.get("claims.yaml"))), "claims").map((item) => asDisplayRecord(item))
+  const validationChecks = arrayValue(asDisplayRecord(parseOptionalArtifact(docMap.get("validation-report.yaml"))), "checks").map((item) => asDisplayRecord(item))
   const highCredibilitySources = sources.filter((source) => source.credibility === "HIGH")
   const mediumCredibilitySources = sources.filter((source) => source.credibility === "MEDIUM")
   const lowCredibilitySources = sources.filter((source) => source.credibility === "LOW")
@@ -2683,9 +3971,68 @@ function ResearchEvidenceReport({
             </section>
           </ResearchStorySection>
 
-          {sourceSummary.length > 0 && (
+          {(claims.length > 0 || validationChecks.length > 0) && (
             <ResearchStorySection
               step="03"
+              title="Claims e validação"
+              copy="Claims transformam conclusões em unidades verificáveis. Checks mostram o que foi validado mecanicamente antes da decisão."
+            >
+              <div className="grid gap-5 xl:grid-cols-2">
+                {claims.length > 0 && (
+                  <section className="aiox-panel bg-[#0f0f11]">
+                    <ResearchPanelHead eyebrow="claims" title="Claims verificáveis" meta={`${claims.length}`} />
+                    <div className="grid gap-3 p-4">
+                      {claims.slice(0, 8).map((claim, index) => (
+                        <article key={stableRecordKey(claim, index, ["id", "claim"])} className="border border-[#f5f4e7]/10 bg-[#050505] p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                              {stringValue(claim, "id", `CL-${index + 1}`)}
+                            </span>
+                            <span className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>
+                              {stringValue(claim, "confidence", "confidence n/a")}
+                            </span>
+                          </div>
+                          <p className="mt-3 text-[16px] font-black leading-[1.35] text-[#f5f4e7]">
+                            {stringValue(claim, "claim", "Claim sem texto.")}
+                          </p>
+                          <p className="mt-3 text-[13px] leading-[1.5] text-[#f5f4e7]/58">
+                            {stringValue(claim, "implication", "Sem implicação estruturada.")}
+                          </p>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {validationChecks.length > 0 && (
+                  <section className="aiox-panel bg-[#0f0f11]">
+                    <ResearchPanelHead eyebrow="validation" title="Checks estruturais" meta={`${validationChecks.length}`} />
+                    <div className="grid gap-3 p-4">
+                      {validationChecks.slice(0, 8).map((check, index) => (
+                        <article key={stableRecordKey(check, index, ["id", "check", "name"])} className="grid gap-3 border border-[#f5f4e7]/10 bg-[#050505] p-4 sm:grid-cols-[110px_minmax(0,1fr)]">
+                          <div className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                            {stringValue(check, "status", "status n/a")}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="aiox-safe-text text-[16px] font-black leading-tight text-[#f5f4e7]">
+                              {stringValue(check, "id", stringValue(check, "name", `Check ${index + 1}`))}
+                            </div>
+                            <p className="mt-1 text-[13px] leading-[1.45] text-[#f5f4e7]/58">
+                              {stringValue(check, "message", stringValue(check, "summary", "Sem mensagem estruturada."))}
+                            </p>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </div>
+            </ResearchStorySection>
+          )}
+
+          {sourceSummary.length > 0 && (
+            <ResearchStorySection
+              step={claims.length > 0 || validationChecks.length > 0 ? "04" : "03"}
               title="Quais arquivos materializam a prova"
               copy="Use este bloco para checar rapidamente se os artefatos que deveriam existir estão presentes no run."
             >
@@ -2822,28 +4169,62 @@ function ResearchRecommendationsReport({ documents }: { documents: ObservatoryDo
     documents.find((doc) => doc.phase === "recommend" && /recommend/i.test(doc.file)) ??
     docMap.get("03-recommendations.md")
   const quickWinsDoc = docMap.get("quick-wins.md")
+  const actionPlan = asDisplayRecord(parseOptionalArtifact(docMap.get("action-plan.yaml")))
+  const riskRegister = asDisplayRecord(parseOptionalArtifact(docMap.get("risk-register.yaml")))
+  const decisionLedger = asDisplayRecord(parseOptionalArtifact(docMap.get("decision-ledger.yaml")))
   const followupDocs = documents.filter((doc) => /followup|follow-up|deepening|decision/i.test(doc.file))
   const curiosity = asDisplayRecord(parseOptionalArtifact(docMap.get("curiosity_queue.yaml")))
   const questions = arrayValue(curiosity, "questions").map((item) => asDisplayRecord(item))
   const highQuestions = questions.filter((q) => stringValue(q, "priority", "").toUpperCase() === "HIGH")
+  const actionDecision = asDisplayRecord(recordValue(actionPlan, "decision"))
+  const actionRows = arrayValue(actionPlan, "actions").map((item) => asDisplayRecord(item))
+  const roadmapRows = arrayValue(actionPlan, "roadmap").map((item) => asDisplayRecord(item))
+  const riskRows = arrayValue(riskRegister, "risks").map((item) => asDisplayRecord(item))
+  const decisionRows = arrayValue(decisionLedger, "decisions").map((item) => asDisplayRecord(item))
 
   const recommendationText = recommendationsDoc?.content ?? ""
   const decision = extractMarkdownSection(recommendationText, ["Decisão Recomendada", "Decisão", "Veredito"])
   const nextSteps = extractMarkdownSection(recommendationText, ["Próximos Passos", "Next Steps"])
-  const decisionSummary = sentenceSummary(decision, 170)
-  const nextStepItems = extractMarkdownListItems(recommendationText, ["Próximos Passos", "Next Steps"])
+  const decisionSummary = stringValue(actionDecision, "summary", sentenceSummary(decision, 170))
+  const decisionTitle = stringValue(actionDecision, "title", decisionSummary)
+  const nextStepItems = actionRows.length > 0
+    ? actionRows.map((action) => stringValue(action, "title", "")).filter(Boolean)
+    : extractMarkdownListItems(recommendationText, ["Próximos Passos", "Next Steps"])
   const fallbackNextStepItems = splitOperationalChecklist(nextSteps)
-  const antiPatterns = extractMarkdownTable(recommendationText, ["Anti-Patterns", "O que NÃO fazer"]).slice(0, 6)
-  const roadmap = extractMarkdownTable(recommendationText, ["Implementation Roadmap", "Roadmap"]).slice(0, 7)
+  const antiPatterns = riskRows.length > 0
+    ? riskRows.map((risk) => [
+        stringValue(risk, "risk", stringValue(risk, "title", "Risco")),
+        stringValue(risk, "severity", "—"),
+        stringValue(risk, "mitigation", stringValue(risk, "trigger", "")),
+      ])
+    : extractMarkdownTable(recommendationText, ["Anti-Patterns", "O que NÃO fazer"]).slice(0, 6)
+  const roadmap = roadmapRows.length > 0
+    ? roadmapRows.map((item) => [
+        stringValue(item, "phase", stringValue(item, "horizon", "Fase")),
+        stringValue(item, "title", "Marco"),
+        stringValue(item, "outcome", stringValue(item, "priority", "")),
+        stringValue(item, "effort", ""),
+        stringValue(item, "status", ""),
+      ])
+    : extractMarkdownTable(recommendationText, ["Implementation Roadmap", "Roadmap"]).slice(0, 7)
   const mapping = extractMarkdownTable(recommendationText, ["Mapping para o Projeto"]).slice(0, 6)
-  const quickWins = extractMarkdownTable(quickWinsDoc?.content ?? recommendationText, ["Quick Wins", "Resumo"]).slice(0, 6)
+  const quickWins = actionRows.length > 0
+    ? actionRows.map((action) => [
+        stringValue(action, "id", "Ação"),
+        stringValue(action, "title", "Ação"),
+        stringValue(action, "priority", "—"),
+        stringValue(action, "owner_hint", stringValue(action, "owner", "")),
+        stringValue(action, "status", ""),
+        stringValue(action, "rationale", stringValue(action, "evidence", "")),
+      ]).slice(0, 6)
+    : extractMarkdownTable(quickWinsDoc?.content ?? recommendationText, ["Quick Wins", "Resumo"]).slice(0, 6)
   const followupCards = followupDocs.slice(0, 5).map((doc) => ({
     file: doc.file,
     title: markdownTitle(doc.content) || humanizeResearchLabel(doc.file.replace(/\.[^.]+$/, "")),
     summary: markdownSummary(doc.content),
   }))
 
-  const totalActions = roadmap.length + quickWins.length + highQuestions.length
+  const totalActions = (actionRows.length || roadmap.length + quickWins.length) + highQuestions.length
 
   return (
     <LightScrollArea className="aiox-report-dark flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="var(--report-bg)" style={observatoryDarkThemeVars}>
@@ -2856,7 +4237,7 @@ function ResearchRecommendationsReport({ documents }: { documents: ObservatoryDo
           accentLabel="ações detectadas"
           metrics={[
             ["Roadmap", roadmap.length],
-            ["Quick wins", quickWins.length],
+            ["Ações YAML", actionRows.length],
             ["P1 abertas", highQuestions.length],
           ]}
         />
@@ -2868,12 +4249,17 @@ function ResearchRecommendationsReport({ documents }: { documents: ObservatoryDo
             copy="Comece pelo veredito e pelo próximo movimento. Essa seção deve responder se a pesquisa pede construir, aprofundar ou pausar."
           >
             <section className="aiox-panel bg-[#0f0f11]">
-              <ResearchPanelHead eyebrow="decision" title="Decisão recomendada" meta={recommendationsDoc?.file ?? "recomendações"} />
+              <ResearchPanelHead eyebrow="decision" title="Decisão recomendada" meta={actionRows.length > 0 ? "action-plan.yaml" : recommendationsDoc?.file ?? "recomendações"} />
               <div className="grid gap-px bg-[#f5f4e7]/10 lg:grid-cols-[minmax(0,1fr)_420px]">
                 <div className="bg-[#050505] p-5">
                   <div className="text-[10px] uppercase tracking-[0.14em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
                     resumo
                   </div>
+                  {decisionTitle && decisionTitle !== decisionSummary && (
+                    <div className="aiox-safe-text mt-3 text-[18px] font-black leading-tight text-[#d1ff00]" style={{ fontFamily: DISPLAY_FONT }}>
+                      {decisionTitle}
+                    </div>
+                  )}
                   <p className="aiox-safe-text mt-3 max-w-[900px] text-[28px] font-black leading-[1.08] tracking-[-0.045em] text-[#f5f4e7] sm:text-[36px]" style={{ fontFamily: DISPLAY_FONT }}>
                     {decisionSummary || "Sem decisão recomendada estruturada neste run."}
                   </p>
@@ -2957,13 +4343,13 @@ function ResearchRecommendationsReport({ documents }: { documents: ObservatoryDo
             </ResearchStorySection>
           )}
 
-          {(mapping.length > 0 || highQuestions.length > 0 || antiPatterns.length > 0) && (
+          {(mapping.length > 0 || highQuestions.length > 0 || antiPatterns.length > 0 || decisionRows.length > 0) && (
             <ResearchStorySection
               step="04"
-              title="Impacto, riscos e limites"
-              copy="Antes de transformar a pesquisa em backlog, veja o que muda no produto, quais perguntas ainda seguram a decisão e o que não deve entrar agora."
+              title="Impacto, riscos e decisões"
+              copy="Antes de transformar a pesquisa em backlog, veja o que muda no produto, quais decisões sustentam o plano, quais perguntas ainda seguram a decisão e quais riscos precisam de mitigação."
             >
-              <div className="grid gap-5 xl:grid-cols-3">
+              <div className="grid gap-5 xl:grid-cols-4">
                 {mapping.length > 0 && (
                   <section className="aiox-panel bg-[#0f0f11]">
                     <ResearchPanelHead eyebrow="produto" title="Mudanças" meta={`${mapping.length}`} />
@@ -2975,6 +4361,32 @@ function ResearchRecommendationsReport({ documents }: { documents: ObservatoryDo
                           </div>
                           <p className="mt-2 text-[14px] font-black leading-[1.35] text-[#f5f4e7]">{row[2] ?? row[1]}</p>
                           <p className="mt-2 line-clamp-3 text-[12.5px] leading-[1.45] text-[#f5f4e7]/58">{row[3] ?? row.at(-1)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {decisionRows.length > 0 && (
+                  <section className="aiox-panel bg-[#0f0f11]">
+                    <ResearchPanelHead eyebrow="ledger" title="Decisões" meta={`${decisionRows.length}`} />
+                    <div className="grid gap-3 p-4">
+                      {decisionRows.slice(0, 5).map((decision, index) => (
+                        <div key={stableRecordKey(decision, index, ["id", "decision"])} className="border border-[#f5f4e7]/10 bg-[#050505] p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                              {stringValue(decision, "id", `DEC-${index + 1}`)}
+                            </span>
+                            <span className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/38" style={{ fontFamily: MONO_FONT }}>
+                              {stringValue(decision, "status", "status n/a")}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-[14px] font-black leading-[1.35] text-[#f5f4e7]">
+                            {stringValue(decision, "decision", "Decisão sem texto.")}
+                          </p>
+                          <p className="mt-2 line-clamp-3 text-[12.5px] leading-[1.45] text-[#f5f4e7]/58">
+                            {stringValue(decision, "consequence", "Sem consequência estruturada.")}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -3000,7 +4412,7 @@ function ResearchRecommendationsReport({ documents }: { documents: ObservatoryDo
 
                 {antiPatterns.length > 0 && (
                   <section className="aiox-panel bg-[#0f0f11]">
-                    <ResearchPanelHead eyebrow="evitar" title="Fora de escopo" meta={`${antiPatterns.length}`} />
+                    <ResearchPanelHead eyebrow={riskRows.length > 0 ? "risks" : "evitar"} title={riskRows.length > 0 ? "Riscos" : "Fora de escopo"} meta={`${antiPatterns.length}`} />
                     <div className="grid gap-2 p-4">
                       {antiPatterns.map((row, index) => (
                         <div key={`${row[0]}-${index}`} className="border border-[#f5f4e7]/10 bg-[#050505] p-3">
@@ -3334,14 +4746,16 @@ function ResearchArtifactDag({
     <div className="overflow-x-auto border border-[#f5f4e7]/10 bg-[#050505]">
       <svg viewBox="0 0 560 390" className="min-h-[320px] min-w-[560px] w-full" role="img" aria-label="Grafo dos artefatos da pesquisa">
         {edges.slice(0, 28).map((edge, index) => {
-          const from = positions.get(stringValue(edge, "from", ""))
-          const to = positions.get(stringValue(edge, "to", ""))
+          const edgeFrom = graphEdgeFrom(edge)
+          const edgeTo = graphEdgeTo(edge)
+          const from = positions.get(edgeFrom)
+          const to = positions.get(edgeTo)
           if (!from || !to) return null
-          const relation = stringValue(edge, "relation", "")
+          const relation = graphEdgeRelation(edge)
           const color = /follow|spawn/i.test(relation) ? "#0099ff" : /checkpoint|wave/i.test(relation) ? "#f5b340" : "#d1ff00"
           return (
             <line
-              key={`${stringValue(edge, "from")}-${stringValue(edge, "to")}-${index}`}
+              key={`${edgeFrom}-${edgeTo}-${relation}-${index}`}
               x1={from.x}
               y1={from.y}
               x2={to.x}
@@ -3406,6 +4820,119 @@ function ResearchWaveFlow({
             </div>
           ))}
         </div>
+      </div>
+    </section>
+  )
+}
+
+function ResearchDecisionRubricPanel({ rubric }: { rubric: Record<string, unknown> }) {
+  const status = stringValue(rubric, "status", "missing")
+  const applicability = asDisplayRecord(recordValue(rubric, "applicability"))
+  const model = asDisplayRecord(recordValue(rubric, "model"))
+  const dimensions = arrayValue(rubric, "dimensions").map((item) => asDisplayRecord(item))
+  const categories = arrayValue(rubric, "categories").map((item) => asDisplayRecord(item))
+  const presets = arrayValue(rubric, "presets").map((item) => asDisplayRecord(item))
+  const players = arrayValue(rubric, "players").map((item) => asDisplayRecord(item))
+  const rankings = asDisplayRecord(recordValue(rubric, "rankings"))
+  const baselineRanking = arrayValue(rankings, "equal").map((item) => asDisplayRecord(item)).slice(0, 6)
+  const top = baselineRanking[0]
+
+  if (status === "missing" || Object.keys(rubric).length === 0) {
+    return (
+      <section className="aiox-panel mt-5 bg-[#0f0f11]">
+        <ResearchPanelHead eyebrow="rubrica" title="Rubrica decisória" meta="não gerada" />
+        <div className="border-t border-[#f5f4e7]/10 bg-[#050505] p-5 text-[14px] leading-[1.55] text-[#f5f4e7]/58">
+          Este run ainda não tem `decision-rubric.yaml`. A pesquisa pode listar players, mas não consegue recalcular ranking por critérios de decisão.
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section className="aiox-panel mt-5 bg-[#0f0f11]">
+      <ResearchPanelHead
+        eyebrow="rubrica"
+        title="Avaliação ponderada dos players"
+        meta={status === "applicable" ? `${players.length} players · ${presets.length} presets` : status}
+      />
+      <div className="grid gap-px bg-[#f5f4e7]/10 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="bg-[#050505] p-5">
+          <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.14em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                {status === "applicable" ? "aplicável" : "não aplicável"}
+              </div>
+              <h3 className="aiox-safe-text mt-2 text-[30px] font-black leading-none tracking-[-0.045em] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+                {top ? `${stringValue(top, "player_name", "Sem líder")} lidera no baseline` : "Sem ranking calculável"}
+              </h3>
+              <p className="mt-3 max-w-[760px] text-[14px] leading-[1.55] text-[#f5f4e7]/62">
+                {stringValue(model, "purpose", "A Rubrica transforma players detectados pela pesquisa em ranking ponderado por critérios.")}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-px bg-[#f5f4e7]/10">
+              <ResearchDarkMetric label="Dimensões" value={String(dimensions.length)} />
+              <ResearchDarkMetric label="Categorias" value={String(categories.length)} />
+              <ResearchDarkMetric label="Presets" value={String(presets.length)} />
+              <ResearchDarkMetric label="Claims" value={String(numberValue(applicability, "claim_count") ?? 0)} />
+            </div>
+          </div>
+
+          {baselineRanking.length > 0 && (
+            <div className="mt-5 grid gap-2">
+              {baselineRanking.map((row) => {
+                const score = Math.max(0, Math.min(100, numberValue(row, "score") ?? 0))
+                return (
+                  <div key={`${stringValue(row, "player_id", "")}-${stringValue(row, "rank", "")}`} className="grid gap-3 border border-[#f5f4e7]/10 bg-[#101010] p-3 md:grid-cols-[42px_minmax(0,1fr)_72px_minmax(120px,0.32fr)] md:items-center">
+                    <div className="text-[24px] font-black leading-none tracking-[-0.05em] text-[#d1ff00]" style={{ fontFamily: DISPLAY_FONT }}>
+                      {String(numberValue(row, "rank") ?? 0).padStart(2, "0")}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="aiox-safe-text text-[17px] font-black leading-tight text-[#f5f4e7]">{stringValue(row, "player_name", "Player")}</div>
+                      <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/34" style={{ fontFamily: MONO_FONT }}>preset baseline · pesos iguais</div>
+                    </div>
+                    <div className="text-[22px] font-black text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>{score.toFixed(1)}</div>
+                    <div className="h-2 border border-[#f5f4e7]/10 bg-[#050505]">
+                      <div className="h-full bg-[#d1ff00]" style={{ width: `${score}%` }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {status !== "applicable" && (
+            <div className="mt-5 border border-[#f5b340]/25 bg-[#15110a] p-4 text-[13px] leading-[1.5] text-[#f5f4e7]/68">
+              Motivo: {stringValue(applicability, "reason", "requires_at_least_two_included_players")}. O artefato continua válido para provar que a pesquisa não tinha comparação suficiente.
+            </div>
+          )}
+        </div>
+
+        <aside className="grid content-start gap-px bg-[#f5f4e7]/10">
+          <div className="bg-[#050505] p-4">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>dimensões</div>
+            <div className="mt-3 grid gap-2">
+              {dimensions.slice(0, 6).map((dimension) => (
+                <div key={stringValue(dimension, "id", stringValue(dimension, "name", ""))} className="border border-[#f5f4e7]/10 bg-[#101010] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{stringValue(dimension, "id", "D")}</span>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-[#f5f4e7]/34" style={{ fontFamily: MONO_FONT }}>{stringValue(dimension, "category", "C")}</span>
+                  </div>
+                  <div className="aiox-safe-text mt-1 text-[15px] font-black leading-tight text-[#f5f4e7]">{stringValue(dimension, "name", "Dimensão")}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-[#050505] p-4">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>presets</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {presets.map((preset) => (
+                <span key={stringValue(preset, "key", stringValue(preset, "name", ""))} className="border border-[#f5f4e7]/12 bg-[#101010] px-2 py-1 text-[10px] uppercase tracking-[0.11em] text-[#f5f4e7]/58" style={{ fontFamily: MONO_FONT }}>
+                  {stringValue(preset, "name", "Preset")}
+                </span>
+              ))}
+            </div>
+          </div>
+        </aside>
       </div>
     </section>
   )
@@ -3545,7 +5072,7 @@ function matrixTone(column: string, text: string) {
     return { label: "referência", bg: "#071019", accent: "#0099ff" }
   }
   if (/alto|p0|p1|recomend|adotar|quick|valor/.test(sample)) {
-    return { label: "ação", bg: "#111605", accent: "#d1ff00" }
+    return { label: "ação", bg: "#111113", accent: "#d1ff00" }
   }
   return { label: "sinal", bg: "#0b0b0b", accent: "#f5b340" }
 }
@@ -3921,6 +5448,96 @@ function booleanValue(value: unknown, key: string) {
 function numberValue(value: unknown, key: string): number | null {
   const next = Number(recordValue(value, key))
   return Number.isFinite(next) ? next : null
+}
+
+function normalizeResearchScore(value: unknown): number {
+  const next = Number(value)
+  if (!Number.isFinite(next)) return 0
+  const normalized = next > 0 && next <= 1 ? next * 100 : next
+  return Math.round(Math.max(0, Math.min(100, normalized)))
+}
+
+function mergeResearchQuestions(curiosity: Record<string, unknown>): Array<Record<string, unknown>> {
+  const seen = new Set<string>()
+  return [...arrayValue(curiosity, "questions"), ...arrayValue(curiosity, "items")]
+    .map((item) => asDisplayRecord(item))
+    .filter((item) => {
+      const id = stringValue(item, "id", stringValue(item, "question", ""))
+      if (!id || seen.has(id)) return false
+      seen.add(id)
+      return true
+    })
+}
+
+function researchPhaseRows(value: unknown): Array<{ id: string; label: string; status: string }> {
+  if (Array.isArray(value)) {
+    return value.map((item, index) => {
+      const row = asDisplayRecord(item)
+      const id = stringValue(row, "id", `phase-${index + 1}`)
+      return {
+        id,
+        label: humanizeResearchLabel(stringValue(row, "name", id)),
+        status: stringValue(row, "status", "—"),
+      }
+    })
+  }
+  return Object.entries(asDisplayRecord(value)).map(([id, rawStatus]) => ({
+    id,
+    label: humanizeResearchLabel(id),
+    status: typeof rawStatus === "string" || typeof rawStatus === "number" ? String(rawStatus) : stringValue(asDisplayRecord(rawStatus), "status", "—"),
+  }))
+}
+
+function researchDecisionTitle(actionPlan: Record<string, unknown>, metrics: Record<string, unknown>, fallback: string) {
+  const actionDecision = asDisplayRecord(recordValue(actionPlan, "decision"))
+  const metricsDecision = asDisplayRecord(recordValue(metrics, "decision"))
+  return stringValue(actionDecision, "title", stringValue(metricsDecision, "summary", fallback))
+}
+
+function researchDecisionSummary(actionPlan: Record<string, unknown>, metrics: Record<string, unknown>) {
+  const actionDecision = asDisplayRecord(recordValue(actionPlan, "decision"))
+  const metricsDecision = asDisplayRecord(recordValue(metrics, "decision"))
+  return stringValue(actionDecision, "summary", stringValue(metricsDecision, "selected_option", stringValue(metrics, "stop_reason", "Sem stop reason estruturado.")))
+}
+
+function researchGraphEdges(graph: Record<string, unknown>): Array<Record<string, unknown>> {
+  return [...arrayValue(graph, "edges"), ...arrayValue(graph, "links")]
+    .map((item) => asDisplayRecord(item))
+    .filter((edge, index, edges) => {
+      const from = graphEdgeFrom(edge)
+      const to = graphEdgeTo(edge)
+      if (!from || !to) return false
+      const key = `${from}::${to}::${graphEdgeRelation(edge)}`
+      return edges.findIndex((candidate) => `${graphEdgeFrom(candidate)}::${graphEdgeTo(candidate)}::${graphEdgeRelation(candidate)}` === key) === index
+    })
+}
+
+function graphEdgeFrom(edge: Record<string, unknown>) {
+  return stringValue(edge, "from", stringValue(edge, "source", ""))
+}
+
+function graphEdgeTo(edge: Record<string, unknown>) {
+  return stringValue(edge, "to", stringValue(edge, "target", ""))
+}
+
+function graphEdgeRelation(edge: Record<string, unknown>) {
+  return stringValue(edge, "relation", stringValue(edge, "type", ""))
+}
+
+function stableRecordKey(record: Record<string, unknown>, index: number, keys: string[]) {
+  for (const key of keys) {
+    const value = stringValue(record, key, "")
+    if (value) return `${key}:${value}:${index}`
+  }
+  return `record:${index}`
+}
+
+function researchEventStatus(event: Record<string, unknown>) {
+  return stringValue(event, "status", stringValue(event, "event", "registrado"))
+}
+
+function researchEventSummary(event: Record<string, unknown>) {
+  return stringValue(event, "summary", stringValue(event, "notes", stringValue(event, "action", stringValue(event, "event", "Evento registrado."))))
 }
 
 function renderStructuredArtifactReport(file: string, parsed: unknown): ReactNode | null {
@@ -5266,12 +6883,36 @@ function SourcesView({
   )
 }
 
-function ResearchPlayersView({ players }: { players: ObservatoryPlayer[] }) {
+function ResearchPlayersView({ players, documents }: { players: ObservatoryPlayer[]; documents: ObservatoryDocument[] }) {
+  const docMap = new Map(documents.map((doc) => [doc.file, doc]))
+  const decisionRubric = asDisplayRecord(parseOptionalArtifact(docMap.get("decision-rubric.yaml")))
   const tiers = [1, 2, 3] as const
   const included = players.filter((player) => !player.excluded)
   const excluded = players.filter((player) => player.excluded)
   const untiered = players.filter((player) => player.tier == null)
   const categories = countBy(players, (player) => player.category ?? "sem categoria").slice(0, 8)
+  const tierMeaningFromData = (tier: 1 | 2 | 3, fallback: string) =>
+    included.find((player) => player.tier === tier && player.tierMeaning)?.tierMeaning ?? fallback
+  const tierMeta = {
+    1: {
+      label: "Tier 1",
+      title: "Usar agora",
+      meaning: tierMeaningFromData(1, "Peças primárias para construir a solução."),
+    },
+    2: {
+      label: "Tier 2",
+      title: "Aprender / copiar padrão",
+      meaning: tierMeaningFromData(2, "Referências que informam a arquitetura, mas não são o centro."),
+    },
+    3: {
+      label: "Tier 3",
+      title: "Monitorar / adiar",
+      meaning: tierMeaningFromData(3, "Contexto secundário, útil só se o escopo crescer."),
+    },
+  } as const
+  const tierOne = included.filter((player) => player.tier === 1)
+  const highFit = included.filter((player) => player.fit?.toLowerCase() === "high")
+  const primaryAction = tierOne[0]?.action ?? tierOne[0]?.insight ?? "Definir qual player vira ação no roadmap."
 
   return (
     <LightScrollArea className="aiox-report-dark flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="var(--report-bg)" style={observatoryDarkThemeVars}>
@@ -5289,6 +6930,35 @@ function ResearchPlayersView({ players }: { players: ObservatoryPlayer[] }) {
           ]}
         />
 
+        <section className="aiox-panel mt-5 bg-[#0f0f11]">
+          <ResearchPanelHead eyebrow="how to read" title="Como esta aba gera decisão" meta={`${tierOne.length} peças centrais`} />
+          <div className="grid gap-px bg-[#f5f4e7]/10 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)]">
+            <div className="bg-[#050505] p-5">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                leitura operacional
+              </div>
+              <p className="mt-3 max-w-[980px] text-[18px] font-black leading-[1.28] text-[#f5f4e7]" style={{ fontFamily: DISPLAY_FONT }}>
+                {tierMeta[1].meaning} {tierMeta[2].meaning} {tierMeta[3].meaning}
+              </p>
+              <p className="mt-3 max-w-[900px] text-[14px] leading-[1.55] text-[#f5f4e7]/62">
+                Para este run, o insight não é “quem existe no mercado”; é quais peças entram no desenho do SDC Supervisor Runtime e quais servem só como referência.
+              </p>
+            </div>
+            <div className="bg-[#d1ff00] p-5 text-[#050505]">
+              <div className="text-[10px] uppercase tracking-[0.14em] opacity-65" style={{ fontFamily: MONO_FONT }}>
+                próxima decisão
+              </div>
+              <p className="mt-3 text-[18px] font-black leading-[1.3]">{primaryAction}</p>
+              <div className="mt-4 grid grid-cols-2 gap-px bg-[#050505]/20 text-[11px] uppercase tracking-[0.1em]" style={{ fontFamily: MONO_FONT }}>
+                <div className="bg-[#d1ff00] py-2">high fit</div>
+                <div className="bg-[#d1ff00] py-2 text-right">{highFit.length}</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <ResearchDecisionRubricPanel rubric={decisionRubric} />
+
         <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
           <section className="aiox-panel bg-[#0f0f11]">
             <ResearchPanelHead eyebrow="tiers" title="Mapa competitivo" meta={`${included.length} incluídos`} />
@@ -5298,14 +6968,20 @@ function ResearchPlayersView({ players }: { players: ObservatoryPlayer[] }) {
             <div className="grid gap-px bg-[#f5f4e7]/10 p-px xl:grid-cols-3">
           {tiers.map((tier) => {
             const tierPlayers = players.filter((player) => player.tier === tier)
+            const meta = tierMeta[tier]
             return (
               <section key={tier} className="min-w-0 bg-[#050505]">
                 <div
-                  className="flex items-center justify-between border-b border-[#f5f4e7]/10 px-4 py-3 text-[10.5px] uppercase tracking-[0.16em] text-[#f5f4e7]/42"
+                  className="border-b border-[#f5f4e7]/10 px-4 py-3"
                   style={{ fontFamily: MONO_FONT }}
                 >
-                  <span>Tier {tier}</span>
-                  <span>{tierPlayers.length}</span>
+                  <div className="flex items-center justify-between text-[10.5px] uppercase tracking-[0.16em] text-[#f5f4e7]/42">
+                    <span>{meta.label} · {meta.title}</span>
+                    <span>{tierPlayers.length}</span>
+                  </div>
+                  <p className="mt-1 text-[11px] normal-case leading-[1.35] tracking-normal text-[#f5f4e7]/45" style={{ fontFamily: SANS_FONT }}>
+                    {meta.meaning}
+                  </p>
                 </div>
                 <div className="grid gap-3 p-4">
                   {tierPlayers.length === 0 && (
@@ -5405,6 +7081,28 @@ function ResearchPlayerCompactRow({ player, index = 0 }: { player: ObservatoryPl
               {player.category ?? "sem categoria"}
             </span>
           </div>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {player.fit && (
+              <span className={cn(
+                "border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em]",
+                player.fit.toLowerCase() === "high"
+                  ? "border-[#d1ff00]/55 text-[#d1ff00]"
+                  : "border-[#f5f4e7]/12 text-[#f5f4e7]/42",
+              )} style={{ fontFamily: MONO_FONT }}>
+                fit {player.fit}
+              </span>
+            )}
+            {player.role && (
+              <span className="border border-[#f5f4e7]/12 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.1em] text-[#f5f4e7]/42" style={{ fontFamily: MONO_FONT }}>
+                {player.role}
+              </span>
+            )}
+          </div>
+          {player.action && (
+            <p className="mt-2 border-l border-[#d1ff00]/65 pl-2 text-[12.5px] font-bold leading-[1.42] text-[#d1ff00]/82">
+              {player.action}
+            </p>
+          )}
           {(player.insight || player.whatItDoes) && (
             <p className="mt-2 line-clamp-2 text-[12.5px] leading-[1.45] text-[#f5f4e7]/62">
               {player.insight ?? player.whatItDoes}

@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { ResearchWorkbench } from "@/components/research/research-workbench"
 import { getResearchCliDiscovery } from "@/lib/research-cli.server"
 import { getRecentResearchRunSummaries } from "@/lib/research-observatory.server"
+import type { ResearchMethodId } from "@/lib/research-workbench-contract"
 
 export const dynamic = "force-dynamic"
 
@@ -36,6 +37,7 @@ export default async function ResearchPage({ searchParams }: ResearchPageProps) 
         sampleFiles: run.sampleFiles,
         waves: run.waves,
       }))}
+      initialMethodId={methodFromType(firstParam(params.type))}
       initialRunIds={splitParam(params.runs)}
       initialConsolidationRunId={firstParam(params.consolidation)}
     />
@@ -53,4 +55,8 @@ function splitParam(value: string | string[] | undefined) {
 function firstParam(value: string | string[] | undefined) {
   if (Array.isArray(value)) return value[0] ?? null
   return value ?? null
+}
+
+function methodFromType(value: string | null): ResearchMethodId | undefined {
+  return value === "bench" ? "benchmark" : undefined
 }

@@ -407,7 +407,7 @@ export function SinkraMapReport({ sinkra }: { sinkra?: ObservatoryTypeSpecific["
     <LightScrollArea className="flex-1 bg-[#050505]" viewportClassName="bg-[#050505] px-4 pb-12 pt-5 sm:px-6 lg:px-8" fadeColor="#050505">
       <article className="mx-auto w-full min-w-0 max-w-[1440px]" style={SINKRA_DARK_THEME}>
         <section className="grid overflow-hidden border border-[#f5f4e7]/16 bg-[#050505] lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="bg-[#10110d] p-6 text-[#f5f4e7] sm:p-8">
+          <div className="bg-[#111113] p-6 text-[#f5f4e7] sm:p-8">
             <p className="text-[11px] uppercase tracking-[0.16em] text-[#f5f4e7]/62" style={{ fontFamily: MONO_FONT }}>
               SINKRA operational map
             </p>
@@ -798,7 +798,7 @@ function ExecutiveDarkDeck({ pilot, sinkra }: { pilot: SinkraPilotMap; sinkra?: 
         </aside>
       </div>
 
-      <div className={cn("border-y px-6 py-7 sm:px-8", vetoActive ? "border-[#ef4444] bg-[#120808]" : "border-[#d1ff00]/45 bg-[#071006]")}>
+      <div className={cn("border-y px-6 py-7 sm:px-8", vetoActive ? "border-[#ef4444] bg-[#120808]" : "border-[#d1ff00]/45 bg-[#111113]")}>
         <div className="grid gap-8 xl:grid-cols-[280px_minmax(0,1fr)_320px] xl:items-center">
           <div>
             <div className={cn("text-[11px] uppercase tracking-[0.16em]", vetoActive ? "text-[#ef4444]" : "text-[#d1ff00]")} style={{ fontFamily: MONO_FONT }}>
@@ -1950,7 +1950,7 @@ function FlowExecutiveStrip({
             </div>
           </div>
         </div>
-        <aside className="bg-[#10110d] p-5">
+        <aside className="bg-[#111113] p-5">
           <DarkSectionTitle eyebrow="Contrato do fluxo" title="O que precisa existir" />
           <div className="mt-5 grid gap-3">
             <DarkStat label="DAG nodes" value={String(nodes)} tone={nodes > 0 ? "good" : "warn"} />
@@ -2728,7 +2728,7 @@ function DeepTabHero({
 }) {
   return (
     <section className="grid min-w-0 overflow-hidden border border-[#f5f4e7]/16 bg-[#050505] lg:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="min-w-0 bg-[#10110d] p-6 text-[#f5f4e7] sm:p-8">
+      <div className="min-w-0 bg-[#111113] p-6 text-[#f5f4e7] sm:p-8">
         <p className="text-[11px] uppercase tracking-[0.16em] text-[#f5f4e7]/58" style={{ fontFamily: MONO_FONT }}>
           {eyebrow}
         </p>

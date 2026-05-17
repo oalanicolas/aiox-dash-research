@@ -95,6 +95,10 @@ export type BenchPersona = {
   id: string
   label: string
   sub: string
+  job: string
+  mustHave: string[]
+  antiGoals: string[]
+  decisiveDimensions: Array<{ id: string; label: string; group: string; weight: number }>
   weights: number[]
   totals: BenchMetric[]
   ranking: BenchPersonaRanking[]
@@ -103,6 +107,16 @@ export type BenchPersona = {
   delta: number | null
   verdict: string
   tiebreaker: string
+}
+
+export type BenchSourceEntry = {
+  id: string
+  url: string
+  title: string
+  date: string
+  credibility: string
+  multiplier?: number
+  flags: string[]
 }
 
 export type BenchPlayerProfile = {
@@ -254,6 +268,8 @@ export type BenchDashboardData = {
   method: string
   confidenceBreakdown: string
   narrative: string
+  sources: BenchSourceEntry[]
+  sourceSummary: string[]
   categorical: BenchCategoricalWinner[]
   tiebreakers: BenchTiebreaker[]
   cliffs: BenchCliff[]
@@ -351,8 +367,10 @@ function collectNumbers(input: unknown): number[] {
   return []
 }
 
-function inferScore(scorecard: unknown, metadata: unknown, files: string[]) {
+function inferScore(scorecard: unknown, metadata: unknown, files: string[], dash?: unknown) {
   const explicit =
+    getAtPath(dash, ["summary", "score"]) ??
+    getAtPath(dash, ["summary", "coverage_sort_key"]) ??
     getAtPath(scorecard, ["scorecard", "weighted_totals"]) ??
     getAtPath(scorecard, ["weighted_totals"]) ??
     getAtPath(scorecard, ["consolidated_scorecard"]) ??
@@ -361,7 +379,7 @@ function inferScore(scorecard: unknown, metadata: unknown, files: string[]) {
   const numbers = collectNumbers(explicit)
   if (numbers.length > 0) {
     const score = Math.round(numbers.reduce((sum, n) => sum + n, 0) / numbers.length)
-    return String(Math.max(0, Math.min(99, score)))
+    return String(Math.max(0, Math.min(100, score)))
   }
 
   let score = 58
@@ -734,6 +752,10 @@ function extractPersonas(scorecard: unknown): BenchPersona[] {
         id,
         label: cleanLabel,
         sub,
+        job: formatValue(record.job, ""),
+        mustHave: Array.isArray(record.must_have) ? record.must_have.map((item) => formatValue(item, "")).filter(Boolean) : [],
+        antiGoals: Array.isArray(record.anti_goals) ? record.anti_goals.map((item) => formatValue(item, "")).filter(Boolean) : [],
+        decisiveDimensions: [],
         weights,
         totals: Object.entries(totalsSource).map(([label, total]) => ({ label, value: formatValue(total) })),
         ranking,
@@ -781,6 +803,10 @@ function extractScenarioPersonas(scorecard: unknown): BenchPersona[] {
       id,
       label: cleanLabel,
       sub,
+      job: "",
+      mustHave: [],
+      antiGoals: [],
+      decisiveDimensions: [],
       weights: [],
       totals,
       ranking,
@@ -880,6 +906,23 @@ function extractDashPersonas(dash: unknown): BenchPersona[] {
         id: formatValue(persona.id, "persona"),
         label: cleanLabel,
         sub,
+        job: formatValue(persona.job, ""),
+        mustHave: Array.isArray(persona.must_have)
+          ? persona.must_have.map((item) => formatValue(item, "")).filter(Boolean)
+          : [],
+        antiGoals: Array.isArray(persona.anti_goals)
+          ? persona.anti_goals.map((item) => formatValue(item, "")).filter(Boolean)
+          : [],
+        decisiveDimensions: Array.isArray(persona.decisive_dimensions)
+          ? persona.decisive_dimensions
+              .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+              .map((item) => ({
+                id: formatValue(item.id, ""),
+                label: formatValue(item.label, ""),
+                group: formatValue(item.group, ""),
+                weight: Number(item.weight ?? 0),
+              }))
+          : [],
         weights: normalizeWeights(persona.weights),
         totals: totalsArray,
         ranking,
@@ -1180,6 +1223,44 @@ function extractDashShortFields(dash: unknown): {
   }
 }
 
+function extractDashSources(dash: unknown): BenchSourceEntry[] {
+  if (!dash || typeof dash !== "object") return []
+  const sources = (dash as Record<string, unknown>).sources
+  if (!Array.isArray(sources)) return []
+  return sources
+    .filter((source): source is Record<string, unknown> => Boolean(source && typeof source === "object"))
+    .map((source, index) => {
+      const url = formatValue(source.url ?? source.repo_url ?? source.path ?? source.name, "")
+      const rawFlags = Array.isArray(source.flags)
+        ? source.flags
+        : [source.type, source.path ? "local_clone" : "", source.role].filter(Boolean)
+      return {
+        id: formatValue(source.id, `bench-source-${index + 1}`),
+        url,
+        title: formatValue(source.title ?? source.name ?? source.path, url || `Fonte ${index + 1}`),
+        date: formatValue(source.date, ""),
+        credibility: formatValue(source.credibility, source.type === "local_clone" ? "HIGH" : "MEDIUM").toUpperCase(),
+        multiplier: typeof source.multiplier === "number" ? source.multiplier : undefined,
+        flags: rawFlags.map((flag) => formatValue(flag, "")).filter(Boolean),
+      }
+    })
+}
+
+function extractDashSourceSummary(dash: unknown): string[] {
+  if (!dash || typeof dash !== "object") return []
+  const summary = (dash as Record<string, unknown>).source_summary
+  if (Array.isArray(summary)) return summary.map((item) => formatValue(item, "")).filter(Boolean)
+  const sources = extractDashSources(dash)
+  if (sources.length === 0) return []
+  const high = sources.filter((source) => source.credibility === "HIGH").length
+  const local = sources.filter((source) => source.flags.some((flag) => /local/i.test(flag))).length
+  return [
+    `${sources.length} fontes indexadas no bench.`,
+    `${high} fontes marcadas como alta credibilidade.`,
+    `${local} fontes vêm de clones locais ou artefatos internos.`,
+  ]
+}
+
 function extractDashGapItems(dash: unknown): BenchGapItem[] {
   if (!dash || typeof dash !== "object") return []
   const gaps = (dash as Record<string, unknown>).gaps
@@ -1287,7 +1368,7 @@ async function buildSummary(benchPath: string, slug: string): Promise<BenchRunSu
     title,
     date,
     type,
-    score: inferScore(scorecard, metadata, files),
+    score: inferScore(scorecard, metadata, files, dash),
     subjects: metadataSubjects(metadata, dash),
     files: files.length,
     hasMetadata: files.includes("metadata.json"),
@@ -1389,6 +1470,8 @@ export async function getBenchDashboardData(slugParam?: string, fileParam?: stri
   const editorsNote = await extractEditorsNote(dash, selectedPath)
   const duels = extractDashDuels(dash)
   const { shortTitle, method, confidenceBreakdown, narrative } = extractDashShortFields(dash)
+  const sources = extractDashSources(dash)
+  const sourceSummary = extractDashSourceSummary(dash)
 
   return {
     stats: {
@@ -1414,6 +1497,8 @@ export async function getBenchDashboardData(slugParam?: string, fileParam?: stri
     method,
     confidenceBreakdown,
     narrative,
+    sources,
+    sourceSummary,
     categorical,
     tiebreakers,
     cliffs,

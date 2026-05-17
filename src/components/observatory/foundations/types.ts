@@ -40,6 +40,7 @@ export type ObservatoryRunSummary = {
   /* Source-specific extras: adapters can attach arbitrary metadata
      (e.g., bench: variant, neutral_score; research: stop_reason). */
   extras?: Record<string, unknown>
+  runtimeRunIds?: string[]
 }
 
 export type ObservatorySource_Entry = {
@@ -57,7 +58,11 @@ export type ObservatoryPlayer = {
   number: string
   name: string
   tier: 1 | 2 | 3 | null
+  tierMeaning: string | null
   category: string | null
+  role: string | null
+  fit: string | null
+  action: string | null
   whatItDoes: string | null
   whatItDoesNot: string | null
   insight: string | null
@@ -99,6 +104,10 @@ export type ObservatoryPersona = {
   id: string
   label: string
   sub: string
+  job: string
+  mustHave: string[]
+  antiGoals: string[]
+  decisiveDimensions: Array<{ id: string; label: string; group: string; weight: number }>
   weights: number[]
   totals: Array<{ player: string; score: number }>
   ranking: Array<{ rank: number; player: string; score: number; delta: string }>
@@ -213,6 +222,7 @@ export type ObservatoryTypeSpecific = {
     } | null
     knowledgeIceberg: ObservatoryKnowledgeIcebergItem[]
   }
+  product?: Record<string, unknown>
   sinkra?: ObservatorySinkraMap
 }
 

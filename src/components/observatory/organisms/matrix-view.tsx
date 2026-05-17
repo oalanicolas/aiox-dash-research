@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, type CSSProperties } from "react"
 import { cn } from "@/lib/utils"
 import type {
   ObservatoryMatrix,
@@ -8,12 +8,10 @@ import type {
   ObservatoryPlayerProfile,
 } from "../foundations/types"
 import { CellDrawer, type CellDrawerData } from "../molecules/cell-drawer"
-import { CellSparkline } from "../molecules/cell-sparkline"
 import { LightScrollArea } from "../molecules/light-scroll-area"
-import { WinnerCard } from "../molecules/winner-card"
-import { DISPLAY_FONT, MONO_FONT, SANS_FONT, SERIF_FONT } from "../foundations/theme"
+import { DISPLAY_FONT, MONO_FONT, SERIF_FONT } from "../foundations/theme"
 
-const PALETTE = ["#7C9F3F", "#4F7CAC", "#C97A4A", "#8B6FB0", "#10B981", "#3B82F6", "#8B5CF6"]
+const COMPARE_PALETTE = ["#ef4444", "#3b82f6", "#f59e0b", "#8b5cf6", "#10b981", "#ec4899", "#94a3b8"]
 
 function scoreGap(row: ObservatoryMatrixRow): number {
   if (row.cells.length < 2) return 0
@@ -26,8 +24,34 @@ function formatWeight(weight: number): string {
   return String(Math.round(weight > 1 ? weight : weight * 100))
 }
 
+function formatMatrixScore(value: number): string {
+  if (!Number.isFinite(value)) return "—"
+  if (Math.abs(value) >= 100) return String(Math.round(value))
+  if (Math.abs(value) >= 10) return value.toFixed(1).replace(/\.0$/, "")
+  return value.toFixed(2).replace(/\.00$/, "").replace(/0$/, "")
+}
+
+function matrixRowKey(row: ObservatoryMatrixRow, index: number): string {
+  return `${row.id || "row"}::${index}`
+}
+
+function matrixCategory(row: ObservatoryMatrixRow): { id: string; label: string } {
+  const text = `${row.id} ${row.label} ${row.short ?? ""}`.toLowerCase()
+  if (/feature|ux|design|layout|visual|edit|output|export/.test(text)) return { id: "C01", label: "Produto" }
+  if (/price|pricing|market|fit|growth|commercial|custo|valor/.test(text)) return { id: "C02", label: "Mercado" }
+  if (/integration|support|api|desktop|workflow|ops|plataform|platform/.test(text)) return { id: "C03", label: "Operação" }
+  return { id: "C04", label: "Critérios" }
+}
+
+function matrixCellIndicator(score: number | null, isWinner: boolean): { mark: string; tone: "yes" | "part" | "no"; label: string } {
+  if (score === null || !Number.isFinite(score) || score <= 0) return { mark: "×", tone: "no", label: "ausente" }
+  if (isWinner || score >= 75) return { mark: "✓", tone: "yes", label: "forte" }
+  if (score >= 45) return { mark: "◐", tone: "part", label: "parcial" }
+  return { mark: "×", tone: "no", label: "fraco" }
+}
+
 /* Organism — Matrix view with narrative header, sticky-first-col,
- * row-winner highlight (lime), per-cell sparkline, cell intelligence panel,
+ * row-winner highlight (lime), cell intelligence panel,
  * and categorical bottom strip (top-5 dimensions with biggest score gap). */
 export function MatrixView({
   matrix,
@@ -53,32 +77,39 @@ export function MatrixView({
     () => [...matrix.totals].sort((a, b) => b.score - a.score),
     [matrix.totals],
   )
+  const groupedRows = useMemo(() => {
+    const groups: Array<{ id: string; label: string; rows: Array<{ row: ObservatoryMatrixRow; rowIndex: number }> }> = []
+    for (const [rowIndex, row] of matrix.rows.entries()) {
+      const category = matrixCategory(row)
+      let group = groups.find((item) => item.id === category.id)
+      if (!group) {
+        group = { ...category, rows: [] }
+        groups.push(group)
+      }
+      group.rows.push({ row, rowIndex })
+    }
+    return groups
+  }, [matrix.rows])
   const leader = totalsSorted[0]
   const runner = totalsSorted[1]
   const leaderGap = leader && runner ? leader.score - runner.score : 0
   const technicalTie = Math.abs(leaderGap) < 1
 
-  const categoricalRows = useMemo(
-    () => [...matrix.rows].sort((a, b) => scoreGap(b) - scoreGap(a)).slice(0, 5),
-    [matrix.rows],
-  )
+  const [selected, setSelected] = useState<{ rowKey: string; player: string } | null>(null)
 
-  const [selected, setSelected] = useState<{ rowId: string; player: string } | null>(null)
-
-  const gridStyle = {
-    gridTemplateColumns: `250px repeat(${players.length}, minmax(170px, 1fr))`,
-    minWidth: `${250 + players.length * 170}px`,
+  const matrixGridStyle = {
+    gridTemplateColumns: `minmax(320px,1fr) repeat(${players.length}, 140px) 100px`,
+    minWidth: `${320 + players.length * 140 + 100}px`,
   } as const
 
-  const colorOf = (key: string, idx: number) =>
-    profileByKey.get(key)?.color || PALETTE[idx % PALETTE.length]
+  const colorOf = (_key: string, idx: number) => COMPARE_PALETTE[idx % COMPARE_PALETTE.length]
 
   const displayName = (key: string) => profileByKey.get(key)?.name ?? key
 
   /* Build CellDrawer data lazily from current selection. */
   const drawerData: CellDrawerData | null = (() => {
     if (!selected) return null
-    const row = matrix.rows.find((r) => r.id === selected.rowId)
+    const row = matrix.rows.find((r, index) => matrixRowKey(r, index) === selected.rowKey)
     const cell = row?.cells.find((c) => c.player === selected.player)
     if (!row || !cell) return null
     const sorted = [...row.cells].sort((a, b) => b.score - a.score)
@@ -101,236 +132,97 @@ export function MatrixView({
   return (
     <div className="flex min-h-0 flex-1">
       <LightScrollArea className="flex-1" viewportClassName="px-3 pb-12 pt-4 sm:px-5 sm:pb-14 sm:pt-5 lg:px-6 lg:pb-16">
-        <div className="mx-auto w-full min-w-0 max-w-[1500px]">
-          {/* Narrative header */}
-        <div className="grid gap-6 border-b border-[var(--rule)] pb-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-          <p
-            className="text-[22px] italic leading-[1.45] text-[var(--ink-3)]"
-            style={{ fontFamily: SERIF_FONT }}
-          >
-            <strong
-              className="font-black not-italic tracking-[-0.04em] text-[var(--ink)]"
-              style={{ fontFamily: DISPLAY_FONT }}
-            >
-              {technicalTie ? "Empate técnico." : "Mapa de decisão."}
-            </strong>{" "}
-            A matriz mostra onde cada player deixa de ser intercambiável. O vencedor neutro é{" "}
-            <strong
-              className="font-black not-italic text-[var(--ink)]"
-              style={{ fontFamily: SANS_FONT }}
-            >
-              {leader ? displayName(leader.player) : "indefinido"}
-            </strong>
-            {runner
-              ? ` com ${leaderGap.toFixed(2)} ponto(s) de distância para ${displayName(runner.player)}.`
-              : "."}
-          </p>
-          <div
-            className="border-t border-[var(--rule)] pt-4 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)] xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0"
-            style={{ fontFamily: MONO_FONT }}
-          >
-            {[
-              ["players", String(players.length)],
-              ["dimensions", String(matrix.rows.length)],
-              ["leader", leader ? displayName(leader.player) : "—"],
-              ["gap", leaderGap.toFixed(2)],
-              ["method", matrix.method || "derived"],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                className="grid grid-cols-[1fr_auto] border-b border-[var(--rule)] py-2 last:border-b-0"
-              >
-                <span>{label}</span>
-                <strong className="text-[var(--ink)]">{value}</strong>
+        <div className="mx-auto w-full min-w-0 max-w-[1540px]">
+          <div className="border border-[var(--rule)] bg-[#0f0f11]">
+            <div className="grid gap-px bg-[var(--rule)] lg:grid-cols-[minmax(0,1fr)_420px]">
+              <section className="bg-[#050505] p-5 sm:p-7">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                  matriz · heatmap
+                </div>
+                <h1 className="mt-3 text-[clamp(34px,5vw,72px)] font-black leading-[0.92] tracking-[-0.07em] text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+                  {technicalTie ? "Empate técnico" : "Mapa de decisão"}
+                </h1>
+                <p className="mt-4 max-w-[920px] text-[17px] leading-[1.55] text-[var(--ink-2)]">
+                  A matriz mostra onde cada player deixa de ser intercambiável. Olhe primeiro para células em lime: elas são os vencedores por dimensão.
+                </p>
+              </section>
+              <aside className="grid bg-[#0f0f11] text-[10px] uppercase tracking-[0.13em] text-[var(--ink-3)] sm:grid-cols-2 lg:grid-cols-1" style={{ fontFamily: MONO_FONT }}>
+                {[
+                  ["players", String(players.length)],
+                  ["dimensões", String(matrix.rows.length)],
+                  ["líder", leader ? displayName(leader.player) : "—"],
+                  ["gap", leaderGap.toFixed(2)],
+                  ["método", matrix.method || "derived"],
+                ].map(([label, value]) => (
+                  <div key={label} className="grid grid-cols-[1fr_auto] border-b border-[var(--rule)] px-5 py-4 last:border-b-0">
+                    <span>{label}</span>
+                    <strong className="ml-4 text-right text-[var(--ink)]">{value}</strong>
+                  </div>
+                ))}
+              </aside>
+            </div>
+          </div>
+
+        <div className="mt-5 overflow-x-auto">
+          <div className="aiox-duel-fmx-wrap aiox-map-matrix">
+            <div className="aiox-duel-fmx-head" style={matrixGridStyle}>
+              <span className="cell">Dimensão</span>
+              {players.map((player, idx) => (
+                <span key={player} className="cell plyr">
+                  <span className={cn("dot", idx > 0 && "b")} style={{ background: colorOf(player, idx), boxShadow: idx === 0 ? undefined : "none" }} />
+                  {displayName(player)}
+                </span>
+              ))}
+              <span className="cell win">Vence</span>
+            </div>
+            {groupedRows.map((group) => (
+              <div key={group.id}>
+                <div className="aiox-duel-fmx-cat">
+                  <span className="id">{group.id}</span>
+                  {group.label}
+                  <span className="count"><b>{group.rows.length}</b> dimensões</span>
+                </div>
+                {group.rows.map(({ row, rowIndex }) => {
+                  const rowKey = matrixRowKey(row, rowIndex)
+                  const winnerCell = row.cells.reduce(
+                    (best, cell) => (cell.score > best.score ? cell : best),
+                    row.cells[0],
+                  )
+              return (
+                <div key={rowKey} className="aiox-duel-fmx-row" style={matrixGridStyle}>
+                  <div className="lab">
+                    <span className="nm">{row.label}</span>
+                    <span className="sub">{row.id} · peso {formatWeight(row.weight ?? 0)}</span>
+                  </div>
+                  {players.map((player, idx) => {
+                    const cell = row.cells.find((item) => item.player === player)
+                    const isWinner = cell?.player === winnerCell.player
+                    const isSelected = selected?.rowKey === rowKey && selected?.player === player
+                    const indicator = matrixCellIndicator(cell?.score ?? null, Boolean(isWinner))
+                    return (
+                      <button
+                        type="button"
+                        key={`${rowKey}::${player}`}
+                        onClick={() => setSelected(isSelected ? null : { rowKey, player })}
+                        className={cn("pcell", isWinner && "win", isSelected && "outline outline-2 outline-[#f5f4e7]")}
+                        style={{ "--fmx-accent": colorOf(player, idx) } as CSSProperties}
+                      >
+                        <span className={cn("aiox-duel-fmx-mark", indicator.tone)}>{indicator.mark}</span>
+                        <span className="val">{cell ? formatMatrixScore(cell.score) : "—"}</span>
+                        <span className="state">{indicator.label}</span>
+                      </button>
+                    )
+                  })}
+                  <div className="winner" style={{ "--fmx-accent": colorOf(winnerCell.player, players.indexOf(winnerCell.player)) } as CSSProperties}>
+                    {displayName(winnerCell.player)}
+                  </div>
+                </div>
+              )
+                })}
               </div>
             ))}
           </div>
         </div>
-
-        {/* Matrix grid */}
-        <div className="mt-5 overflow-x-auto border border-[var(--rule)] bg-[var(--paper)]">
-          {/* Header row — sticky top */}
-          <div
-            className="sticky top-0 z-20 grid border-b border-[var(--rule)] bg-[var(--paper-alt)]"
-            style={gridStyle}
-          >
-            <div className="sticky left-0 z-30 bg-[var(--paper-deep)] px-4 py-4">
-              <div
-                className="text-[10px] uppercase tracking-[0.14em] text-[var(--ink-3)]"
-                style={{ fontFamily: MONO_FONT }}
-              >
-                Dimension
-              </div>
-              <div
-                className="text-[13px] italic text-[var(--ink-3)]"
-                style={{ fontFamily: SERIF_FONT }}
-              >
-                {matrix.rows.length} dimensions
-              </div>
-            </div>
-            {players.map((player, idx) => {
-              const profile = profileByKey.get(player)
-              const total = totalsByPlayer.get(player)
-              return (
-                <div
-                  key={player}
-                  className="border-l border-[var(--rule)] bg-[var(--paper-alt)] px-4 py-4"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-2 w-2"
-                      style={{ background: colorOf(player, idx) }}
-                    />
-                    <div
-                      className="truncate text-[18px] font-black tracking-[-0.04em] text-[var(--ink)]"
-                      style={{ fontFamily: DISPLAY_FONT }}
-                    >
-                      {displayName(player)}
-                    </div>
-                  </div>
-                  {profile && (
-                    <div
-                      className="mt-1 text-[10px] uppercase tracking-[0.1em] text-[var(--ink-3)]"
-                      style={{ fontFamily: MONO_FONT }}
-                    >
-                      {[profile.type, profile.origin, profile.years ? `${profile.years}y` : null]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </div>
-                  )}
-                  {typeof total === "number" && Number.isFinite(total) && (
-                    <div
-                      className="mt-1.5 text-[10px] uppercase tracking-[0.1em] text-[var(--ink-3)]"
-                      style={{ fontFamily: MONO_FONT }}
-                    >
-                      neutral <strong className="text-[var(--ink)]">{total.toFixed(2)}</strong>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-
-          {/* Body — one row per dimension */}
-          {matrix.rows.map((row, rowIndex) => {
-            const winnerCell = row.cells.reduce(
-              (best, cell) => (cell.score > best.score ? cell : best),
-              row.cells[0],
-            )
-            return (
-              <div
-                key={row.id}
-                className="grid border-b border-[var(--rule)] last:border-b-0"
-                style={gridStyle}
-              >
-                <div className="sticky left-0 z-10 border-r border-[var(--rule)] bg-[var(--paper-deep)] px-4 py-3">
-                  <div
-                    className="text-[9px] uppercase tracking-[0.12em] text-[var(--ink-3)]"
-                    style={{ fontFamily: MONO_FONT }}
-                  >
-                    {row.id} · weight {formatWeight(row.weight ?? 0)}
-                  </div>
-                  <div
-                    className="mt-1 text-[13px] font-bold leading-tight text-[var(--ink)]"
-                    style={{ fontFamily: SANS_FONT }}
-                  >
-                    {row.label}
-                  </div>
-                </div>
-                {row.cells.map((cell) => {
-                  const isWinner = cell.player === winnerCell.player
-                  const key = `${row.id}::${cell.player}`
-                  const isSelected = selected?.rowId === row.id && selected?.player === cell.player
-                  return (
-                    <button
-                      type="button"
-                      key={key}
-                      onClick={() =>
-                        setSelected(isSelected ? null : { rowId: row.id, player: cell.player })
-                      }
-                      className={cn(
-                        "border-l border-[var(--rule)] px-4 py-3 text-left transition-colors hover:bg-[var(--paper-deep)]",
-                        isWinner && "border-[#050505]/22 bg-[var(--lime-fill)] text-[#050505] hover:bg-[var(--lime-fill)]",
-                        !isWinner && rowIndex % 2 === 0 && "bg-[var(--paper-alt)]",
-                        isSelected && "outline outline-2 outline-[var(--ink)]",
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div
-                          className={cn(
-                            "text-[24px] font-black leading-none tracking-[-0.05em]",
-                            isWinner ? "text-[#050505]" : "text-[var(--ink)]",
-                          )}
-                          style={{ fontFamily: DISPLAY_FONT }}
-                        >
-                          {cell.score}
-                        </div>
-                        <div
-                          className={cn(
-                            "text-[9px] uppercase",
-                            isWinner ? "text-[#050505]/62" : "text-[var(--ink-3)]",
-                          )}
-                          style={{ fontFamily: MONO_FONT }}
-                        >
-                          {cell.confidence}
-                        </div>
-                      </div>
-                      <div
-                        className={cn(
-                          "mt-3 h-1.5",
-                          isWinner ? "bg-[#050505]/18" : "bg-[var(--paper-deep)]",
-                        )}
-                      >
-                        <div
-                          className={cn("h-full", isWinner ? "bg-[#050505]" : "bg-[var(--ink)]")}
-                          style={{ width: `${Math.max(0, Math.min(100, cell.score))}%` }}
-                        />
-                      </div>
-                      <div className="mt-2">
-                        <CellSparkline
-                          score={cell.score}
-                          evolution={cell.scoreEvolution}
-                          isWinner={isWinner}
-                        />
-                      </div>
-                      {cell.notes && (
-                        <div
-                          className={cn(
-                            "mt-2 overflow-hidden text-[12px] leading-[1.45] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:3]",
-                            isWinner ? "text-[#050505]/78" : "text-[var(--ink-2)]",
-                          )}
-                          style={{ fontFamily: SANS_FONT }}
-                        >
-                          {cell.notes}
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
-
-          {/* Categorical strip — top-5 dimensions with biggest score gap */}
-          {categoricalRows.length > 0 && (
-            <div className="mt-6 grid gap-4 xl:grid-cols-5">
-              {categoricalRows.map((row) => {
-                const winner = [...row.cells].sort((a, b) => b.score - a.score)[0]
-                if (!winner) return null
-                return (
-                  <WinnerCard
-                    key={row.id}
-                    dimensionId={row.id}
-                    gap={scoreGap(row)}
-                    winnerName={displayName(winner.player)}
-                    dimensionLabel={row.label}
-                    winnerColor={colorOf(winner.player, matrix.players.indexOf(winner.player))}
-                  />
-                )
-              })}
-            </div>
-          )}
 
           {matrix.method && (
             <p
