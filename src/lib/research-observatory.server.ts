@@ -183,6 +183,20 @@ let summaryCache:
     }
   | null = null
 
+type SavedWorkbenchRun = {
+  runId: string
+  outputKey: string
+  queryKey: string
+}
+
+let savedWorkbenchRunsCache:
+  | {
+      root: string
+      expiresAt: number
+      runs: SavedWorkbenchRun[]
+    }
+  | null = null
+
 const sourcesCache = new Map<string, { expiresAt: number; entries: SourceEntry[] }>()
 const playersCache = new Map<string, { expiresAt: number; entries: PlayerEntry[] }>()
 
@@ -488,10 +502,21 @@ async function readRuntimeRunIds(runPath: string, files: string[], slug: string,
 }
 
 async function readSavedWorkbenchRunIds(slug: string, title: string): Promise<string[]> {
-  const runsDir = resolveDashPath(".tmp", "aiox-research-runs")
   const targetSlug = comparableResearchKey(slug)
   const targetTitle = comparableResearchKey(title)
-  const ids: string[] = []
+  return (await readSavedWorkbenchRuns())
+    .filter((run) => run.outputKey === targetSlug || (targetTitle.length > 12 && run.queryKey === targetTitle))
+    .map((run) => run.runId)
+}
+
+async function readSavedWorkbenchRuns(): Promise<SavedWorkbenchRun[]> {
+  const runsDir = resolveDashPath(".tmp", "aiox-research-runs")
+  const now = Date.now()
+  if (savedWorkbenchRunsCache && savedWorkbenchRunsCache.root === runsDir && savedWorkbenchRunsCache.expiresAt > now) {
+    return savedWorkbenchRunsCache.runs
+  }
+
+  const runs: SavedWorkbenchRun[] = []
 
   try {
     const files = await readdir(runsDir, { withFileTypes: true })
@@ -503,9 +528,11 @@ async function readSavedWorkbenchRunIds(slug: string, title: string): Promise<st
         if (!runId || parsed.status === "failed") continue
         const outputSlug = typeof parsed.outputSlug === "string" ? parsed.outputSlug : ""
         const query = typeof parsed.query === "string" ? parsed.query : ""
-        const sameSlug = comparableResearchKey(outputSlug) === targetSlug
-        const sameTopic = targetTitle.length > 12 && comparableResearchKey(query) === targetTitle
-        if (sameSlug || sameTopic) ids.push(runId)
+        runs.push({
+          runId,
+          outputKey: comparableResearchKey(outputSlug),
+          queryKey: comparableResearchKey(query),
+        })
       } catch {
         // Saved run state is best-effort observability data.
       }
@@ -514,7 +541,13 @@ async function readSavedWorkbenchRunIds(slug: string, title: string): Promise<st
     // Workbench state may not exist outside local runs.
   }
 
-  return ids
+  savedWorkbenchRunsCache = {
+    root: runsDir,
+    expiresAt: now + RESEARCH_CACHE_TTL_MS,
+    runs,
+  }
+
+  return runs
 }
 
 function comparableResearchKey(value: string) {

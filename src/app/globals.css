@@ -765,10 +765,6 @@ a {
   overflow-wrap: anywhere;
 }
 
-.aiox-duel-cs-v.lime {
-  color: var(--duel-player-color);
-}
-
 .aiox-vs-blade {
   width: 200px;
   background:
