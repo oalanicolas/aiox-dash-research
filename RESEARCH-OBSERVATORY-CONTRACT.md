@@ -16,7 +16,7 @@ A versão tipada do contrato fica em `src/lib/research-observatory-contract.ts`.
 |---|---|---|
 | `legacy` | Há conteúdo textual para leitura bruta, mas as abas visuais terão muitos vazios. | `README.md` |
 | `partial` | Há relatório e recomendações, mas pouca prova estruturada. | `README.md`, `02-research-report.md`, `03-recommendations.md` |
-| `rich` | As abas principais já são úteis: Map, Evidências, Waves, Fontes, Players e Perguntas. | `metrics.yaml`, `pipeline-state.yaml`, `execution-log.jsonl`, `sources.yaml`, `research-graph.json`, `curiosity_queue.yaml`, `players.yaml` |
+| `rich` | As abas principais já são úteis: Map, Evidências, Waves, Fontes, Players e Perguntas. | `metrics.yaml`, `pipeline-state.yaml`, `execution-log.jsonl`, `sources.yaml`, `research-profile.yaml`, `research-graph.json`, `curiosity_queue.yaml`, `players.yaml` |
 | `gold` | A pesquisa vira ativo operacional: tem plano executável, claims, riscos, ledger, Rubrica decisória e validação. | `action-plan.yaml`, `claims.yaml`, `decision-ledger.yaml`, `risk-register.yaml`, `decision-rubric.yaml`, `dashboard-manifest.yaml`, `validation-report.yaml` |
 
 Regra prática: `rich` mostra bem a pesquisa; `gold` permite decidir, delegar e auditar.
@@ -30,6 +30,8 @@ Regra prática: `rich` mostra bem a pesquisa; `gold` permite decidir, delegar e 
 - `pipeline-state.yaml` deve preferir `phases[]` como array ordenado. Objeto por chave é aceito como legado.
 - `execution-log.jsonl` deve ter uma entrada JSON válida por linha.
 - Todo campo visual importante deve ser rastreável para uma fonte, claim, evento ou decisão.
+- Toda pesquisa nova deve emitir `research-profile.yaml` com `profile.type` em `tech | bench | market | product | mapping`.
+- O profile adapta linguagem, política de artefatos e Rubrica sem criar pipelines separados.
 - `consumerStatus` documenta a realidade do dashboard atual, não a intenção futura: `implemented`, `partial`, `planned`, `missing` ou `legacy`.
 - `research-graph.json` deve aceitar as duas formas de edge durante a migração: `from/to/relation` (forma usada por fixtures e consumidores atuais) e `source/target/type/weight` (forma normalizada/planejada). A Story 150.2 deve normalizar ambas antes da renderização.
 
@@ -47,6 +49,7 @@ Regra prática: `rich` mostra bem a pesquisa; `gold` permite decidir, delegar e 
 | `pipeline-state.yaml` | Fases, status, artefatos produzidos e estado final. |
 | `execution-log.jsonl` | Linha do tempo auditável de eventos, waves e validações. |
 | `sources.yaml` | Fontes normalizadas com credibilidade, data, tipo e seção de uso. |
+| `research-profile.yaml` | Perfil universal da pesquisa: tech, bench, market, product ou mapping, com linguagem do dashboard e política de artefatos. |
 | `research-graph.json` | Grafo conectando query, waves, fontes, claims, decisões e artefatos. |
 | `matrices.yaml` | Matrizes de decisão, comparação, gaps e priorização. |
 | `curiosity_queue.yaml` | Perguntas abertas priorizadas por impacto. |
@@ -97,13 +100,13 @@ Esta tabela é o mapa rápido para PM, design e engenharia decidirem onde agir. 
 
 | Aba | Fonte primária | Fallback atual | Status do consumer | Valor entregue hoje | Próxima ação |
 |---|---|---|---|---|---|
-| Map | `metrics.yaml`, `pipeline-state.yaml`, `execution-log.jsonl`, `action-plan.yaml` | Metadados do run e `metrics.stop_reason` | `partial` | Mostra score, fases, cobertura e parte da decisão. | Story 150.2 deve normalizar `action-plan.yaml` para impedir marcador cru de objeto e decisão vazia. |
+| Map | `research-profile.yaml`, `metrics.yaml`, `pipeline-state.yaml`, `execution-log.jsonl`, `action-plan.yaml` | Metadados do run e `metrics.stop_reason` | `partial` | Mostra profile, score, fases, cobertura e parte da decisão; labels principais já se adaptam por profile. | Próxima evolução: aplicar labels adaptativos também na navegação/topbar. |
 | Slides | `README.md`, `sources.yaml`, `players.yaml`, `action-plan.yaml` | Metadados e markdown principal | `partial` | Gera narrativa executiva básica com evidências e players. | Story 150.2 deve usar decisão normalizada do YAML. |
-| Ações | `action-plan.yaml`, `quick-wins.md`, `risk-register.yaml` | Regex sobre `03-recommendations.md` e `quick-wins.md` | `partial` | Mostra quick wins quando existem, mas ainda perde roadmap/ações estruturadas. | Story 150.2 deve fazer `action-plan.yaml` virar fonte primária da aba. |
+| Ações | `research-profile.yaml`, `action-plan.yaml`, `quick-wins.md`, `risk-register.yaml` | Regex sobre `03-recommendations.md` e `quick-wins.md` | `partial` | Mostra quick wins, roadmap e riscos com label adaptativo por profile. | Próxima evolução: aplicar labels adaptativos também em cards internos de risco/roadmap. |
 | Evidências | `sources.yaml`, `research-graph.json`, `claims.yaml`, `validation-report.yaml` | Lista de fontes e grafo vazio | `partial` | Mostra fontes e parte do grafo. | Story 150.2 deve normalizar edges; 150.3 deve renderizar claims e validação. |
 | Waves | `execution-log.jsonl`, `02-research-report.md`, `metrics.yaml` | Timeline do run | `implemented` | Mostra caminho de execução e motivo de parada. | Manter compatibilidade com logs antigos. |
 | Fontes | `sources.yaml`, `research-graph.json` | Links extraídos do markdown | `partial` | Audita identidade, credibilidade e frescor das fontes. | Story 150.2 deve ligar uso da fonte ao grafo/claims. |
-| Players | `players.yaml`, `decision-rubric.yaml` | Lista vazia ou agrupamento sem categoria | `partial` | Mostra players, tiers, categorias, fit, ação sugerida, ranking baseline, dimensões e presets de Rubrica. | Evolução futura deve transformar o baseline em sliders interativos. |
+| Players | `research-profile.yaml`, `players.yaml`, `decision-rubric.yaml` | Lista vazia ou agrupamento sem categoria | `partial` | Mostra players/alternativas/atores conforme profile, tiers, categorias, fit, ação sugerida, ranking baseline, dimensões e presets de Rubrica. | Evolução futura deve transformar o baseline em sliders interativos. |
 | Perguntas | `curiosity_queue.yaml` | Sem perguntas abertas | `implemented` | Mostra lacunas P1/P2/P3 e próximos passos de investigação. | Manter alias `items[]` somente como legado. |
 | Doc | `README.md`, `dashboard-manifest.yaml` | Leitor bruto de documento | `partial` | Permite inspecionar artefatos textuais. | Story 150.5 deve consumir manifesto de completude e validação. |
 
@@ -118,6 +121,7 @@ Valor: reduz a leitura inicial. O usuário vê maturidade, rastreabilidade, deci
 Artefatos consumidos:
 
 - `metrics.yaml`
+- `research-profile.yaml`
 - `pipeline-state.yaml`
 - `execution-log.jsonl`
 - `research-graph.json`
@@ -131,6 +135,8 @@ Campos essenciais:
 | Campo visual | Fonte | Caminho | Valor |
 |---|---|---|---|
 | Decisão | `action-plan.yaml` | `decision.title` | Transforma o mapa em veredito. |
+| Tipo da pesquisa | `research-profile.yaml` | `profile.type` | Diferencia tech, bench, mercado, produto e mapeamento sem novo pipeline. |
+| Labels do dashboard | `research-profile.yaml` | `dashboard_labels.*` | Adapta labels de Players, Matrizes, Ações e Rubrica ao domínio. |
 | Resumo da decisão | `action-plan.yaml` | `decision.summary` | Explica o porquê sem exigir leitura completa. |
 | Cobertura | `metrics.yaml` | `coverage_score` | Indica se a pesquisa cobriu material suficiente. |
 | Integridade | `metrics.yaml` | `integrity_score` | Mostra se os dados são coerentes e rastreáveis. |
@@ -360,6 +366,7 @@ Campos essenciais:
 | Papel | `players.yaml` | `players[].role` | Explica por que entrou. |
 | Fit | `players.yaml` | `players[].fit` | Diz se serve para copiar, adaptar, evitar ou monitorar. |
 | Ação | `players.yaml` | `players[].action` | Converte player em próximo passo. |
+| Perfil da rubrica | `decision-rubric.yaml` | `profile.type`, `model.dimension_pack` | Garante que os critérios pertencem ao domínio da pesquisa. |
 | Dimensões | `decision-rubric.yaml` | `dimensions[]` | Explica quais critérios estão sendo ponderados. |
 | Presets/personas | `decision-rubric.yaml` | `presets[]` | Mostra como o ranking muda por perfil de decisão. |
 | Scores por player | `decision-rubric.yaml` | `players[].scores` | Permite comparar alternativas além de tier fixo. |
@@ -466,9 +473,11 @@ O pipeline deve gerar primeiro os artefatos narrativos, depois os estruturados:
 2. Executar waves e registrar eventos em `execution-log.jsonl`.
 3. Consolidar relatório em `02-research-report.md`.
 4. Extrair `sources.yaml`, `players.yaml`, `curiosity_queue.yaml`, `matrices.yaml` e `ux-patterns.yaml`.
-5. Gerar `research-graph.json` a partir de fontes, players, claims, decisões, riscos, ações e perguntas.
-6. Gerar `action-plan.yaml`, `claims.yaml`, `decision-ledger.yaml` e `risk-register.yaml`.
-7. Rodar validadores e gravar `validation-report.yaml`.
-8. Opcionalmente gravar `dashboard-manifest.yaml` com status por aba.
+5. Gerar `research-profile.yaml` para declarar se o dossier é `tech`, `bench`, `market`, `product` ou `mapping`.
+6. Gerar `research-graph.json` a partir de fontes, players, claims, decisões, riscos, ações e perguntas.
+7. Gerar `action-plan.yaml`, `claims.yaml`, `decision-ledger.yaml` e `risk-register.yaml`.
+8. Gerar `decision-rubric.yaml` usando o profile como dimension pack; `model.dimension_pack` deve bater com `research-profile.yaml#profile.type`.
+9. Rodar validadores e gravar `validation-report.yaml`.
+10. Gravar `dashboard-manifest.yaml` com status por aba.
 
 O dashboard não deve inventar significado ausente. Se a aba está vazia, o problema está no contrato de geração dos artefatos, não no layout.

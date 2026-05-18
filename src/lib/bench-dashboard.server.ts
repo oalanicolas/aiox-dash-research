@@ -68,12 +68,20 @@ export type BenchScoreboardCell = {
   confidence: string
   notes: string
   source: string
+  scoreBreakdown: Record<string, number> | null
+  scoreReason: string
 }
 
 export type BenchScoreboardRow = {
   id: string
+  parentId: string
   label: string
+  question: string
+  group: string
   weight: string
+  evidence: string
+  bestPlayer: string
+  bestScore: number
   cells: BenchScoreboardCell[]
 }
 
@@ -82,6 +90,7 @@ export type BenchScoreboard = {
   rows: BenchScoreboardRow[]
   totals: BenchMetric[]
   method: string
+  scoringGuide: Record<string, unknown> | null
 }
 
 export type BenchPersonaRanking = {
@@ -655,16 +664,24 @@ function extractConsolidatedScoreboard(scorecard: unknown): BenchScoreboard | un
         player,
         dimension,
         score: Number(cell.score ?? 0),
-        confidence: formatValue(cell.confidence),
-        notes: formatValue(cell.notes, ""),
-        source: formatValue(cell.source, ""),
-      }
-    })
+            confidence: formatValue(cell.confidence),
+            notes: formatValue(cell.notes, ""),
+            source: formatValue(cell.source, ""),
+            scoreBreakdown: null,
+            scoreReason: "",
+          }
+        })
 
     return {
       id: dimension,
+      parentId: "",
       label: formatValue(labels[dimension], dimension),
+      question: "",
+      group: "",
       weight: formatValue(weights[dimension]),
+      evidence: "",
+      bestPlayer: "",
+      bestScore: 0,
       cells,
     }
   })
@@ -678,6 +695,7 @@ function extractConsolidatedScoreboard(scorecard: unknown): BenchScoreboard | un
     rows,
     totals: Object.entries(totalsSource).map(([label, value]) => ({ label, value: formatValue(value) })),
     method: formatValue(record.method, ""),
+    scoringGuide: null,
   }
 }
 
@@ -696,8 +714,14 @@ function extractDashScoreboard(dash: unknown): BenchScoreboard | undefined {
       const cells = Array.isArray(row.cells) ? row.cells : []
       return {
         id: formatValue(row.id, "D"),
+        parentId: formatValue(row.parent_id, ""),
         label: formatValue(row.label, "Dimension"),
+        question: formatValue(row.question, ""),
+        group: formatValue(row.group, ""),
         weight: formatValue(row.weight),
+        evidence: formatValue(row.evidence, ""),
+        bestPlayer: formatValue(row.best_player, ""),
+        bestScore: Number(row.best_score ?? 0),
         cells: cells
           .filter((cell): cell is Record<string, unknown> => Boolean(cell && typeof cell === "object"))
           .map((cell) => ({
@@ -707,6 +731,10 @@ function extractDashScoreboard(dash: unknown): BenchScoreboard | undefined {
             confidence: formatValue(cell.confidence, ""),
             notes: formatValue(cell.notes, ""),
             source: formatValue(cell.source, ""),
+            scoreBreakdown: cell.score_breakdown && typeof cell.score_breakdown === "object"
+              ? Object.fromEntries(Object.entries(cell.score_breakdown as Record<string, unknown>).map(([key, value]) => [key, Number(value ?? 0)]))
+              : null,
+            scoreReason: formatValue(cell.score_reason, ""),
           })),
       }
     })
@@ -721,6 +749,7 @@ function extractDashScoreboard(dash: unknown): BenchScoreboard | undefined {
     rows,
     totals,
     method: formatValue(record.method, ""),
+    scoringGuide: record.scoring_guide && typeof record.scoring_guide === "object" ? record.scoring_guide as Record<string, unknown> : null,
   }
 }
 

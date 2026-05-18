@@ -695,6 +695,8 @@ function filesForView(view?: ReaderMode, selectedFile?: string) {
 
   files.add("README.md")
   if (view === "map") {
+    files.add("research-profile.yaml")
+    files.add("research-contract.json")
     files.add("metrics.yaml")
     files.add("pipeline-state.yaml")
     files.add("research-graph.json")
@@ -711,6 +713,7 @@ function filesForView(view?: ReaderMode, selectedFile?: string) {
     return files
   }
   if (view === "recommendations") {
+    files.add("research-profile.yaml")
     files.add("03-recommendations.md")
     files.add("quick-wins.md")
     files.add("curiosity_queue.yaml")
@@ -739,6 +742,7 @@ function filesForView(view?: ReaderMode, selectedFile?: string) {
     return files
   }
   if (view === "players") {
+    files.add("research-profile.yaml")
     files.add("players.yaml")
     files.add("decision-rubric.yaml")
     return files

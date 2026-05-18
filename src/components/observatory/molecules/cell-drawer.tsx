@@ -16,6 +16,8 @@ export type CellDrawerData = {
   score: number
   notes?: string
   source?: string
+  scoreBreakdown?: Record<string, number> | null
+  scoreReason?: string
   rowGap: number
   rank: string
 }
@@ -120,6 +122,42 @@ export function CellDrawer({
           >
             {selection.notes}
           </p>
+        )}
+
+        {selection.scoreReason && (
+          <div className="mt-4 border border-[var(--rule)] bg-[var(--paper-alt)] px-3 py-3">
+            <div
+              className="text-[9px] uppercase tracking-[0.12em] text-[var(--ink-3)]"
+              style={{ fontFamily: MONO_FONT }}
+            >
+              por que esta nota
+            </div>
+            <p className="mt-1 text-[12px] leading-[1.5] text-[var(--ink-2)]">
+              {selection.scoreReason}
+            </p>
+          </div>
+        )}
+
+        {selection.scoreBreakdown && (
+          <div className="mt-4 grid gap-px border border-[var(--rule)] bg-[var(--rule)]">
+            {[
+              ["cobertura", selection.scoreBreakdown.coverage],
+              ["profundidade", selection.scoreBreakdown.depth],
+              ["fidelidade", selection.scoreBreakdown.fidelity],
+              ["evidência", selection.scoreBreakdown.evidence],
+              ["absorção", selection.scoreBreakdown.absorption],
+            ].map(([label, value]) => (
+              <div key={label} className="grid grid-cols-[1fr_auto] bg-[var(--paper-alt)] px-3 py-2">
+                <span
+                  className="text-[9px] uppercase tracking-[0.12em] text-[var(--ink-3)]"
+                  style={{ fontFamily: MONO_FONT }}
+                >
+                  {label}
+                </span>
+                <strong className="text-[12px] text-[var(--ink)]">{Number(value ?? 0)}/20</strong>
+              </div>
+            ))}
+          </div>
         )}
 
         <div className="mt-5 grid gap-px border border-[var(--rule)] bg-[var(--rule)]">

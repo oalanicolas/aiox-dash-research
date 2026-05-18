@@ -81,15 +81,23 @@ export type ObservatoryMatrixCell = {
   confidence: string
   notes: string
   source: string
+  scoreBreakdown?: Record<string, number> | null
+  scoreReason?: string
   scoreEvolution?: number[]
   categoricalWinner?: boolean
 }
 
 export type ObservatoryMatrixRow = {
   id: string
+  parentId?: string
   label: string
   short?: string
+  question?: string
+  group?: string
   weight: number
+  evidence?: string
+  bestPlayer?: string
+  bestScore?: number
   cells: ObservatoryMatrixCell[]
 }
 
@@ -98,6 +106,7 @@ export type ObservatoryMatrix = {
   rows: ObservatoryMatrixRow[]
   totals: Array<{ player: string; score: number }>
   method: string
+  scoringGuide?: Record<string, unknown> | null
 }
 
 export type ObservatoryPersona = {

@@ -9,6 +9,7 @@ export type ResearchArtifactName =
   | "pipeline-state.yaml"
   | "execution-log.jsonl"
   | "sources.yaml"
+  | "research-profile.yaml"
   | "research-graph.json"
   | "matrices.yaml"
   | "curiosity_queue.yaml"
@@ -92,6 +93,7 @@ export const RESEARCH_OBSERVATORY_BEST_CASE_CONTRACT = {
         "README.md",
         "02-research-report.md",
         "03-recommendations.md",
+        "research-profile.yaml",
         "metrics.yaml",
         "pipeline-state.yaml",
         "execution-log.jsonl",
@@ -125,6 +127,7 @@ export const RESEARCH_OBSERVATORY_BEST_CASE_CONTRACT = {
     "pipeline-state.yaml": "Fases, status, artefatos produzidos e estado final da execução.",
     "execution-log.jsonl": "Linha do tempo auditável de eventos, waves, decisões e validações.",
     "sources.yaml": "Fontes normalizadas com credibilidade, data, tipo e seção de uso.",
+    "research-profile.yaml": "Perfil universal da pesquisa: tech, bench, market, product ou mapping, com linguagem de dashboard e política de artefatos.",
     "research-graph.json": "Grafo de evidência conectando query, waves, fontes, claims, decisões e artefatos.",
     "matrices.yaml": "Matrizes de decisão, comparação, gap analysis e priorização.",
     "curiosity_queue.yaml": "Perguntas abertas priorizadas por impacto na decisão.",
@@ -149,6 +152,7 @@ export const RESEARCH_OBSERVATORY_BEST_CASE_CONTRACT = {
       emptyStateMeaning: "A pesquisa existe, mas ainda não possui telemetria suficiente para auditoria visual.",
       artifacts: [
         "metrics.yaml",
+        "research-profile.yaml",
         "pipeline-state.yaml",
         "execution-log.jsonl",
         "research-graph.json",
@@ -158,6 +162,28 @@ export const RESEARCH_OBSERVATORY_BEST_CASE_CONTRACT = {
         "action-plan.yaml",
       ],
       fields: [
+        {
+          field: "research_profile_type",
+          artifact: "research-profile.yaml",
+          path: "profile.type",
+          importance: "recommended",
+          fallback: "tech",
+          consumer: "ResearchMapReport / dashboard-manifest",
+          consumerStatus: "partial",
+          valueForUser: "Adapta a leitura entre tech, bench, mercado, produto e mapeamento sem criar pipelines separados.",
+          qualityRule: "Deve ser um dos valores canônicos: tech, bench, market, product, mapping.",
+          example: "tech",
+        },
+        {
+          field: "dashboard_labels",
+          artifact: "research-profile.yaml",
+          path: "dashboard_labels.*",
+          importance: "recommended",
+          fallback: "labels padrão do Research Observatory",
+          consumer: "ReaderBody / ResearchMapReport / ResearchRecommendationsReport / ResearchPlayersView / ResearchDecisionRubricPanel",
+          consumerStatus: "implemented",
+          valueForUser: "Permite que Players vire Alternativas, Competidores, Atores ou Componentes conforme o domínio.",
+        },
         {
           field: "decision_title",
           artifact: "action-plan.yaml",
@@ -596,13 +622,13 @@ export const RESEARCH_OBSERVATORY_BEST_CASE_CONTRACT = {
         {
           field: "decision_rubric",
           artifact: "decision-rubric.yaml",
-          path: "dimensions[], presets[], players[].scores, rankings",
+          path: "profile.type, model.dimension_pack, dimensions[], presets[], players[].scores, rankings",
           importance: "recommended",
           fallback: "players tiers and fit",
           consumer: "ResearchPlayersView",
           consumerStatus: "partial",
-          valueForUser: "Permite recalcular ranking por peso/persona sem refazer a pesquisa.",
-          qualityRule: "Deve existir em toda pesquisa; quando não houver comparação suficiente, usar status not_applicable. Consumer atual mostra baseline, dimensões e presets; sliders ficam para evolução futura.",
+          valueForUser: "Permite recalcular ranking por peso/persona sem refazer a pesquisa usando critérios do domínio correto.",
+          qualityRule: "Deve existir em toda pesquisa; quando não houver comparação suficiente, usar status not_applicable. model.dimension_pack deve bater com research-profile.yaml#profile.type. Consumer atual mostra baseline, dimensões e presets; sliders ficam para evolução futura.",
         },
       ],
     },

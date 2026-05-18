@@ -36,6 +36,7 @@ function matrixRowKey(row: ObservatoryMatrixRow, index: number): string {
 }
 
 function matrixCategory(row: ObservatoryMatrixRow): { id: string; label: string } {
+  if (row.group) return { id: row.group.slice(0, 3).toUpperCase(), label: row.group }
   const text = `${row.id} ${row.label} ${row.short ?? ""}`.toLowerCase()
   if (/feature|ux|design|layout|visual|edit|output|export/.test(text)) return { id: "C01", label: "Produto" }
   if (/price|pricing|market|fit|growth|commercial|custo|valor/.test(text)) return { id: "C02", label: "Mercado" }
@@ -48,6 +49,16 @@ function matrixCellIndicator(score: number | null, isWinner: boolean): { mark: s
   if (isWinner || score >= 75) return { mark: "✓", tone: "yes", label: "forte" }
   if (score >= 45) return { mark: "◐", tone: "part", label: "parcial" }
   return { mark: "×", tone: "no", label: "fraco" }
+}
+
+function scoringGuideText(guide: Record<string, unknown> | null | undefined, key: string, fallback: string): string {
+  const value = guide?.[key]
+  return typeof value === "string" && value.trim() ? value : fallback
+}
+
+function scoringGuideList(guide: Record<string, unknown> | null | undefined, key: string): Array<Record<string, unknown>> {
+  const value = guide?.[key]
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object")) : []
 }
 
 /* Organism — Matrix view with narrative header, sticky-first-col,
@@ -94,6 +105,20 @@ export function MatrixView({
   const runner = totalsSorted[1]
   const leaderGap = leader && runner ? leader.score - runner.score : 0
   const technicalTie = Math.abs(leaderGap) < 1
+  const weightSum = matrix.rows.reduce((sum, row) => sum + (Number.isFinite(row.weight) ? row.weight : 0), 0)
+  const cellCount = matrix.rows.reduce((sum, row) => sum + row.cells.length, 0)
+  const confidenceCounts = matrix.rows.reduce(
+    (acc, row) => {
+      for (const cell of row.cells) {
+        const key = cell.confidence?.toLowerCase()
+        if (key === "high") acc.high += 1
+        else if (key === "medium") acc.medium += 1
+        else if (key === "low") acc.low += 1
+      }
+      return acc
+    },
+    { high: 0, medium: 0, low: 0 },
+  )
 
   const [selected, setSelected] = useState<{ rowKey: string; player: string } | null>(null)
 
@@ -124,6 +149,8 @@ export function MatrixView({
       score: cell.score,
       notes: cell.notes,
       source: cell.source,
+      scoreBreakdown: cell.scoreBreakdown,
+      scoreReason: cell.scoreReason,
       rowGap: scoreGap(row),
       rank: `${rankIndex + 1}/${row.cells.length}`,
     }
@@ -193,6 +220,7 @@ export function MatrixView({
                   <div className="lab">
                     <span className="nm">{row.label}</span>
                     <span className="sub">{row.id} · peso {formatWeight(row.weight ?? 0)}</span>
+                    {row.question && <span className="sub normal-case tracking-normal text-[var(--ink-3)]">{row.question}</span>}
                   </div>
                   {players.map((player, idx) => {
                     const cell = row.cells.find((item) => item.player === player)
@@ -232,6 +260,126 @@ export function MatrixView({
               Method · {matrix.method}
             </p>
           )}
+
+          <section className="mt-6 border border-[var(--rule)] bg-[#0f0f11]">
+            <div className="border-b border-[var(--rule)] px-5 py-4 sm:px-6">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>
+                transparência da pontuação
+              </div>
+              <h2 className="mt-2 text-[24px] font-black tracking-[-0.05em] text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+                Como esta matriz é medida
+              </h2>
+            </div>
+            <div className="grid gap-px bg-[var(--rule)] md:grid-cols-2 xl:grid-cols-4">
+              {[
+                ["Escala", scoringGuideText(matrix.scoringGuide, "scale", "0-100 por dimensão/microdimensão.")],
+                ["Fórmula", scoringGuideText(matrix.scoringGuide, "formula", "score_total_player = soma(score_da_célula × peso) / soma(pesos).")],
+                ["Pesos", scoringGuideText(matrix.scoringGuide, "weight_policy", "Pesos somam 100; dimensões mais críticas recebem maior peso.")],
+                ["Interpretação", scoringGuideText(matrix.scoringGuide, "interpretation", "Ranking consolidado é mapa de absorção; use personas e segmentos para decisões justas.")],
+              ].map(([title, body]) => (
+                <div key={title} className="bg-[#050505] p-5">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>{title}</div>
+                  <p className="mt-2 text-[13px] leading-[1.5] text-[var(--ink-2)]">{body}</p>
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-px bg-[var(--rule)] md:grid-cols-4">
+              {[
+                ["Players", String(players.length)],
+                ["Dimensões", String(matrix.rows.length)],
+                ["Células", String(cellCount)],
+                ["Soma dos pesos", weightSum.toFixed(2)],
+              ].map(([label, value]) => (
+                <div key={label} className="grid grid-cols-[1fr_auto] bg-[#050505] px-5 py-4 text-[10px] uppercase tracking-[0.13em]" style={{ fontFamily: MONO_FONT }}>
+                  <span className="text-[var(--ink-3)]">{label}</span>
+                  <strong className="text-[var(--ink)]">{value}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="grid gap-px bg-[var(--rule)] lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="bg-[#050505] p-5 sm:p-6">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
+                  bandas de score
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-5">
+                  {[
+                    ["0-20", "ausente ou intenção"],
+                    ["21-49", "fraco/protótipo"],
+                    ["50-69", "parcial útil"],
+                    ["70-84", "forte com gaps"],
+                    ["85-100", "referência de absorção"],
+                  ].map(([range, label]) => (
+                    <div key={range} className="border border-[var(--rule)] bg-[#0f0f11] p-3">
+                      <div className="text-[18px] font-black text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>{range}</div>
+                      <div className="mt-1 text-[11px] leading-tight text-[var(--ink-3)]">{label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-[#050505] p-5 sm:p-6">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
+                  confiança da evidência
+                </div>
+                <p className="mt-2 text-[13px] leading-[1.5] text-[var(--ink-2)]">
+                  {scoringGuideText(matrix.scoringGuide, "evidence_policy", "High = código/docs/testes locais; medium = README/fluxo parcialmente verificado; low = inferência ou sinal indireto.")}
+                </p>
+                <div className="mt-4 grid grid-cols-3 gap-px bg-[var(--rule)] text-[10px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO_FONT }}>
+                  {[
+                    ["High", confidenceCounts.high],
+                    ["Medium", confidenceCounts.medium],
+                    ["Low", confidenceCounts.low],
+                  ].map(([label, value]) => (
+                    <div key={label} className="bg-[#0f0f11] p-3">
+                      <div className="text-[var(--ink-3)]">{label}</div>
+                      <div className="mt-1 text-[18px] font-black text-[var(--ink)]">{value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-px bg-[var(--rule)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div className="bg-[#050505] p-5 sm:p-6">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
+                  score da célula
+                </div>
+                <p className="mt-2 text-[13px] leading-[1.5] text-[var(--ink-2)]">
+                  {scoringGuideText(matrix.scoringGuide, "cell_formula", "score_da_célula = cobertura + profundidade + fidelidade + evidência + absorvibilidade; cada lente vale 0-20.")}
+                </p>
+                <div className="mt-4 grid gap-px bg-[var(--rule)] sm:grid-cols-5">
+                  {scoringGuideList(matrix.scoringGuide, "score_lenses").map((lens) => (
+                    <div key={String(lens.id)} className="bg-[#0f0f11] p-3">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
+                        {String(lens.points ?? "0-20")}
+                      </div>
+                      <div className="mt-1 text-[13px] font-bold leading-tight text-[var(--ink)]">
+                        {String(lens.label ?? lens.id)}
+                      </div>
+                      <p className="mt-2 text-[11px] leading-[1.35] text-[var(--ink-3)]">
+                        {String(lens.question ?? "")}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-[#050505] p-5 sm:p-6">
+                <div className="text-[10px] uppercase tracking-[0.16em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
+                  diferença dentro de 85-100
+                </div>
+                <div className="mt-4 grid gap-2">
+                  {scoringGuideList(matrix.scoringGuide, "reference_band_detail").map((item) => (
+                    <div key={String(item.range)} className="grid grid-cols-[76px_1fr] gap-3 border border-[var(--rule)] bg-[#0f0f11] p-3">
+                      <div className="text-[18px] font-black leading-none text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+                        {String(item.range)}
+                      </div>
+                      <div className="text-[12px] leading-[1.45] text-[var(--ink-2)]">
+                        {String(item.meaning)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </LightScrollArea>
       <CellDrawer selection={drawerData} onDismiss={() => setSelected(null)} />

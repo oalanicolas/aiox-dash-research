@@ -176,14 +176,22 @@ export function mapBenchToObservatory(
         players: dashMatrix.players,
         rows: dashMatrix.rows.map((row) => ({
           id: row.id,
+          parentId: row.parentId,
           label: row.label,
+          question: row.question,
+          group: row.group,
           weight: Number(row.weight) || 0,
+          evidence: row.evidence,
+          bestPlayer: row.bestPlayer,
+          bestScore: row.bestScore,
           cells: row.cells.map((cell) => ({
             player: cell.player,
             score: cell.score,
             confidence: cell.confidence,
             notes: cell.notes,
             source: cell.source,
+            scoreBreakdown: cell.scoreBreakdown,
+            scoreReason: cell.scoreReason,
           })),
         })),
         totals: dashMatrix.totals.map((t) => ({
@@ -191,6 +199,7 @@ export function mapBenchToObservatory(
           score: Number(t.value) || 0,
         })),
         method: dashMatrix.method,
+        scoringGuide: dashMatrix.scoringGuide,
       }
     : data.matrixRows.length > 0
       ? {
@@ -209,6 +218,7 @@ export function mapBenchToObservatory(
           })),
           totals: legacyTotals,
           method: "legacy matrix",
+          scoringGuide: null,
         }
       : null
 

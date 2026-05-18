@@ -123,6 +123,7 @@ export function ReaderBody({
 }) {
   const benchReport = (children: ReactNode) =>
     source === "bench" || source === "demo" ? <BenchReportShell>{children}</BenchReportShell> : children
+  const researchLabels = researchDashboardLabels(documents ?? [])
 
   if (mode === "overview") {
     return <OverviewView runs={runs ?? []} />
@@ -153,6 +154,7 @@ export function ReaderBody({
           sources={topSources ?? []}
           players={researchPlayers ?? []}
           sourceSummary={sourceSummary ?? []}
+          labels={researchLabels}
         />
       )
     }
@@ -192,7 +194,7 @@ export function ReaderBody({
     return <ResearchCuriosityReport documents={documents ?? []} />
   }
   if (mode === "recommendations" && source === "research") {
-    return <ResearchRecommendationsReport documents={documents ?? []} />
+    return <ResearchRecommendationsReport documents={documents ?? []} labels={researchLabels} />
   }
   if (mode === "evidence" && source === "research") {
     return <ResearchEvidenceReport runs={runs ?? []} documents={documents ?? []} sources={topSources ?? []} sourceSummary={sourceSummary ?? []} />
@@ -247,7 +249,7 @@ export function ReaderBody({
     return <SourcesView sources={topSources ?? []} sourceSummary={sourceSummary ?? []} />
   }
   if (mode === "players") {
-    return <ResearchPlayersView players={researchPlayers ?? []} documents={documents ?? []} />
+    return <ResearchPlayersView players={researchPlayers ?? []} documents={documents ?? []} labels={researchLabels} />
   }
   if (mode === "score") {
     return <BenchScoreReport dimensions={scoreDimensions ?? []} scoreMetrics={scoreMetrics ?? []} matrix={matrix ?? null} playerProfiles={playerProfiles ?? []} />
@@ -3589,12 +3591,14 @@ function ResearchMapReport({
   sources,
   players,
   sourceSummary,
+  labels,
 }: {
   runs: ObservatoryRunSummary[]
   documents: ObservatoryDocument[]
   sources: ObservatorySource_Entry[]
   players: ObservatoryPlayer[]
   sourceSummary: string[]
+  labels: ResearchDashboardLabels
 }) {
   const activeRun = runs.find((run) => run.active) ?? runs[0]
   const docMap = new Map(documents.map((doc) => [doc.file, doc]))
@@ -3602,6 +3606,7 @@ function ResearchMapReport({
   const pipeline = asDisplayRecord(parseOptionalArtifact(docMap.get("pipeline-state.yaml")))
   const actionPlan = asDisplayRecord(parseOptionalArtifact(docMap.get("action-plan.yaml")))
   const graph = asDisplayRecord(parseOptionalArtifact(docMap.get("research-graph.json")))
+  const researchContract = asDisplayRecord(parseOptionalArtifact(docMap.get("research-contract.json")))
   const dashboardManifest = asDisplayRecord(parseOptionalArtifact(docMap.get("dashboard-manifest.yaml")))
   const matrices = asDisplayRecord(parseOptionalArtifact(docMap.get("matrices.yaml")))
   const curiosity = asDisplayRecord(parseOptionalArtifact(docMap.get("curiosity_queue.yaml")))
@@ -3617,6 +3622,13 @@ function ResearchMapReport({
   const graphEdges = researchGraphEdges(graph)
   const manifestTabs = asDisplayRecord(recordValue(dashboardManifest, "tabs"))
   const qualityBars = asDisplayRecord(recordValue(dashboardManifest, "quality_bars"))
+  const contractDecision = asDisplayRecord(recordValue(researchContract, "decision_context"))
+  const contractTaxonomy = asDisplayRecord(recordValue(researchContract, "taxonomy"))
+  const contractRubric = asDisplayRecord(recordValue(researchContract, "rubric_model"))
+  const contractEvidence = asDisplayRecord(recordValue(researchContract, "evidence_model"))
+  const contractCategories = arrayValue(contractTaxonomy, "categories")
+  const contractCriteria = arrayValue(contractRubric, "dimensions_or_criteria")
+  const contractEvidenceItems = arrayValue(contractEvidence, "primary_evidence")
   const highPriorityQuestions = questions.filter((q) => stringValue(q, "priority", "").toUpperCase() === "HIGH")
   const highCredibilitySources = sources.filter((source) => source.credibility === "HIGH")
   const coverage = numberValue(metrics, "coverage_score") ?? coverageNumeric(activeRun?.coverage) ?? 0
@@ -3638,6 +3650,13 @@ function ResearchMapReport({
             <p className="aiox-report-copy">
               Painel visual da pesquisa selecionada: score, fases, evidências, perguntas abertas e artefatos que sustentam a decisão.
             </p>
+            {Object.keys(researchContract).length > 0 && (
+              <div className="mt-5 grid gap-px bg-[var(--report-rule-soft)] sm:grid-cols-3">
+                <ResearchDarkMetric label="Tipo" value={humanizeResearchLabel(stringValue(researchContract, "research_kind", "custom research"))} />
+                <ResearchDarkMetric label="Método" value={humanizeResearchLabel(stringValue(contractRubric, "method_family", "custom"))} />
+                <ResearchDarkMetric label="Modo" value={humanizeResearchLabel(stringValue(contractDecision, "decision_mode", "custom"))} />
+              </div>
+            )}
             <div className="mt-6 grid gap-px bg-[var(--report-rule-soft)] sm:grid-cols-4">
               <ResearchDarkMetric label="Cobertura" value={String(coverage || activeRun?.coverage || "—")} />
               <ResearchDarkMetric label="Integridade" value={String(integrity || activeRun?.integrity || "—")} />
@@ -3657,9 +3676,9 @@ function ResearchMapReport({
             </div>
             <div className="grid grid-cols-2 gap-px bg-black/18">
               <ResearchLightMetric label="Artefatos" value={String(documents.length)} />
-              <ResearchLightMetric label="Matrizes" value={String(matrixItems.length)} />
+              <ResearchLightMetric label={labels.matrices} value={String(matrixItems.length)} />
               <ResearchLightMetric label="Questões P1" value={String(highPriorityQuestions.length)} />
-              <ResearchLightMetric label="Players" value={String(players.length)} />
+              <ResearchLightMetric label={labels.players} value={String(players.length)} />
             </div>
           </aside>
         </section>
@@ -3761,14 +3780,55 @@ function ResearchMapReport({
             </ResearchStorySection>
           )}
 
+          {Object.keys(researchContract).length > 0 && (
+            <ResearchStorySection
+              step={Object.keys(manifestTabs).length > 0 || Object.keys(qualityBars).length > 0 ? "03" : "02"}
+              title="Contrato da pesquisa"
+              copy="Este bloco explica como a pesquisa deve ser lida: tipo, decisão, unidade de análise, critérios e evidências que sustentam o valor do dashboard."
+            >
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+                <section className="aiox-panel bg-[#0f0f11]">
+                  <ResearchPanelHead eyebrow="research contract" title={humanizeResearchLabel(stringValue(researchContract, "research_kind", "custom research"))} meta={stringValue(contractRubric, "method_family", "custom")} />
+                  <div className="grid gap-px bg-[#f5f4e7]/10 md:grid-cols-2">
+                    <div className="bg-[#050505] p-4">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>decisão primária</div>
+                      <p className="mt-2 text-[15px] font-black leading-[1.42] text-[#f5f4e7]">{stringValue(contractDecision, "primary_decision", stringValue(researchContract, "objective", "Sem decisão declarada."))}</p>
+                    </div>
+                    <div className="bg-[#050505] p-4">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>unidade de análise</div>
+                      <p className="mt-2 text-[15px] font-black leading-[1.42] text-[#f5f4e7]">{stringValue(contractTaxonomy, "unit_of_analysis", "Sem unidade declarada.")}</p>
+                    </div>
+                    <div className="bg-[#050505] p-4">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>semântica do score</div>
+                      <p className="mt-2 text-[13px] leading-[1.5] text-[#f5f4e7]/62">{stringValue(contractRubric, "score_semantics", "Sem semântica declarada.")}</p>
+                    </div>
+                    <div className="bg-[#050505] p-4">
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>regra de saturação</div>
+                      <p className="mt-2 text-[13px] leading-[1.5] text-[#f5f4e7]/62">{stringValue(contractRubric, "pass_or_saturation_rule", "Sem regra declarada.")}</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="aiox-panel bg-[#0f0f11]">
+                  <ResearchPanelHead eyebrow="taxonomy" title="Critérios e evidências" meta={`${contractCategories.length} categorias`} />
+                  <div className="grid gap-4 p-4">
+                    <ResearchTokenList label="Categorias" items={contractCategories} empty="Sem categorias declaradas." />
+                    <ResearchTokenList label="Critérios" items={contractCriteria} empty="Sem critérios declarados." />
+                    <ResearchTokenList label="Evidências" items={contractEvidenceItems} empty="Sem evidências primárias declaradas." />
+                  </div>
+                </section>
+              </div>
+            </ResearchStorySection>
+          )}
+
           <ResearchStorySection
-            step={Object.keys(manifestTabs).length > 0 || Object.keys(qualityBars).length > 0 ? "03" : "02"}
+            step={Object.keys(researchContract).length > 0 ? (Object.keys(manifestTabs).length > 0 || Object.keys(qualityBars).length > 0 ? "04" : "03") : (Object.keys(manifestTabs).length > 0 || Object.keys(qualityBars).length > 0 ? "03" : "02")}
             title="O que a descoberta revelou"
             copy="Aqui ficam os aprendizados de produto: gaps, padrões e oportunidades que transformam dados brutos em decisão de design ou engenharia."
           >
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
               <section className="aiox-panel bg-[#0f0f11]">
-                <ResearchPanelHead eyebrow="matrices" title="Mapa de gaps" meta={`${matrixItems.length} quadros`} />
+                <ResearchPanelHead eyebrow="matrices" title={labels.matrices} meta={`${matrixItems.length} quadros`} />
                 <ResearchMatrixHeatmap matrices={matrixItems} />
               </section>
 
@@ -3792,7 +3852,7 @@ function ResearchMapReport({
           </ResearchStorySection>
 
           <ResearchStorySection
-            step={Object.keys(manifestTabs).length > 0 || Object.keys(qualityBars).length > 0 ? "04" : "03"}
+            step={Object.keys(researchContract).length > 0 ? (Object.keys(manifestTabs).length > 0 || Object.keys(qualityBars).length > 0 ? "05" : "04") : (Object.keys(manifestTabs).length > 0 || Object.keys(qualityBars).length > 0 ? "04" : "03")}
             title="O que ainda precisa ser decidido"
             copy="Feche o mapa olhando para perguntas abertas e cobertura de artefatos. Se algo aqui estiver fraco, a próxima ação deve nascer na aba Ações."
           >
@@ -4163,7 +4223,7 @@ function ResearchCuriosityReport({ documents }: { documents: ObservatoryDocument
   )
 }
 
-function ResearchRecommendationsReport({ documents }: { documents: ObservatoryDocument[] }) {
+function ResearchRecommendationsReport({ documents, labels }: { documents: ObservatoryDocument[]; labels: ResearchDashboardLabels }) {
   const docMap = new Map(documents.map((doc) => [doc.file, doc]))
   const recommendationsDoc =
     documents.find((doc) => doc.phase === "recommend" && /recommend/i.test(doc.file)) ??
@@ -4231,13 +4291,13 @@ function ResearchRecommendationsReport({ documents }: { documents: ObservatoryDo
       <article className="aiox-report-shell" style={observatoryDarkThemeVars}>
         <ResearchCompactIntro
           eyebrow="action plan"
-          title="Recomendações e próximos passos"
+          title={labels.actions}
           copy="Transforma os documentos de recomendação, quick wins, follow-ups e dúvidas abertas em uma visão operacional para decidir o que fazer agora."
           accentValue={String(totalActions)}
-          accentLabel="ações detectadas"
+          accentLabel={`${labels.actions.toLowerCase()} detectadas`}
           metrics={[
             ["Roadmap", roadmap.length],
-            ["Ações YAML", actionRows.length],
+            [`${labels.actions} YAML`, actionRows.length],
             ["P1 abertas", highQuestions.length],
           ]}
         />
@@ -4580,6 +4640,32 @@ function parseOptionalArtifact(doc?: ObservatoryDocument): unknown {
   return parseStructured(doc.file, doc.content) ?? {}
 }
 
+type ResearchDashboardLabels = {
+  players: string
+  matrices: string
+  actions: string
+  rubric: string
+}
+
+const DEFAULT_RESEARCH_LABELS: ResearchDashboardLabels = {
+  players: "Players",
+  matrices: "Matrizes",
+  actions: "Ações",
+  rubric: "Rubrica",
+}
+
+function researchDashboardLabels(documents: ObservatoryDocument[]): ResearchDashboardLabels {
+  const docMap = new Map(documents.map((doc) => [doc.file, doc]))
+  const profile = asDisplayRecord(parseOptionalArtifact(docMap.get("research-profile.yaml")))
+  const labels = asDisplayRecord(recordValue(profile, "dashboard_labels"))
+  return {
+    players: stringValue(labels, "players", DEFAULT_RESEARCH_LABELS.players),
+    matrices: stringValue(labels, "matrices", DEFAULT_RESEARCH_LABELS.matrices),
+    actions: stringValue(labels, "actions", DEFAULT_RESEARCH_LABELS.actions),
+    rubric: stringValue(labels, "rubric", DEFAULT_RESEARCH_LABELS.rubric),
+  }
+}
+
 function parseJsonl(content: string): Array<Record<string, unknown>> {
   return content
     .split("\n")
@@ -4825,7 +4911,7 @@ function ResearchWaveFlow({
   )
 }
 
-function ResearchDecisionRubricPanel({ rubric }: { rubric: Record<string, unknown> }) {
+function ResearchDecisionRubricPanel({ rubric, labels }: { rubric: Record<string, unknown>; labels: ResearchDashboardLabels }) {
   const status = stringValue(rubric, "status", "missing")
   const applicability = asDisplayRecord(recordValue(rubric, "applicability"))
   const model = asDisplayRecord(recordValue(rubric, "model"))
@@ -4840,9 +4926,9 @@ function ResearchDecisionRubricPanel({ rubric }: { rubric: Record<string, unknow
   if (status === "missing" || Object.keys(rubric).length === 0) {
     return (
       <section className="aiox-panel mt-5 bg-[#0f0f11]">
-        <ResearchPanelHead eyebrow="rubrica" title="Rubrica decisória" meta="não gerada" />
+        <ResearchPanelHead eyebrow="rubrica" title={labels.rubric} meta="não gerada" />
         <div className="border-t border-[#f5f4e7]/10 bg-[#050505] p-5 text-[14px] leading-[1.55] text-[#f5f4e7]/58">
-          Este run ainda não tem `decision-rubric.yaml`. A pesquisa pode listar players, mas não consegue recalcular ranking por critérios de decisão.
+          Este run ainda não tem `decision-rubric.yaml`. A pesquisa pode listar {labels.players.toLowerCase()}, mas não consegue recalcular ranking por critérios de decisão.
         </div>
       </section>
     )
@@ -4852,8 +4938,8 @@ function ResearchDecisionRubricPanel({ rubric }: { rubric: Record<string, unknow
     <section className="aiox-panel mt-5 bg-[#0f0f11]">
       <ResearchPanelHead
         eyebrow="rubrica"
-        title="Avaliação ponderada dos players"
-        meta={status === "applicable" ? `${players.length} players · ${presets.length} presets` : status}
+        title={labels.rubric}
+        meta={status === "applicable" ? `${players.length} itens · ${presets.length} presets` : status}
       />
       <div className="grid gap-px bg-[#f5f4e7]/10 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="bg-[#050505] p-5">
@@ -4866,7 +4952,7 @@ function ResearchDecisionRubricPanel({ rubric }: { rubric: Record<string, unknow
                 {top ? `${stringValue(top, "player_name", "Sem líder")} lidera no baseline` : "Sem ranking calculável"}
               </h3>
               <p className="mt-3 max-w-[760px] text-[14px] leading-[1.55] text-[#f5f4e7]/62">
-                {stringValue(model, "purpose", "A Rubrica transforma players detectados pela pesquisa em ranking ponderado por critérios.")}
+                {stringValue(model, "purpose", `A Rubrica transforma ${labels.players.toLowerCase()} detectados pela pesquisa em ranking ponderado por critérios.`)}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-px bg-[#f5f4e7]/10">
@@ -5182,6 +5268,26 @@ function ResearchLightMetric({ label, value }: { label: string; value: string })
   )
 }
 
+function ResearchTokenList({ label, items, empty }: { label: string; items: unknown[]; empty: string }) {
+  const values = items.map((item) => displayString(item, "")).filter(Boolean).slice(0, 8)
+  return (
+    <div>
+      <div className="mb-2 text-[10px] uppercase tracking-[0.12em] text-[#d1ff00]" style={{ fontFamily: MONO_FONT }}>{label}</div>
+      {values.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {values.map((item) => (
+            <span key={item} className="max-w-full truncate border border-[#f5f4e7]/12 bg-[#050505] px-2.5 py-1.5 text-[10px] uppercase tracking-[0.1em] text-[#f5f4e7]/58" style={{ fontFamily: MONO_FONT }}>
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[12.5px] leading-[1.5] text-[#f5f4e7]/50">{empty}</p>
+      )}
+    </div>
+  )
+}
+
 function ResearchBar({ label, value }: { label: string; value: number }) {
   const width = Math.max(3, Math.min(100, value))
   return (
@@ -5437,8 +5543,23 @@ function arrayValue(value: unknown, key: string): unknown[] {
 
 function stringValue(value: unknown, key: string, fallback = "—") {
   const next = recordValue(value, key)
-  if (next === null || next === undefined || next === "") return fallback
-  return String(next)
+  return displayString(next, fallback)
+}
+
+function displayString(value: unknown, fallback = "—"): string {
+  if (value === null || value === undefined || value === "") return fallback
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value)
+  if (Array.isArray(value)) {
+    const values = value.map((item) => displayString(item, "")).filter(Boolean)
+    return values.length > 0 ? values.join(", ") : fallback
+  }
+  if (isRecord(value)) {
+    for (const key of ["title", "name", "label", "summary", "decision", "status", "type", "research_kind", "method_family", "id"]) {
+      const candidate = displayString(value[key], "")
+      if (candidate) return candidate
+    }
+  }
+  return fallback
 }
 
 function booleanValue(value: unknown, key: string) {
@@ -6883,7 +7004,7 @@ function SourcesView({
   )
 }
 
-function ResearchPlayersView({ players, documents }: { players: ObservatoryPlayer[]; documents: ObservatoryDocument[] }) {
+function ResearchPlayersView({ players, documents, labels }: { players: ObservatoryPlayer[]; documents: ObservatoryDocument[]; labels: ResearchDashboardLabels }) {
   const docMap = new Map(documents.map((doc) => [doc.file, doc]))
   const decisionRubric = asDisplayRecord(parseOptionalArtifact(docMap.get("decision-rubric.yaml")))
   const tiers = [1, 2, 3] as const
@@ -6919,10 +7040,10 @@ function ResearchPlayersView({ players, documents }: { players: ObservatoryPlaye
       <article className="aiox-report-shell" style={observatoryDarkThemeVars}>
         <ResearchCompactIntro
           eyebrow="market map"
-          title="Players, categorias e exclusões"
+          title={`${labels.players}, categorias e exclusões`}
           copy="Mapa compacto de quem entrou, quem saiu e quais categorias dominam a pesquisa. A leitura deve explicar o recorte, não virar catálogo."
           accentValue={String(players.length)}
-          accentLabel="players detectados"
+          accentLabel={`${labels.players.toLowerCase()} detectados`}
           metrics={[
             ["Incluídos", included.length],
             ["Excluídos", excluded.length],
@@ -6941,7 +7062,7 @@ function ResearchPlayersView({ players, documents }: { players: ObservatoryPlaye
                 {tierMeta[1].meaning} {tierMeta[2].meaning} {tierMeta[3].meaning}
               </p>
               <p className="mt-3 max-w-[900px] text-[14px] leading-[1.55] text-[#f5f4e7]/62">
-                Para este run, o insight não é “quem existe no mercado”; é quais peças entram no desenho do SDC Supervisor Runtime e quais servem só como referência.
+                Para este run, o insight não é apenas “quem existe”; é quais itens entram na decisão, quais viram referência e quais devem ficar fora do plano principal.
               </p>
             </div>
             <div className="bg-[#d1ff00] p-5 text-[#050505]">
@@ -6957,11 +7078,11 @@ function ResearchPlayersView({ players, documents }: { players: ObservatoryPlaye
           </div>
         </section>
 
-        <ResearchDecisionRubricPanel rubric={decisionRubric} />
+        <ResearchDecisionRubricPanel rubric={decisionRubric} labels={labels} />
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
           <section className="aiox-panel bg-[#0f0f11]">
-            <ResearchPanelHead eyebrow="tiers" title="Mapa competitivo" meta={`${included.length} incluídos`} />
+            <ResearchPanelHead eyebrow="tiers" title={labels.players} meta={`${included.length} incluídos`} />
             <div className="border-b border-[#f5f4e7]/10 p-4">
               <ResearchPlayerQuadrant players={players} />
             </div>
