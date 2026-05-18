@@ -287,12 +287,14 @@ export function MatrixView({
                 )}
               </section>
               <aside className="grid bg-[#0f0f11] text-[10px] uppercase tracking-[0.13em] text-[var(--ink-3)] sm:grid-cols-2 lg:grid-cols-1" style={{ fontFamily: MONO_FONT }}>
+                {/* Header KPIs — método omitido: já documentado em
+                   "Como esta matriz é medida" no fim da view, com escala,
+                   fórmula, weight policy e bandas. Repetir aqui só polui. */}
                 {[
                   ["players", `${visiblePlayersList.length}/${players.length}`],
                   ["dimensões", String(matrix.rows.length)],
                   ["líder", leader ? displayName(leader.player) : "—"],
                   ["gap", leaderGap.toFixed(2)],
-                  ["método", matrix.method || "derived"],
                 ].map(([label, value]) => (
                   <div key={label} className="grid grid-cols-[1fr_auto] border-b border-[var(--rule)] px-5 py-4 last:border-b-0">
                     <span>{label}</span>
