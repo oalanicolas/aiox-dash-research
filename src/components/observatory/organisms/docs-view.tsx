@@ -13,16 +13,29 @@ import { formatBytes } from "../foundations/utils"
 
 /* Organism — Docs view (Reader mode = "document", bench/research).
  *
- * Visual reference: AIOX Dash v2.html · DOC VIEW section
- *   - doc-shell: grid 1fr 300px (reader + file panel)
- *   - doc-toolbar: doc-path lime + doc-actions (copy, light/dark)
- *   - doc-body: h1 display 36px / h2 display 26px / h3 mono lime small caps
- *   - bullets com ::before lime line 8x1px
- *   - doc-files panel: items numerados (ord) com active state lime + arrow
+ * Visual reference: AIOX Dash v2.html · DOC VIEW + .doc-reader.light
+ *
+ * Color tokens (do colors_and_type.css):
+ *   --cream         = rgb(244, 244, 232)  → light bg
+ *   --cream-alt     = rgb(245, 244, 231)  → toolbar light bg (very subtle)
+ *   --cream-deep    = #ecebde             → file panel light bg
+ *   --dark          = #050505             → light text primary
+ *   --gray-charcoal = #3D3D3D             → light text secondary
+ *
+ * Light mode policy (espelha .doc-reader.light da referência):
+ *   - body bg = cream | text = dark
+ *   - h1/h2 = dark | h3 = gray-charcoal
+ *   - p/li = gray-charcoal | strong = dark
+ *   - code = rgba(0,0,0,0.05) bg + dark text + rgba(0,0,0,0.1) border (NÃO lime)
+ *   - a = dark + dark underline
+ *   - ::before bullets = dark (NÃO lime)
+ *
+ * Light mode aplica ao SHELL inteiro (toolbar + reader + file panel) para
+ * evitar mistura visual quebrada (toolbar dark + body light).
  *
  * Decision-in-one-click integration:
  *   - file selection é URL-persistida via ?file=<path>
- *   - light/dark mode preserved across navigation
+ *   - light/dark mode preserved via ?doc-theme=light
  *   - copy markdown button com confirmação visual
  */
 export function DocsView({
@@ -44,6 +57,7 @@ export function DocsView({
   const searchParams = useSearchParams()
 
   const themeParam = searchParams?.get("doc-theme") === "light" ? "light" : "dark"
+  const isLight = themeParam === "light"
   const [copied, setCopied] = useState(false)
 
   const selectFile = useCallback(
@@ -57,10 +71,10 @@ export function DocsView({
 
   const toggleTheme = useCallback(() => {
     const params = new URLSearchParams(searchParams?.toString() ?? "")
-    if (themeParam === "light") params.delete("doc-theme")
+    if (isLight) params.delete("doc-theme")
     else params.set("doc-theme", "light")
     router.replace(`?${params.toString()}`, { scroll: false })
-  }, [router, searchParams, themeParam])
+  }, [router, searchParams, isLight])
 
   const copyContent = useCallback(() => {
     if (typeof navigator === "undefined") return
@@ -83,31 +97,40 @@ export function DocsView({
   const path = `${sourceRoot}/${runSlug}/${selectedFile}`
   const selectedDoc = documents.find((d) => d.file === selectedFile)
 
+  /* Theme-resolved colors. Light mode replicates .doc-reader.light tokens da
+     referência — não reusa nenhuma var de paper/ink (que são dark-only). */
+  const bgReader = isLight ? "#f4f4e8" : "var(--paper)"
+  const bgToolbar = isLight ? "#ecebde" : "var(--paper-deep)"
+  const bgPanel = isLight ? "#f4f4e8" : "var(--paper)"
+  const bgPanelHeader = isLight ? "#ecebde" : "var(--paper-deep)"
+  const bgPanelActive = isLight ? "rgba(0,0,0,0.06)" : "var(--paper-deep)"
+  const bgPanelHover = isLight ? "rgba(0,0,0,0.03)" : "var(--paper-alt)"
+  const borderColor = isLight ? "rgba(0,0,0,0.12)" : "var(--rule)"
+  const borderSoftColor = isLight ? "rgba(0,0,0,0.08)" : "var(--rule-soft)"
+  const textPrimary = isLight ? "#050505" : "var(--ink)"
+  const textSecondary = isLight ? "#3D3D3D" : "var(--ink-2)"
+  const textDim = isLight ? "#696969" : "var(--ink-dim)"
+  const textPath = isLight ? "#050505" : "var(--lime-ink)"
+  const textOrdActive = isLight ? "#050505" : "var(--lime-ink)"
+
   return (
     <div
       className="aiox-docs-shell grid min-h-0 flex-1 gap-3 px-3 pb-6 pt-3 sm:gap-4 sm:px-5 sm:pb-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-6 lg:pt-4"
-      style={observatoryDarkThemeVars}
+      style={isLight ? undefined : observatoryDarkThemeVars}
     >
       {/* Reader column */}
       <section
-        className={cn(
-          "flex min-w-0 flex-col border border-[var(--rule)]",
-          themeParam === "light" ? "bg-[#f5f4e7]" : "bg-[var(--paper)]",
-        )}
+        className="flex min-w-0 flex-col border"
+        style={{ background: bgReader, borderColor }}
       >
         {/* Toolbar */}
         <header
-          className={cn(
-            "flex shrink-0 items-center justify-between gap-3 border-b border-[var(--rule-soft)] px-5 py-2.5",
-            themeParam === "light" ? "bg-[#ecebde]" : "bg-[var(--paper-deep)]",
-          )}
+          className="flex shrink-0 items-center justify-between gap-3 border-b px-5 py-2.5"
+          style={{ background: bgToolbar, borderColor: borderSoftColor }}
         >
           <div
-            className={cn(
-              "min-w-0 truncate text-[11px] tracking-[0.06em]",
-              themeParam === "light" ? "text-[#1a1502]" : "text-[var(--lime-ink)]",
-            )}
-            style={{ fontFamily: MONO_FONT }}
+            className="min-w-0 truncate text-[11px] tracking-[0.06em]"
+            style={{ fontFamily: MONO_FONT, color: textPath }}
             title={path}
           >
             {path}
@@ -115,15 +138,17 @@ export function DocsView({
           <div className="inline-flex shrink-0 gap-1.5">
             <DocAction
               onClick={toggleTheme}
-              active={themeParam === "light"}
-              label={themeParam === "light" ? "Light" : "Dark"}
+              active={isLight}
+              label={isLight ? "Light" : "Dark"}
               title="Alterna tema do leitor de docs (persiste em URL)"
+              isLight={isLight}
             />
             <DocAction
               onClick={copyContent}
               icon={copied ? <Check size={11} /> : <Copy size={11} />}
               label={copied ? "Copiado" : "Copiar MD"}
               title="Copia conteúdo markdown para clipboard"
+              isLight={isLight}
             />
           </div>
         </header>
@@ -132,24 +157,24 @@ export function DocsView({
         <LightScrollArea
           ref={bodyRef}
           className="min-h-0 flex-1"
-          viewportClassName={cn(
-            "px-6 pb-12 pt-8 sm:px-10 sm:pt-12 lg:px-14",
-            themeParam === "light" ? "bg-[#f5f4e7] text-[#231d05]" : "bg-[var(--paper)] text-[var(--ink-2)]",
-          )}
+          viewportClassName="px-6 pb-12 pt-8 sm:px-10 sm:pt-12 lg:px-14"
+          fadeColor={bgReader}
+          style={{ background: bgReader }}
         >
           <article
-            className={cn(
-              "aiox-doc-body mx-auto w-full min-w-0 max-w-[760px]",
-              themeParam === "light" && "is-light",
-            )}
+            className={cn("aiox-doc-body mx-auto w-full min-w-0 max-w-[760px]", isLight && "is-light")}
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={docMdComponents(themeParam)}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={docMdComponents()}>
               {content}
             </ReactMarkdown>
             {selectedDoc?.truncated && (
               <p
-                className="mt-10 border-t border-[var(--rule-soft)] pt-4 text-[12px] italic text-[var(--ink-3)]"
-                style={{ fontFamily: SANS_FONT }}
+                className="mt-10 border-t pt-4 text-[12px] italic"
+                style={{
+                  borderColor: borderSoftColor,
+                  color: textDim,
+                  fontFamily: SANS_FONT,
+                }}
               >
                 Conteúdo truncado em {formatBytes(40000)} para renderização. Veja o arquivo
                 bruto em <code>{path}</code>.
@@ -159,29 +184,43 @@ export function DocsView({
         </LightScrollArea>
       </section>
 
-      {/* File panel */}
-      <aside className="hidden flex-col border border-[var(--rule)] bg-[var(--paper)] lg:flex">
-        <header className="flex shrink-0 items-baseline justify-between border-b border-[var(--rule-soft)] px-5 py-3">
+      {/* File panel — segue tema do reader pra não quebrar continuidade visual */}
+      <aside
+        className="hidden flex-col border lg:flex"
+        style={{ background: bgPanel, borderColor }}
+      >
+        <header
+          className="flex shrink-0 items-baseline justify-between border-b px-5 py-3"
+          style={{ background: bgPanelHeader, borderColor: borderSoftColor }}
+        >
           <span
-            className="text-[10px] uppercase tracking-[0.22em] text-[var(--ink-dim)]"
-            style={{ fontFamily: MONO_FONT }}
+            className="text-[10px] uppercase tracking-[0.22em]"
+            style={{ color: textDim, fontFamily: MONO_FONT }}
           >
             <FolderOpen size={11} className="mr-1.5 inline" />
             Arquivos
           </span>
           <span
-            className="text-[10px] font-bold tracking-[0.1em] text-[var(--lime-ink)]"
-            style={{ fontFamily: MONO_FONT }}
+            className="text-[10px] font-bold tracking-[0.1em]"
+            style={{
+              color: isLight ? "#050505" : "var(--lime-ink)",
+              fontFamily: MONO_FONT,
+            }}
           >
             {documents.length}
           </span>
         </header>
-        <LightScrollArea className="min-h-0 flex-1" viewportClassName="">
+        <LightScrollArea className="min-h-0 flex-1" viewportClassName="" fadeColor={bgPanel}>
           {groups.map((group) => (
             <div key={group.key}>
               <div
-                className="sticky top-0 z-10 border-b border-[var(--rule-soft)] bg-[var(--paper-deep)] px-5 py-2 text-[9.5px] uppercase tracking-[0.2em] text-[var(--ink-dim)]"
-                style={{ fontFamily: MONO_FONT }}
+                className="sticky top-0 z-10 border-b px-5 py-2 text-[9.5px] uppercase tracking-[0.2em]"
+                style={{
+                  background: bgPanelHeader,
+                  borderColor: borderSoftColor,
+                  color: textDim,
+                  fontFamily: MONO_FONT,
+                }}
               >
                 {group.label} · {group.items.length}
               </div>
@@ -192,48 +231,50 @@ export function DocsView({
                     key={doc.file}
                     type="button"
                     onClick={() => selectFile(doc.file)}
-                    className={cn(
-                      "grid w-full grid-cols-[34px_minmax(0,1fr)_14px] items-center gap-3 border-b border-[var(--rule-soft)] px-5 py-3 text-left transition-colors",
-                      active
-                        ? "bg-[var(--paper-deep)]"
-                        : "bg-transparent hover:bg-[var(--paper-alt)]",
-                    )}
+                    className="grid w-full grid-cols-[34px_minmax(0,1fr)_14px] items-center gap-3 border-b px-5 py-3 text-left transition-colors"
+                    style={{
+                      background: active ? bgPanelActive : "transparent",
+                      borderColor: borderSoftColor,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!active) (e.currentTarget as HTMLButtonElement).style.background = bgPanelHover
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent"
+                    }}
                   >
                     <span
-                      className={cn(
-                        "text-[11px] font-bold tabular-nums",
-                        active ? "text-[var(--lime-ink)]" : "text-[var(--ink-dim)]",
-                      )}
-                      style={{ fontFamily: MONO_FONT }}
+                      className="text-[11px] font-bold tabular-nums"
+                      style={{
+                        color: active ? textOrdActive : textDim,
+                        fontFamily: MONO_FONT,
+                      }}
                     >
                       {String(idx + 1).padStart(2, "0")}
                     </span>
                     <span className="grid min-w-0 gap-0.5">
                       <span
-                        className={cn(
-                          "truncate text-[13px] font-semibold",
-                          active ? "text-[var(--ink)]" : "text-[var(--ink-2)]",
-                        )}
-                        style={{ fontFamily: SANS_FONT }}
+                        className="truncate text-[13px] font-semibold"
+                        style={{
+                          color: active ? textPrimary : textSecondary,
+                          fontFamily: SANS_FONT,
+                        }}
                       >
                         {prettifyDocTitle(doc.file)}
                       </span>
                       <span
-                        className={cn(
-                          "truncate text-[10.5px]",
-                          active ? "text-[var(--ink-2)]" : "text-[var(--ink-dim)]",
-                        )}
-                        style={{ fontFamily: MONO_FONT }}
+                        className="truncate text-[10.5px]"
+                        style={{
+                          color: active ? textSecondary : textDim,
+                          fontFamily: MONO_FONT,
+                        }}
                       >
                         {doc.phase} · {formatBytes(doc.bytes)}
                       </span>
                     </span>
                     <FileText
                       size={12}
-                      className={cn(
-                        "transition-transform",
-                        active ? "text-[var(--lime-ink)]" : "text-[var(--ink-dim)]",
-                      )}
+                      style={{ color: active ? textOrdActive : textDim }}
                     />
                   </button>
                 )
@@ -243,6 +284,8 @@ export function DocsView({
         </LightScrollArea>
       </aside>
 
+      {/* Typography. Light mode rules use higher specificity (.is-light)
+          and direct hex values from AIOX Dash v2 light reference. */}
       <style jsx global>{`
         .aiox-doc-body h1 {
           font-family: var(--font-bb-display), system-ui, sans-serif;
@@ -388,40 +431,71 @@ export function DocsView({
           border-top: 1px solid var(--rule-soft);
           margin: 28px 0 32px;
         }
+
+        /* ─── Light mode (AIOX Dash v2 .doc-reader.light port) ─── */
+        .aiox-doc-body.is-light {
+          color: #3D3D3D;
+        }
         .aiox-doc-body.is-light h1,
         .aiox-doc-body.is-light h2 {
-          color: #1a1502;
+          color: #050505 !important;
         }
         .aiox-doc-body.is-light h3 {
-          color: #5c5c5c;
+          color: #3D3D3D !important;
+          opacity: 0.9;
         }
         .aiox-doc-body.is-light p,
         .aiox-doc-body.is-light ul li,
         .aiox-doc-body.is-light ol li {
-          color: #3a3a3a;
+          color: #3D3D3D !important;
         }
         .aiox-doc-body.is-light p strong,
-        .aiox-doc-body.is-light li strong {
-          color: #1a1502;
+        .aiox-doc-body.is-light li strong,
+        .aiox-doc-body.is-light p b,
+        .aiox-doc-body.is-light li b {
+          color: #050505 !important;
         }
         .aiox-doc-body.is-light code {
-          background: rgba(0, 0, 0, 0.05);
-          color: #1a1502;
-          border-color: rgba(0, 0, 0, 0.1);
+          background: rgba(0, 0, 0, 0.06) !important;
+          color: #050505 !important;
+          border: 1px solid rgba(0, 0, 0, 0.12) !important;
+          font-weight: 500;
         }
         .aiox-doc-body.is-light pre {
-          background: rgba(0, 0, 0, 0.04);
-          border-color: rgba(0, 0, 0, 0.1);
+          background: rgba(0, 0, 0, 0.04) !important;
+          border: 1px solid rgba(0, 0, 0, 0.10) !important;
         }
         .aiox-doc-body.is-light pre code {
-          color: #1a1502;
+          background: transparent !important;
+          border: 0 !important;
+          color: #050505 !important;
         }
         .aiox-doc-body.is-light ul li::before {
-          background: #1a1502;
+          background: #050505 !important;
         }
         .aiox-doc-body.is-light a {
-          color: #1a1502;
-          text-decoration-color: #1a1502;
+          color: #050505 !important;
+          text-decoration-color: rgba(0, 0, 0, 0.4) !important;
+        }
+        .aiox-doc-body.is-light a:hover {
+          background: #050505 !important;
+          color: #f4f4e8 !important;
+        }
+        .aiox-doc-body.is-light blockquote {
+          border-left-color: #050505 !important;
+          color: #3D3D3D !important;
+        }
+        .aiox-doc-body.is-light table th {
+          background: rgba(0, 0, 0, 0.05) !important;
+          color: #050505 !important;
+          border-color: rgba(0, 0, 0, 0.15) !important;
+        }
+        .aiox-doc-body.is-light table td {
+          color: #3D3D3D !important;
+          border-color: rgba(0, 0, 0, 0.10) !important;
+        }
+        .aiox-doc-body.is-light hr {
+          border-top-color: rgba(0, 0, 0, 0.15) !important;
         }
       `}</style>
     </div>
@@ -434,13 +508,24 @@ function DocAction({
   active = false,
   icon,
   title,
+  isLight,
 }: {
   onClick: () => void
   label: string
   active?: boolean
   icon?: React.ReactNode
   title?: string
+  isLight: boolean
 }) {
+  /* In light mode, active state inverts: dark bg + cream text. */
+  const cls = isLight
+    ? active
+      ? "border-[#050505] bg-[#050505] text-[#f4f4e8]"
+      : "border-[rgba(0,0,0,0.15)] bg-transparent text-[#3D3D3D] hover:border-[#050505] hover:text-[#050505]"
+    : active
+      ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black"
+      : "border-[var(--rule-soft)] bg-transparent text-[var(--ink-3)] hover:border-[var(--ink-2)] hover:text-[var(--ink)]"
+
   return (
     <button
       type="button"
@@ -448,9 +533,7 @@ function DocAction({
       title={title}
       className={cn(
         "inline-flex h-7 items-center gap-1.5 border px-3 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors",
-        active
-          ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black"
-          : "border-[var(--rule-soft)] bg-transparent text-[var(--ink-3)] hover:border-[var(--ink-2)] hover:text-[var(--ink)]",
+        cls,
       )}
       style={{ fontFamily: MONO_FONT }}
     >
@@ -493,7 +576,7 @@ function orderDocumentsByPriority(docs: ObservatoryDocument[]): ObservatoryDocum
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function docMdComponents(_theme: "light" | "dark"): Record<string, any> {
+function docMdComponents(): Record<string, any> {
   return {
     h1: (props: any) => <h1 {...props} />,
     h2: (props: any) => <h2 {...props} />,
@@ -506,7 +589,13 @@ function docMdComponents(_theme: "light" | "dark"): Record<string, any> {
     pre: (props: any) => <pre {...props} />,
     blockquote: (props: any) => <blockquote {...props} />,
     table: (props: any) => <table {...props} />,
-    a: (props: any) => <a target={String(props.href || "").startsWith("http") ? "_blank" : undefined} rel="noopener noreferrer" {...props} />,
+    a: (props: any) => (
+      <a
+        target={String(props.href || "").startsWith("http") ? "_blank" : undefined}
+        rel="noopener noreferrer"
+        {...props}
+      />
+    ),
   }
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
