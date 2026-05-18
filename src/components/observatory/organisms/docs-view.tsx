@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState, type RefObject } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Check, Copy, FileText, FolderOpen } from "lucide-react"
+import { Check, Copy, FileText, FolderOpen, Moon, Sun } from "lucide-react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/lib/utils"
@@ -15,9 +15,13 @@ import { formatBytes } from "../foundations/utils"
  *
  * Visual reference: AIOX Dash v2.html · DOC VIEW + .doc-reader.light
  *
- * Color tokens (do colors_and_type.css):
+ * Toolbar actions são icon-only (sem text label) por decisão UX de
+ * Trinity / aiox-ux-designer skill: 28x28 quadrado, lucide 13px, hover lime
+ * em dark e dark-fill em light. Tooltips via title + aria-label.
+ *
+ * Color tokens (de colors_and_type.css):
  *   --cream         = rgb(244, 244, 232)  → light bg
- *   --cream-alt     = rgb(245, 244, 231)  → toolbar light bg (very subtle)
+ *   --cream-alt     = rgb(245, 244, 231)  → toolbar light bg
  *   --cream-deep    = #ecebde             → file panel light bg
  *   --dark          = #050505             → light text primary
  *   --gray-charcoal = #3D3D3D             → light text secondary
@@ -25,18 +29,11 @@ import { formatBytes } from "../foundations/utils"
  * Light mode policy (espelha .doc-reader.light da referência):
  *   - body bg = cream | text = dark
  *   - h1/h2 = dark | h3 = gray-charcoal
- *   - p/li = gray-charcoal | strong = dark
- *   - code = rgba(0,0,0,0.05) bg + dark text + rgba(0,0,0,0.1) border (NÃO lime)
- *   - a = dark + dark underline
- *   - ::before bullets = dark (NÃO lime)
- *
- * Light mode aplica ao SHELL inteiro (toolbar + reader + file panel) para
- * evitar mistura visual quebrada (toolbar dark + body light).
+ *   - code = rgba(0,0,0,0.06) bg + dark text (NÃO lime)
  *
  * Decision-in-one-click integration:
  *   - file selection é URL-persistida via ?file=<path>
  *   - light/dark mode preserved via ?doc-theme=light
- *   - copy markdown button com confirmação visual
  */
 export function DocsView({
   documents,
@@ -97,8 +94,6 @@ export function DocsView({
   const path = `${sourceRoot}/${runSlug}/${selectedFile}`
   const selectedDoc = documents.find((d) => d.file === selectedFile)
 
-  /* Theme-resolved colors. Light mode replicates .doc-reader.light tokens da
-     referência — não reusa nenhuma var de paper/ink (que são dark-only). */
   const bgReader = isLight ? "#f4f4e8" : "var(--paper)"
   const bgToolbar = isLight ? "#ecebde" : "var(--paper-deep)"
   const bgPanel = isLight ? "#f4f4e8" : "var(--paper)"
@@ -135,20 +130,21 @@ export function DocsView({
           >
             {path}
           </div>
-          <div className="inline-flex shrink-0 gap-1.5">
-            <DocAction
+          <div className="inline-flex shrink-0 items-center gap-0.5">
+            <IconBtn
               onClick={toggleTheme}
-              active={isLight}
-              label={isLight ? "Light" : "Dark"}
-              title="Alterna tema do leitor de docs (persiste em URL)"
+              icon={isLight ? <Moon size={13} strokeWidth={1.75} /> : <Sun size={13} strokeWidth={1.75} />}
+              title={isLight ? "Mudar para tema escuro" : "Mudar para tema claro"}
+              ariaLabel={isLight ? "Mudar para tema escuro" : "Mudar para tema claro"}
               isLight={isLight}
             />
-            <DocAction
+            <IconBtn
               onClick={copyContent}
-              icon={copied ? <Check size={11} /> : <Copy size={11} />}
-              label={copied ? "Copiado" : "Copiar MD"}
-              title="Copia conteúdo markdown para clipboard"
+              icon={copied ? <Check size={13} strokeWidth={2.25} /> : <Copy size={13} strokeWidth={1.75} />}
+              title={copied ? "Copiado" : "Copiar markdown"}
+              ariaLabel="Copiar markdown"
               isLight={isLight}
+              flashState={copied ? "success" : undefined}
             />
           </div>
         </header>
@@ -284,8 +280,6 @@ export function DocsView({
         </LightScrollArea>
       </aside>
 
-      {/* Typography. Light mode rules use higher specificity (.is-light)
-          and direct hex values from AIOX Dash v2 light reference. */}
       <style jsx global>{`
         .aiox-doc-body h1 {
           font-family: var(--font-bb-display), system-ui, sans-serif;
@@ -502,43 +496,50 @@ export function DocsView({
   )
 }
 
-function DocAction({
+/* Icon-only minimal toolbar button (28x28). Light + dark variants.
+   Decision: aiox-ux-designer (Trinity) — 13px ícone preserva hierarquia vs
+   doc-path mono 11px; hover lime em dark / dark-fill em light mantém tom
+   minimalista AIOX. Foco visível via ring-1 sutil. WCAG 1.4.11 + 2.5.5. */
+function IconBtn({
   onClick,
-  label,
-  active = false,
   icon,
   title,
+  ariaLabel,
   isLight,
+  active = false,
+  flashState,
 }: {
   onClick: () => void
-  label: string
-  active?: boolean
-  icon?: React.ReactNode
-  title?: string
+  icon: React.ReactNode
+  title: string
+  ariaLabel: string
   isLight: boolean
+  active?: boolean
+  flashState?: "success"
 }) {
-  /* In light mode, active state inverts: dark bg + cream text. */
-  const cls = isLight
-    ? active
-      ? "border-[#050505] bg-[#050505] text-[#f4f4e8]"
-      : "border-[rgba(0,0,0,0.15)] bg-transparent text-[#3D3D3D] hover:border-[#050505] hover:text-[#050505]"
-    : active
-      ? "border-[var(--lime-ink)] bg-[var(--lime-ink)] text-black"
-      : "border-[var(--rule-soft)] bg-transparent text-[var(--ink-3)] hover:border-[var(--ink-2)] hover:text-[var(--ink)]"
+  const base =
+    "inline-flex h-7 w-7 items-center justify-center border transition-[color,background-color,border-color,transform] duration-150 ease-out focus-visible:outline-none focus-visible:ring-1 active:scale-[0.96]"
+
+  const variant = isLight
+    ? active || flashState === "success"
+      ? "border-[#050505] bg-[#050505] text-[#f4f4e8] focus-visible:ring-[#050505]"
+      : "border-[rgba(0,0,0,0.08)] bg-transparent text-[#3D3D3D] hover:border-[rgba(0,0,0,0.25)] hover:text-[#050505] focus-visible:ring-[rgba(0,0,0,0.35)]"
+    : active || flashState === "success"
+      ? "border-[var(--lime-ink)] bg-[var(--lime-ink)]/15 text-[var(--lime-ink)] focus-visible:ring-[var(--lime-ink)]"
+      : "border-[var(--rule-soft)] bg-transparent text-[var(--ink-3)] hover:border-[var(--rule)] hover:text-[var(--lime-ink)] focus-visible:ring-[var(--lime-ink)]"
 
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
-      className={cn(
-        "inline-flex h-7 items-center gap-1.5 border px-3 text-[10px] font-semibold uppercase tracking-[0.16em] transition-colors",
-        cls,
-      )}
-      style={{ fontFamily: MONO_FONT }}
+      aria-label={ariaLabel}
+      aria-pressed={active || undefined}
+      className={cn(base, variant)}
     >
-      {icon}
-      {label}
+      <span aria-hidden="true" className="grid place-items-center">
+        {icon}
+      </span>
     </button>
   )
 }
