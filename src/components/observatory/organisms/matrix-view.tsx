@@ -367,7 +367,11 @@ export function MatrixView({
                 </button>
               ))}
             </div>
-            <div className="flex max-h-[180px] flex-wrap gap-2 overflow-y-auto px-4 py-3">
+            {/* Player chips grid — colunas uniformes, sem estouro.
+               Layout responsive 3 → 4 → 5 → 6 colunas conforme viewport.
+               Cada chip tem mesma largura (1fr), nomes longos truncam com
+               ellipsis. Rank pinned à direita pra leitura tabular. */}
+            <div className="grid max-h-[260px] grid-cols-3 gap-1.5 overflow-y-auto px-4 py-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {players.map((player, idx) => {
                 const active = visiblePlayers.has(player)
                 const isAnchor = player === "aiox_research"
@@ -386,14 +390,14 @@ export function MatrixView({
                     onClick={() => onTogglePlayer(player)}
                     disabled={isAnchor}
                     className={cn(
-                      "group relative inline-flex min-h-[40px] flex-col items-stretch gap-1 border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.1em] transition-all",
+                      "group relative grid min-h-[40px] min-w-0 gap-1 border px-2 py-1.5 text-[10px] uppercase tracking-[0.08em] transition-all",
                       isAnchor
                         ? "cursor-not-allowed border-[var(--lime-ink)] bg-[#050505] text-[var(--lime-ink)] shadow-[inset_0_-1px_0_var(--lime-ink)]"
                         : active
                         ? `${tierBorderColor} bg-[#050505] text-[var(--ink)] hover:border-[var(--lime-ink)]`
                         : "border-dashed border-[var(--rule-soft)] bg-transparent text-[var(--ink-dim)] opacity-55 hover:opacity-90",
                     )}
-                    style={{ fontFamily: MONO_FONT, minWidth: "108px" }}
+                    style={{ fontFamily: MONO_FONT }}
                     title={
                       isAnchor
                         ? `${displayName(player)} (anchor — sempre visível) · score ${playerScore.toFixed(1)} · rank ${playerRank}/${players.length}`
@@ -402,11 +406,11 @@ export function MatrixView({
                         : `Mostrar ${displayName(player)} · score ${playerScore.toFixed(1)} · rank ${playerRank}/${players.length}`
                     }
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="grid grid-cols-[8px_minmax(0,1fr)_28px] items-center gap-1.5">
                       <span className="h-2 w-2 shrink-0" style={{ background: colorOf(player, idx) }} />
                       <span className="truncate text-left">{displayName(player)}</span>
                       <span
-                        className="ml-auto text-[9px] tabular-nums text-[var(--ink-dim)]"
+                        className="text-right text-[9px] tabular-nums text-[var(--ink-dim)]"
                         style={{ fontFamily: MONO_FONT }}
                       >
                         #{playerRank}
@@ -428,7 +432,7 @@ export function MatrixView({
                         style={{ width: `${scorePct}%` }}
                       />
                     </div>
-                    <div className="flex items-center justify-between gap-1 text-[8.5px] tracking-[0.08em] text-[var(--ink-dim)]">
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-1 text-[8.5px] tracking-[0.08em] text-[var(--ink-dim)]">
                       <span className="truncate">{profile?.license || "—"}</span>
                       <span className="tabular-nums text-[var(--ink-3)]">{playerScore.toFixed(1)}</span>
                     </div>
