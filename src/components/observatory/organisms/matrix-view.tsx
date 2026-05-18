@@ -370,14 +370,13 @@ export function MatrixView({
                 </button>
               ))}
             </div>
-            {/* Player chips grid — colunas uniformes, sem estouro.
-               Layout responsive 3 → 4 → 5 → 6 colunas conforme viewport.
-               Cada chip tem mesma largura (1fr), nomes longos truncam com
-               ellipsis. Rank pinned à direita pra leitura tabular.
-               Renderiza só os visíveis (max 20 por useDecisionState cap).
-               Para mostrar os 5+ fora do cap, user usa bulk-select "Mostrar
-               todos" abaixo — bypass do cap via ?players= explícito. */}
-            <div className="grid max-h-[260px] grid-cols-3 gap-1.5 overflow-y-auto px-4 py-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+            {/* Player chips — flex-wrap com flex-grow:1.
+               Estratégia: cada chip tem flex-basis [200px,1fr] (min ideal
+               200px, mas estica para preencher o espaço restante da linha).
+               Resultado: zero buracos no fim das linhas, todos visíveis sem
+               scroll, layout adaptativo a qualquer largura de viewport.
+               Sem max-height — todos os 20+ chips ficam na tela. */}
+            <div className="flex flex-wrap gap-1.5 px-4 py-3">
               {visiblePlayersList.map((player) => {
                 const idx = players.indexOf(player)
                 const active = visiblePlayers.has(player)
@@ -404,7 +403,12 @@ export function MatrixView({
                         ? `${tierBorderColor} bg-[#050505] text-[var(--ink)] hover:border-[var(--lime-ink)]`
                         : "border-dashed border-[var(--rule-soft)] bg-transparent text-[var(--ink-dim)] opacity-55 hover:opacity-90",
                     )}
-                    style={{ fontFamily: MONO_FONT }}
+                    style={{
+                      fontFamily: MONO_FONT,
+                      /* flex basis 200px ideal, grow 1 estica até preencher
+                         a linha (zero buracos), shrink 0 evita squash. */
+                      flex: "1 1 200px",
+                    }}
                     title={
                       isAnchor
                         ? `${displayName(player)} (anchor — sempre visível) · score ${playerScore.toFixed(1)} · rank ${playerRank}/${players.length}`
