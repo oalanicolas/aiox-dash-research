@@ -114,8 +114,10 @@ export function RunRow({
   )
 }
 
-const REDUNDANT_WORDS = /\s*(?:—|-)\s*(?:bench(?:mark)?|comparativ[oa]|comparison)\b/gi
-const PREFIX_BENCH = /^(?:bench(?:mark)?)\s*[—:-]\s*/i
+const REDUNDANT_WORDS =
+  /\s*(?:—|-)\s*(?:bench(?:mark)?|comparativ[oa]|comparison|research|pesquisa|investiga[çc][ãa]o)\b/gi
+const PREFIX_BENCH =
+  /^(?:bench(?:mark)?|research|pesquisa|tech[\s-]?research|investiga[çc][ãa]o)\s*[—:-]\s*/i
 
 /* Trim words that already come from the navigation context.
    - "DeepResearch Absorption Benchmark — AIOX vs ..." → "DeepResearch Absorption — AIOX vs ..."
