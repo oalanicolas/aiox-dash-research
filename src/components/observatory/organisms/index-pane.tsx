@@ -102,71 +102,40 @@ export function IndexPane({
       className="flex h-full min-h-0 flex-col overflow-hidden border-r border-[var(--rule-soft)] bg-[var(--paper-panel)]"
       style={observatoryDarkThemeVars}
     >
-      <div className="border-b border-[var(--rule-soft)] bg-[var(--paper-panel)] px-5 pb-4 pr-8 pt-4">
-        {/* Header simplificado: sem repetir o sourceLabel (já vem do nav do header)
-           e sem "Index ·" prefix (redundante na coluna de index). Apenas count. */}
-        <div className="mb-3 flex items-baseline justify-between gap-3.5">
-          <span
-            className="text-[10px] uppercase tracking-[0.22em] text-[var(--ink-dim)]"
-            style={{ fontFamily: MONO_FONT }}
-          >
-            {totalRuns} {totalRuns === 1 ? "run" : "runs"}
-          </span>
-          <span
-            className="text-[10px] tracking-[0.12em] text-[var(--ink-dim)]"
-            style={{ fontFamily: MONO_FONT }}
-          >
-            {visibleRuns.length !== totalRuns ? `${visibleRuns.length} visíveis` : ""}
-          </span>
-        </div>
-
-        <label className="flex h-8 cursor-text items-center gap-2.5 border border-[var(--rule)] bg-[var(--paper)] px-2.5">
-          <Search size={14} strokeWidth={1.75} className="text-[var(--ink-3)]" />
+      <div className="border-b border-[var(--rule-soft)] bg-[var(--paper-panel)] px-4 pb-3 pt-3">
+        {/* Linha 1: Search ocupa tudo. Count + visíveis ficam embutidos
+           ao lado do shortcut como meta secundária. Mais compacto que ter
+           contagem em linha separada. */}
+        <label className="group flex h-9 cursor-text items-center gap-2 border border-[var(--rule)] bg-[var(--paper)] px-2.5 transition-colors focus-within:border-[var(--lime-ink)]/60 hover:border-[var(--rule-strong)]">
+          <Search size={13} strokeWidth={1.75} className="shrink-0 text-[var(--ink-3)] group-focus-within:text-[var(--lime-ink)]" />
           <input
             id="observatory-search-input"
             type="text"
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
-            placeholder="Buscar por slug, título, schema…"
+            placeholder="Buscar runs…"
             className="min-w-0 flex-1 bg-transparent text-[13px] tracking-[0.01em] text-[var(--ink)] outline-none placeholder:text-[var(--ink-dim)]"
             style={{ fontFamily: SANS_FONT }}
           />
           <span
-            className="border border-[var(--ink-faint)] px-1.5 py-0.5 text-[10px] tracking-[0.1em] text-[var(--ink-dim)]"
+            className="shrink-0 text-[9.5px] tracking-[0.16em] text-[var(--ink-dim)]"
             style={{ fontFamily: MONO_FONT }}
           >
-            ⌘ K
+            {visibleRuns.length !== totalRuns ? `${visibleRuns.length}/${totalRuns}` : totalRuns}
+          </span>
+          <span
+            className="shrink-0 border border-[var(--ink-faint)] px-1 py-0.5 text-[9px] tracking-[0.08em] text-[var(--ink-dim)]"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            ⌘K
           </span>
         </label>
 
-        {onToggleOverview && (
-          <button
-            type="button"
-            onClick={onToggleOverview}
-            className={cn(
-              "mt-3 grid w-full grid-cols-[auto_1fr_auto_auto] items-center gap-2 border px-3 py-2.5 transition-colors",
-              overviewActive
-                ? "border-[var(--lime-ink)] bg-[var(--surface-hover)] text-[var(--lime-ink)]"
-                : "border-[var(--rule)] bg-[var(--paper)] text-[var(--ink-3)] hover:text-[var(--ink)]",
-            )}
-            style={{ fontFamily: MONO_FONT }}
-          >
-            <LineChart size={13} strokeWidth={1.75} />
-            <span className="text-left text-[11px] uppercase tracking-[0.12em]">Visão geral</span>
-            <span
-              className={cn(
-                "text-[10px] uppercase tracking-[0.1em]",
-                overviewActive ? "text-[var(--ink-dim)]" : "text-[rgba(245,244,231,0.65)]",
-              )}
-            >
-              {overviewCutsCount} cortes
-            </span>
-            <span className="text-[14px] opacity-80">›</span>
-          </button>
-        )}
-
+        {/* Linha 2: Filter chips horizontais. Cada um mostra label + value
+           atual ("Sort: recente" / "Cat: todas") com prefix mono no value
+           ativo lime. Cycle inline, sem precisar abrir popover. */}
         <div
-          className="mt-3 grid grid-cols-2 gap-1.5"
+          className="mt-2 flex flex-wrap gap-1"
           style={{ fontFamily: MONO_FONT }}
         >
           {filterButtons.map((item) => (
@@ -175,16 +144,40 @@ export function IndexPane({
               type="button"
               onClick={item.onCycle}
               className={cn(
-                "h-7 border px-2 text-center text-[9.5px] font-semibold uppercase tracking-[0.16em] transition-colors",
+                "inline-flex h-6 min-w-0 items-center gap-1 border px-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] transition-colors",
                 item.active
-                  ? "border-[var(--lime-ink)] bg-[var(--surface-hover)] text-[var(--lime-ink)]"
-                  : "border-[var(--rule)] bg-transparent text-[var(--ink-dim)] hover:text-[var(--ink)]",
+                  ? "border-[var(--lime-ink)]/60 bg-[var(--lime-ink)]/10 text-[var(--lime-ink)]"
+                  : "border-[var(--rule-soft)] bg-transparent text-[var(--ink-dim)] hover:border-[var(--rule)] hover:text-[var(--ink-2)]",
               )}
+              title={`Trocar (clique para próximo): ${item.label}`}
             >
-              {item.label}
+              <span className="truncate">{item.label}</span>
             </button>
           ))}
         </div>
+
+        {/* Linha 3 (opcional): Visão geral compacta. Só renderiza quando
+           handler existe. Botão slim em vez do bloco grande anterior. */}
+        {onToggleOverview && (
+          <button
+            type="button"
+            onClick={onToggleOverview}
+            className={cn(
+              "mt-2 inline-flex h-7 w-full items-center gap-2 border px-2 transition-colors",
+              overviewActive
+                ? "border-[var(--lime-ink)] bg-[var(--lime-ink)]/10 text-[var(--lime-ink)]"
+                : "border-[var(--rule)] bg-transparent text-[var(--ink-3)] hover:border-[var(--rule-strong)] hover:text-[var(--ink-2)]",
+            )}
+            style={{ fontFamily: MONO_FONT }}
+          >
+            <LineChart size={12} strokeWidth={1.75} />
+            <span className="text-[10px] uppercase tracking-[0.14em]">Visão geral</span>
+            <span className="ml-auto text-[9px] tracking-[0.1em] text-[var(--ink-dim)]">
+              {overviewCutsCount} cortes
+            </span>
+            <span className="text-[12px] opacity-70">›</span>
+          </button>
+        )}
       </div>
 
       <LightScrollArea ref={listRef} className="min-h-0 flex-1" fadeColor="var(--paper-panel)">
