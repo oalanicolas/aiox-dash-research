@@ -135,11 +135,6 @@ export function MatrixView({
     window.setTimeout(() => setCopied(null), 1500)
   }
 
-  const visiblePlayersList = useMemo(
-    () => players.filter((player) => visiblePlayers.has(player)),
-    [players, visiblePlayers],
-  )
-
   const profileByKey = useMemo(() => {
     const map = new Map<string, ObservatoryPlayerProfile>()
     for (const p of playerProfiles) map.set(p.key, p)
@@ -152,6 +147,14 @@ export function MatrixView({
   const totalsLive = useMemo(
     () => rankPlayers(matrix, weights, visiblePlayers),
     [matrix, weights, visiblePlayers],
+  )
+
+  /* Column order = best → worst by current weighted score (totalsLive).
+     totalsLive já vem ordenado desc por score; só extraímos a sequência de
+     player keys. Quando o user troca pesos/persona, as colunas se reordenam. */
+  const visiblePlayersList = useMemo(
+    () => totalsLive.map((entry) => entry.player),
+    [totalsLive],
   )
 
   const groupedRows = useMemo(() => {
