@@ -373,9 +373,13 @@ export function MatrixView({
             {/* Player chips grid — colunas uniformes, sem estouro.
                Layout responsive 3 → 4 → 5 → 6 colunas conforme viewport.
                Cada chip tem mesma largura (1fr), nomes longos truncam com
-               ellipsis. Rank pinned à direita pra leitura tabular. */}
+               ellipsis. Rank pinned à direita pra leitura tabular.
+               Renderiza só os visíveis (max 20 por useDecisionState cap).
+               Para mostrar os 5+ fora do cap, user usa bulk-select "Mostrar
+               todos" abaixo — bypass do cap via ?players= explícito. */}
             <div className="grid max-h-[260px] grid-cols-3 gap-1.5 overflow-y-auto px-4 py-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-              {players.map((player, idx) => {
+              {visiblePlayersList.map((player) => {
+                const idx = players.indexOf(player)
                 const active = visiblePlayers.has(player)
                 const isAnchor = player === "aiox_research"
                 const totalEntry = totalsLive.find((t) => t.player === player)
