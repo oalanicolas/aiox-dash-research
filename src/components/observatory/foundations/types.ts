@@ -195,6 +195,10 @@ export type ObservatoryPlayerProfile = {
   color: string
   letter: string
   tag: string
+  /* Public URLs — repoUrl preferred (GitHub etc); vendorUrl when only vendor site exists.
+     Empty string when the bench did not provide one. Consumers should treat both as optional. */
+  repoUrl: string
+  vendorUrl: string
 }
 
 export type ObservatoryCoverageStackEntry = {

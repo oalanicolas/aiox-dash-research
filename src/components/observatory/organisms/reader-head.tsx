@@ -39,11 +39,20 @@ const MODE_LABELS: Record<ReaderMode, string> = {
   evidence: "Evidências",
 }
 
+/* Bench/Demo label overrides — narrative labels for the decision UI.
+   Order in the nav comes from adapters (bench.ts availableModes push order),
+   not from this map. See apps/research/DOCTRINE-decision-in-one-click.md §"6 atos". */
 const BENCH_MODE_LABELS: Partial<Record<ReaderMode, string>> = {
-  document: "Docs",
-  map: "Tese",
-  roadmap: "Execução",
+  map: "Overview",
+  matrix: "Matriz",
   duel: "Comparativo",
+  weights: "Pesos",
+  personas: "Personas",
+  evidence: "Evidências",
+  roadmap: "Execução",
+  decision: "Decisão",
+  slides: "Slides",
+  document: "Docs",
 }
 
 const SINKRA_MODE_HELP: Partial<Record<ReaderMode, string>> = {

@@ -128,18 +128,26 @@ export function mapBenchToObservatory(
   const hasSlides = data.documents.length > 0 || Boolean(dashMatrix) || data.personas.length > 0 || data.cliffs.length > 0
   const hasRoadmap = data.gapItems.length > 0 || data.cliffs.length > 0 || data.categorical.length > 0 || Boolean(dashMatrix)
   const isProductBench = data.typeSpecific?.product || data.selectedRun.type === "product"
+  /* Nav order = decision flow (apps/research/DOCTRINE-decision-in-one-click.md).
+       Reasoning: overview primeiro (1-pager de clareza) → matriz (densidade visual) →
+       duelos → pesos (manipulação) → personas → evidências → execução → decisão →
+       slides (deck-ready) → afterthoughts (score/tco/coverage) → docs.
+       Overview substitui o antigo BenchMapReport (era 7-section dashboard que
+       replicava conteúdo das outras tabs — gerava ruído). Agora é 1-pager strict.
+     */
   if (hasBenchMap) availableModes.push("map")
-  if (hasSlides) availableModes.push("slides")
-  if (hasRoadmap) availableModes.push("roadmap")
-  if (data.personas.length > 0) availableModes.push("personas")
-  if (hasDecision) availableModes.push("decision")
-  if (hasEvidence) availableModes.push("evidence")
   if (hasMatrix) availableModes.push("matrix")
+  if (hasLegacyMatrix && !hasMatrix) availableModes.push("matrix")
   if (hasDuel) availableModes.push("duel")
-  if (hasScore && !isProductBench) availableModes.push("score")
-  if (hasLegacyMatrix && !hasMatrix) {
-    availableModes.push("matrix")
+  if (dashMatrix && dashMatrix.rows.length > 0 && !isProductBench) {
+    availableModes.push("weights")
   }
+  if (data.personas.length > 0) availableModes.push("personas")
+  if (hasEvidence) availableModes.push("evidence")
+  if (hasRoadmap) availableModes.push("roadmap")
+  if (hasDecision) availableModes.push("decision")
+  if (hasSlides) availableModes.push("slides")
+  if (hasScore && !isProductBench) availableModes.push("score")
   if (data.tco && data.tco.scenarios.length > 0) availableModes.push("tco")
   const hasCodebaseCoverage = Boolean(
     data.typeSpecific?.codebase &&
@@ -148,9 +156,6 @@ export function mapBenchToObservatory(
         data.typeSpecific.codebase.knowledgeIceberg.length > 0),
   )
   if (hasCodebaseCoverage) availableModes.push("coverage")
-  if (dashMatrix && dashMatrix.rows.length > 0 && !isProductBench) {
-    availableModes.push("weights")
-  }
   if (data.documents.length > 0) availableModes.push("document")
 
   const legacyPlayers = Array.from(
@@ -293,6 +298,8 @@ export function mapBenchToObservatory(
       color: p.color,
       letter: p.letter,
       tag: p.tag,
+      repoUrl: p.repoUrl,
+      vendorUrl: p.vendorUrl,
     })),
     benchmarkMethod: data.method,
     benchmarkConfidence: data.confidenceBreakdown,

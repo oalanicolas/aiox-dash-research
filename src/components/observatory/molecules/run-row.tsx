@@ -3,24 +3,16 @@ import { MONO_FONT, SANS_FONT } from "../foundations/theme"
 import { coverageNumeric, fmtDateShort, pad2, statusLabel } from "../foundations/utils"
 import { InferredFlag } from "./inferred-flag"
 
-const SUBJECT_PALETTE = ["#7C9F3F", "#4F7CAC", "#C97A4A", "#8B6FB0", "#10B981", "#3B82F6", "#8B5CF6"]
-
-function colorForSubject(name: string, index: number): string {
-  /* Stable color per subject: hash the lowercased name. Falls back to positional
-     index when name is missing, so chips always render even before data lands. */
-  if (!name) return SUBJECT_PALETTE[index % SUBJECT_PALETTE.length]
-  let hash = 0
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.toLowerCase().charCodeAt(i)) >>> 0
-  }
-  return SUBJECT_PALETTE[hash % SUBJECT_PALETTE.length]
-}
-
 /* Molecule — linha do index list. 1 ação: selecionar run.
- * Atoms: dot, num, title, sub, date, coverage, status, inferred flag.
+ * Atoms: dot, num, title (trimmed), sub mono, coverage, status, inferred flag.
  *
- * When `subjects` is non-empty (bench rows), an additional chip row renders
- * with colored dots — one per subject — for at-a-glance recognition. */
+ * Subjects chips foram removidas (2026-05-18) — quando o usuário está em /bench
+ * já sabe que o conteúdo é benchmark, e enumerar os 25 players-analisados em
+ * chip-row poluía o sidebar. CategoryTag fica como único pin de domínio.
+ *
+ * Titles têm palavras redundantes (Benchmark, Bench) podadas quando o source
+ * já é bench-mode — o context "Bench" vem do nav do header, não precisa
+ * repetir em cada card. */
 export function RunRow({
   slug,
   num,
@@ -31,7 +23,6 @@ export function RunRow({
   status,
   coverageInferred,
   categoryTag,
-  subjects,
   isActive,
   onSelect,
 }: {
@@ -44,8 +35,8 @@ export function RunRow({
   status: string
   coverageInferred?: boolean
   categoryTag?: string
-  /* Optional list of subject names — when provided, colored chips render below
-     the title. Used by bench rows; research rows leave it undefined. */
+  /* Subjects deliberately removed — see file comment. Kept the prop in the
+     IndexPane caller's contract for backwards-compat but ignored here. */
   subjects?: string[]
   isActive: boolean
   onSelect: () => void
@@ -60,13 +51,15 @@ export function RunRow({
           ? "text-[var(--warning-ink)]"
           : "text-[var(--ink-3)]"
 
+  const cleanTitle = pruneRedundantTitle(displayTitle)
+
   return (
     <button
       type="button"
       data-slug={slug}
       onClick={onSelect}
       className={cn(
-        "group grid min-h-[72px] w-full grid-cols-[20px_minmax(0,1fr)_44px] items-center gap-2 border-b border-l-2 border-b-[var(--rule-soft)] border-l-transparent px-5 py-3 text-left transition-colors hover:bg-[var(--paper-deep)]",
+        "group grid min-h-[60px] w-full grid-cols-[20px_minmax(0,1fr)_44px] items-center gap-2 border-b border-l-2 border-b-[var(--rule-soft)] border-l-transparent px-5 py-3 text-left transition-colors hover:bg-[var(--paper-deep)]",
         isActive && "border-l-[var(--lime-ink)] bg-[var(--paper)]",
       )}
     >
@@ -95,48 +88,15 @@ export function RunRow({
           }}
           title={displayTitle}
         >
-          {displayTitle}
+          {cleanTitle}
         </span>
         <span
           className="mt-1 block truncate text-[10px] uppercase tracking-[0.16em] text-[var(--ink-dim)]"
           style={{ fontFamily: MONO_FONT }}
         >
-          {fmtDateShort(date)} · {files} arquivos · #{pad2(num)} · {statusLabel(status)}
+          {fmtDateShort(date)} · {files} arq · #{pad2(num)} · {statusLabel(status)}
+          {categoryTag ? <span className="ml-2 text-[var(--lime-ink)]">· {categoryTag}</span> : null}
         </span>
-        {(categoryTag || (subjects && subjects.length > 0)) && (
-          <span className="mt-1.5 flex flex-wrap items-center gap-1" aria-label="Metadados do benchmark">
-            {categoryTag ? (
-              <span
-                className="inline-flex items-center border border-[var(--rule-soft)] bg-[var(--surface-hover)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--lime-ink)]"
-                style={{ fontFamily: MONO_FONT }}
-              >
-                {categoryTag}
-              </span>
-            ) : null}
-            {subjects?.slice(0, 5).map((subject, idx) => (
-              <span
-                key={`${subject}-${idx}`}
-                className="inline-flex items-center gap-1 border border-[var(--rule-soft)] bg-[var(--paper-alt)] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.06em] text-[var(--ink-2)]"
-                style={{ fontFamily: MONO_FONT }}
-              >
-                <span
-                  className="inline-block h-1.5 w-1.5 rounded-full"
-                  style={{ background: colorForSubject(subject, idx) }}
-                  aria-hidden="true"
-                />
-                <span className="max-w-[52px] truncate xl:max-w-[64px]">{subject}</span>
-              </span>
-            ))}
-            {subjects && subjects.length > 5 && (
-              <span
-                className="text-[9px] tracking-[0.06em] text-[var(--ink-dim)]"
-                style={{ fontFamily: MONO_FONT }}
-              >
-                +{subjects.length - 5}
-              </span>
-            )}
-          </span>
-        )}
       </span>
 
       <span className="grid content-center justify-items-end gap-1 self-stretch text-right">
@@ -152,4 +112,20 @@ export function RunRow({
       </span>
     </button>
   )
+}
+
+const REDUNDANT_WORDS = /\s*(?:—|-)\s*(?:bench(?:mark)?|comparativ[oa]|comparison)\b/gi
+const PREFIX_BENCH = /^(?:bench(?:mark)?)\s*[—:-]\s*/i
+
+/* Trim words that already come from the navigation context.
+   - "DeepResearch Absorption Benchmark — AIOX vs ..." → "DeepResearch Absorption — AIOX vs ..."
+   - "Bench: gstack vs AIOX (Sinkra Hub)" → "gstack vs AIOX (Sinkra Hub)"
+   Only trims when the source is bench (caller passes already-clean title for
+   research). Never strips standalone "Bench" tokens that carry meaning. */
+function pruneRedundantTitle(title: string): string {
+  if (!title) return title
+  let trimmed = title.replace(PREFIX_BENCH, "")
+  trimmed = trimmed.replace(REDUNDANT_WORDS, "")
+  trimmed = trimmed.replace(/\s+/g, " ").trim()
+  return trimmed || title
 }

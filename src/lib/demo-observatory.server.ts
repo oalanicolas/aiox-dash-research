@@ -38,10 +38,10 @@ const run: ObservatoryRunSummary = {
 }
 
 const players: ObservatoryPlayerProfile[] = [
-  { key: "aiox-research", name: "AIOX Research", category: "operational intelligence", type: "dashboard", license: "private", origin: "Sinkra", years: 1, techScore: 92, neutralScore: 89, color: "#d1ff00", letter: "A", tag: "recommended" },
-  { key: "legacy-bi", name: "Legacy BI", category: "analytics", type: "warehouse", license: "enterprise", origin: "incumbent", years: 8, techScore: 74, neutralScore: 77, color: "#70a7ff", letter: "B", tag: "stable" },
-  { key: "notion-stack", name: "Notion Stack", category: "workspace", type: "manual ops", license: "saas", origin: "operator", years: 3, techScore: 68, neutralScore: 71, color: "#f5b340", letter: "N", tag: "manual" },
-  { key: "spreadsheet-os", name: "Spreadsheet OS", category: "spreadsheet", type: "ad hoc", license: "office", origin: "ops", years: 12, techScore: 53, neutralScore: 58, color: "#ef4444", letter: "S", tag: "legacy" },
+  { key: "aiox-research", name: "AIOX Research", category: "operational intelligence", type: "dashboard", license: "private", origin: "Sinkra", years: 1, techScore: 92, neutralScore: 89, color: "#d1ff00", letter: "A", tag: "recommended", repoUrl: "", vendorUrl: "" },
+  { key: "legacy-bi", name: "Legacy BI", category: "analytics", type: "warehouse", license: "enterprise", origin: "incumbent", years: 8, techScore: 74, neutralScore: 77, color: "#70a7ff", letter: "B", tag: "stable", repoUrl: "", vendorUrl: "" },
+  { key: "notion-stack", name: "Notion Stack", category: "workspace", type: "manual ops", license: "saas", origin: "operator", years: 3, techScore: 68, neutralScore: 71, color: "#f5b340", letter: "N", tag: "manual", repoUrl: "", vendorUrl: "" },
+  { key: "spreadsheet-os", name: "Spreadsheet OS", category: "spreadsheet", type: "ad hoc", license: "office", origin: "ops", years: 12, techScore: 53, neutralScore: 58, color: "#ef4444", letter: "S", tag: "legacy", repoUrl: "", vendorUrl: "" },
 ]
 
 const matrix: ObservatoryMatrix = {

@@ -6,7 +6,6 @@ import remarkGfm from "remark-gfm"
 import YAML from "yaml"
 import { cn } from "@/lib/utils"
 import { LightScrollArea } from "../molecules/light-scroll-area"
-import { PlayerCard } from "../molecules/player-card"
 import { ScatterChart, type ScatterPoint } from "../molecules/scatter-chart"
 import { TaxonomyList, type TaxonomyItem } from "../molecules/taxonomy-list"
 import { TimelineChart, type TimelinePoint } from "../molecules/timeline-chart"
@@ -43,6 +42,15 @@ const CoverageView = dynamic(() => import("./coverage-view").then((mod) => mod.C
 })
 const WeightsView = dynamic(() => import("./weights-view").then((mod) => mod.WeightsView), {
   loading: () => <ReportLoader label="Weights" />,
+})
+const BenchOverviewView = dynamic(() => import("./bench-overview-view").then((mod) => mod.BenchOverviewView), {
+  loading: () => <ReportLoader label="Overview" />,
+})
+const DuelView = dynamic(() => import("./duel-view").then((mod) => mod.DuelView), {
+  loading: () => <ReportLoader label="Comparativo" />,
+})
+const DocsView = dynamic(() => import("./docs-view").then((mod) => mod.DocsView), {
+  loading: () => <ReportLoader label="Docs" />,
 })
 const SinkraMapReport = dynamic(() => import("./sinkra-map-report").then((mod) => mod.SinkraMapReport), {
   loading: () => <ReportLoader label="SINKRA Map" dark />,
@@ -130,19 +138,17 @@ export function ReaderBody({
   }
   if (mode === "map") {
     if (source === "bench" || source === "demo") {
+      /* Overview = 1-pager strict (verdict + score card + actions + provenance).
+         Replaces the previous BenchMapReport which duplicated content from
+         Matriz/Comparativo/Personas/Decisão. See DOCTRINE-decision-in-one-click.md. */
       return (
-        <BenchMapReport
+        <BenchOverviewView
           runs={runs ?? []}
-          documents={documents ?? []}
           matrix={matrix ?? null}
-          scoreDimensions={scoreDimensions ?? []}
           personas={personas ?? []}
-          tco={tco ?? null}
-          cliffs={cliffs ?? []}
-          categorical={categorical ?? []}
-          gapItems={gapItems ?? []}
           playerProfiles={playerProfiles ?? []}
-          typeSpecific={typeSpecific ?? {}}
+          gapItems={gapItems ?? []}
+          sourceCount={topSources?.length ?? 0}
         />
       )
     }
@@ -255,10 +261,12 @@ export function ReaderBody({
     return <BenchScoreReport dimensions={scoreDimensions ?? []} scoreMetrics={scoreMetrics ?? []} matrix={matrix ?? null} playerProfiles={playerProfiles ?? []} />
   }
   if (mode === "matrix" && matrix) {
-    return benchReport(<MatrixView matrix={matrix} playerProfiles={playerProfiles ?? []} />)
+    return benchReport(<MatrixView matrix={matrix} playerProfiles={playerProfiles ?? []} personas={personas ?? []} />)
   }
   if (mode === "duel" && matrix) {
-    return <BenchDuelReport matrix={matrix} playerProfiles={playerProfiles ?? []} />
+    /* DuelView (org.) is URL-state aware (?compare=a,b) and uses live weighted totals.
+       BenchDuelReport (inline above) is the legacy report-shell version kept for ref. */
+    return benchReport(<DuelView matrix={matrix} playerProfiles={playerProfiles ?? []} personas={personas ?? []} />)
   }
   if (mode === "personas") {
     return <BenchPersonasReport personas={personas ?? []} playerProfiles={playerProfiles ?? []} matrix={matrix ?? null} />
@@ -299,6 +307,24 @@ export function ReaderBody({
   /* Default: document (markdown) */
   if (file && isStructuredArtifact(file)) {
     return <StructuredArtifactView file={file} content={content} bodyRef={bodyRef} />
+  }
+
+  /* DocsView (AIOX Dash v2 pattern) — file panel + toolbar + typed body.
+     Used when documents[] is populated (bench/demo/research with run files).
+     Falls back to bare ReactMarkdown when no documents list exists. */
+  const activeRun = runs?.find((run) => run.active) ?? runs?.[0]
+  const sourceRoot = source === "research" ? "docs/research" : source === "sinkra-maps" ? "docs/sinkra-maps" : "docs/bench"
+  if (file && documents && documents.length > 0 && activeRun) {
+    return (
+      <DocsView
+        documents={documents}
+        selectedFile={file}
+        content={content}
+        sourceRoot={sourceRoot}
+        runSlug={activeRun.slug}
+        bodyRef={bodyRef}
+      />
+    )
   }
 
   return (
@@ -5667,8 +5693,80 @@ function renderStructuredArtifactReport(file: string, parsed: unknown): ReactNod
   if (/task_definitions\.ya?ml$/i.test(file)) return <TasksArtifactReport data={parsed} />
   if (/quality_gates\.ya?ml$/i.test(file)) return <QualityGatesArtifactReport data={parsed} />
   if (/score_card\.ya?ml$/i.test(file)) return <ScoreCardArtifactReport data={parsed} />
+  if (/research-contract\.json$/i.test(file)) return <ResearchContractArtifactReport data={parsed} />
   if (/(process_map|domain_map|dependency_graph)\.ya?ml$/i.test(file)) return <MapArtifactReport file={file} data={parsed} />
   return null
+}
+
+function ResearchContractArtifactReport({ data }: { data: Record<string, unknown> }) {
+  const decisionContext = asDisplayRecord(recordValue(data, "decision_context"))
+  const taxonomy = asDisplayRecord(recordValue(data, "taxonomy"))
+  const rubric = asDisplayRecord(recordValue(data, "rubric_model"))
+  const evidence = asDisplayRecord(recordValue(data, "evidence_model"))
+  const stopRules = asDisplayRecord(recordValue(data, "stop_rules"))
+  const thresholds = asDisplayRecord(recordValue(data, "thresholds"))
+  const categories = arrayValue(taxonomy, "categories")
+  const criteria = arrayValue(rubric, "dimensions_or_criteria")
+  const primaryEvidence = arrayValue(evidence, "primary_evidence")
+  const stopWhen = arrayValue(stopRules, "stop_when")
+  const doNotStopWhen = arrayValue(stopRules, "do_not_stop_when")
+
+  return (
+    <div className="grid gap-5">
+      <StructuredSummaryStrip
+        items={[
+          ["Kind", humanizeResearchLabel(stringValue(data, "research_kind", "custom research"))],
+          ["Method", humanizeResearchLabel(stringValue(rubric, "method_family", "custom"))],
+          ["Profile", humanizeResearchLabel(stringValue(decisionContext, "profile_type", "—"))],
+          ["Generated", stringValue(data, "generated_at", "—")],
+        ]}
+      />
+
+      <section className="border border-[var(--rule)] bg-[var(--paper)]">
+        <header className="border-b border-[var(--rule)] bg-[var(--paper-alt)] p-4">
+          <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--ink-3)]" style={{ fontFamily: MONO_FONT }}>
+            local contract
+          </div>
+          <h3 className="mt-1 text-[24px] font-black tracking-[-0.04em] text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+            {humanizeResearchLabel(stringValue(data, "research_kind", "Research contract"))}
+          </h3>
+        </header>
+        <div className="grid gap-px bg-[var(--rule)] md:grid-cols-2">
+          <ReportTextBlock label="Objetivo" value={recordValue(data, "objective")} />
+          <ReportTextBlock label="Decisão primária" value={recordValue(decisionContext, "primary_decision")} />
+          <ReportTextBlock label="Unidade de análise" value={recordValue(taxonomy, "unit_of_analysis")} />
+          <ReportTextBlock label="Semântica do score" value={recordValue(rubric, "score_semantics")} />
+          <ReportTextBlock label="Regra de saturação" value={recordValue(rubric, "pass_or_saturation_rule")} />
+          <ReportTextBlock label="Fraqueza conhecida" value={recordValue(evidence, "known_weakness")} />
+        </div>
+      </section>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="border border-[var(--rule)] bg-[var(--paper)] p-4">
+          <h3 className="text-[20px] font-black tracking-[-0.035em] text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+            Taxonomia e rubrica
+          </h3>
+          <div className="mt-4 grid gap-4">
+            <DependencyPills label="Categorias" values={categories} />
+            <DependencyPills label="Critérios" values={criteria} />
+            <DependencyPills label="Evidências primárias" values={primaryEvidence} />
+          </div>
+        </section>
+
+        <section className="border border-[var(--rule)] bg-[var(--paper)] p-4">
+          <h3 className="text-[20px] font-black tracking-[-0.035em] text-[var(--ink)]" style={{ fontFamily: DISPLAY_FONT }}>
+            Stop rules
+          </h3>
+          <div className="mt-4 grid gap-4">
+            <DependencyPills label="Stop when" values={stopWhen} />
+            <DependencyPills label="Do not stop when" values={doNotStopWhen} />
+          </div>
+        </section>
+      </div>
+
+      <StructuredSection name="thresholds" value={thresholds} />
+    </div>
+  )
 }
 
 function WorkflowArtifactReport({ data }: { data: Record<string, unknown> }) {

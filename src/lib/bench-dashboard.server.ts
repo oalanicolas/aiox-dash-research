@@ -604,7 +604,20 @@ function extractGapItems(gapAnalysis: unknown): BenchGapItem[] {
         title: formatValue(record.description ?? record.title ?? record.gap, "Gap"),
         priority: formatValue(record.priority),
         complexity: formatValue(record.absorption_complexity ?? record.complexity),
-        rationale: formatValue(record.rationale ?? record.estimated_effort ?? record.recommendation, ""),
+        rationale: formatValue(
+          record.rationale
+            ?? record.finding
+            ?? record.current_state
+            ?? record.resolution
+            ?? record.recommended_action
+            ?? record.action
+            ?? record.absorption
+            ?? record.acceptance
+            ?? record.next_step
+            ?? record.estimated_effort
+            ?? record.recommendation,
+          "",
+        ),
       })
     }
   }
@@ -1302,7 +1315,18 @@ function extractDashGapItems(dash: unknown): BenchGapItem[] {
       title: formatValue(gap.title, "Gap"),
       priority: formatValue(gap.priority),
       complexity: formatValue(gap.complexity, ""),
-      rationale: formatValue(gap.rationale, ""),
+      rationale: formatValue(
+        gap.rationale
+          ?? gap.finding
+          ?? gap.current_state
+          ?? gap.resolution
+          ?? gap.recommended_action
+          ?? gap.action
+          ?? gap.absorption
+          ?? gap.acceptance
+          ?? gap.next_step,
+        "",
+      ),
     }))
 }
 

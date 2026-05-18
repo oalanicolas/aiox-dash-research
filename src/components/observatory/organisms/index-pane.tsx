@@ -102,25 +102,21 @@ export function IndexPane({
       className="flex h-full min-h-0 flex-col overflow-hidden border-r border-[var(--rule-soft)] bg-[var(--paper-panel)]"
       style={observatoryDarkThemeVars}
     >
-      <div className="border-b border-[var(--rule-soft)] bg-[var(--paper-panel)] px-5 pb-5 pr-8 pt-[18px]">
-        <div className="mb-4 flex items-baseline justify-between gap-3.5">
+      <div className="border-b border-[var(--rule-soft)] bg-[var(--paper-panel)] px-5 pb-4 pr-8 pt-4">
+        {/* Header simplificado: sem repetir o sourceLabel (já vem do nav do header)
+           e sem "Index ·" prefix (redundante na coluna de index). Apenas count. */}
+        <div className="mb-3 flex items-baseline justify-between gap-3.5">
           <span
-            className="flex min-w-0 items-baseline gap-2.5 truncate text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-3)]"
+            className="text-[10px] uppercase tracking-[0.22em] text-[var(--ink-dim)]"
             style={{ fontFamily: MONO_FONT }}
           >
-            <span className="shrink-0 text-[var(--lime-ink)]">Index</span>
-            <span className="shrink-0 text-[var(--ink-faint)]">·</span>
-            <span
-              className="truncate text-[10.5px] uppercase tracking-[0.22em] text-[var(--ink-dim)]"
-            >
-              {sourceLabel} runs
-            </span>
+            {totalRuns} {totalRuns === 1 ? "run" : "runs"}
           </span>
           <span
-            className="shrink-0 whitespace-nowrap text-[11px] tracking-[0.08em] text-[var(--ink-3)]"
+            className="text-[10px] tracking-[0.12em] text-[var(--ink-dim)]"
             style={{ fontFamily: MONO_FONT }}
           >
-            <strong className="font-semibold text-[var(--ink)]">{totalRuns}</strong>
+            {visibleRuns.length !== totalRuns ? `${visibleRuns.length} visíveis` : ""}
           </span>
         </div>
 

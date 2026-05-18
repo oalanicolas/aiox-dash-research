@@ -396,7 +396,11 @@ export function Observatory({
     copyCommand(command, setCopiedNew)
   }
 
-  const showDocCompanions = mode === "document"
+  /* InspectorPane (right rail) was originally the file-panel for document mode.
+     DocsView now embeds its own file panel (AIOX Dash v2 pattern) — having both
+     produces a duplicate "Files" column. Keep companion rail off when document
+     view is active. Future modes that want a right inspector can re-enable. */
+  const showDocCompanions = false
   const compactShell = viewport === "sm"
   const showSidePanes = !compactShell
 
@@ -422,6 +426,7 @@ export function Observatory({
       <div
         className={cn(
           "grid min-h-0 overflow-hidden",
+          leftCollapsed && "aiox-shell-left-collapsed",
           compactShell && "grid-cols-[minmax(0,1fr)]",
           /* Pane sizes scale with viewport: tighter on md (1024-1280px),
              full on lg+. Sm viewports always collapse both via effect above. */
@@ -662,7 +667,9 @@ function qualityClass(run: ObservatoryRunSummary): QualityKey {
 
 function defaultReaderMode(data: ObservatoryData): ReaderMode {
   if (data.source === "bench" || data.source === "demo") {
-    const priority: ReaderMode[] = ["map", "slides", "roadmap", "personas", "decision", "evidence", "matrix", "duel", "document", "tco", "coverage"]
+    /* Decision-flow priority. Overview primeiro = 1-pager de clareza pra orientar
+       o leitor antes de qualquer manipulação. See DOCTRINE-decision-in-one-click.md. */
+    const priority: ReaderMode[] = ["map", "matrix", "duel", "weights", "personas", "evidence", "roadmap", "decision", "slides", "document", "score", "tco", "coverage"]
     for (const m of priority) {
       if (data.availableModes.includes(m)) return m
     }

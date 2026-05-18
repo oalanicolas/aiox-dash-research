@@ -1,14 +1,16 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import { cn } from "@/lib/utils"
 import type {
   ObservatoryMatrix,
   ObservatoryMatrixRow,
+  ObservatoryPersona,
   ObservatoryPlayerProfile,
 } from "../foundations/types"
 import { LightScrollArea } from "../molecules/light-scroll-area"
 import { DISPLAY_FONT, MONO_FONT, SANS_FONT, SERIF_FONT } from "../foundations/theme"
+import { rankPlayers, useDecisionState } from "../foundations/use-decision-state"
 
 type DuelRow = {
   row: ObservatoryMatrixRow
@@ -17,23 +19,42 @@ type DuelRow = {
 }
 
 /* Organism — Duel view (Reader mode = "duel").
- * Two players head-to-head, dimension by dimension, with wins arrays. */
+ *
+ * Two players head-to-head, dimension by dimension, with wins arrays.
+ *
+ * Decision-in-one-click (DOCTRINE-decision-in-one-click.md):
+ *   - Active pair lives in URL via ?compare=a,b
+ *   - Per-player totals are LIVE (respect weight overrides + persona)
+ *   - Pair picker limited to visible-players set (so hiding a player in /matrix
+ *     also removes it from duel candidates).
+ *   - Default pair = top-1 vs top-2 of current ranking.
+ */
 export function DuelView({
   matrix,
   playerProfiles,
+  personas = [],
 }: {
   matrix: ObservatoryMatrix
   playerProfiles: ObservatoryPlayerProfile[]
+  personas?: ObservatoryPersona[]
 }) {
+  const { weights, visiblePlayers, comparePair, setComparePair, personaActive, hasOverrides } =
+    useDecisionState(matrix, personas)
+
+  const totalsLive = useMemo(
+    () => rankPlayers(matrix, weights, visiblePlayers),
+    [matrix, weights, visiblePlayers],
+  )
+
   const totalsByPlayer = useMemo(() => {
     const map = new Map<string, number>()
-    for (const t of matrix.totals) map.set(t.player, t.score)
+    for (const t of totalsLive) map.set(t.player, t.score)
     return map
-  }, [matrix.totals])
+  }, [totalsLive])
 
   const sortedPlayers = useMemo(
-    () => [...matrix.players].sort((a, b) => (totalsByPlayer.get(b) ?? 0) - (totalsByPlayer.get(a) ?? 0)),
-    [matrix.players, totalsByPlayer],
+    () => totalsLive.map((t) => t.player),
+    [totalsLive],
   )
 
   const pairOptions = useMemo(() => {
@@ -46,29 +67,34 @@ export function DuelView({
     return pairs
   }, [sortedPlayers])
 
-  const [pairIndex, setPairIndex] = useState(0)
-  const pair = pairOptions[pairIndex] ?? [sortedPlayers[0], sortedPlayers[1]]
-  const [left, right] = pair
+  const defaultPair: [string, string] | null =
+    sortedPlayers[0] && sortedPlayers[1] ? [sortedPlayers[0], sortedPlayers[1]] : null
+  const pair = comparePair ?? defaultPair
 
-  if (!left || !right) {
+  if (!pair || !pair[0] || !pair[1]) {
     return (
       <div className="flex-1 px-4 pt-5 sm:px-6 sm:pt-6 lg:px-10 lg:pt-7">
         <p
           className="text-[14px] italic text-[var(--ink-3)]"
           style={{ fontFamily: SERIF_FONT }}
         >
-          Este benchmark precisa de pelo menos dois players para renderizar duelo.
+          Este benchmark precisa de pelo menos dois players visíveis para renderizar duelo.
         </p>
       </div>
     )
   }
 
+  const [left, right] = pair
   const profileByKey = new Map(playerProfiles.map((p) => [p.key, p]))
   const colorOf = (key: string, idx: number) =>
     profileByKey.get(key)?.color || PALETTE[idx % PALETTE.length]
+  const displayName = (key: string) => profileByKey.get(key)?.name ?? key
 
   const leftScore = totalsByPlayer.get(left) ?? 0
   const rightScore = totalsByPlayer.get(right) ?? 0
+  const headlineLeft = leftScore >= rightScore
+  const scoreDelta = Math.abs(leftScore - rightScore)
+  const technicalTie = scoreDelta < 1
 
   const leftWins: ObservatoryMatrixRow[] = []
   const rightWins: ObservatoryMatrixRow[] = []
@@ -86,28 +112,48 @@ export function DuelView({
     })
     .filter((r): r is DuelRow => r !== null)
 
+  const presetLabel = personaActive
+    ? `Preset: ${personaActive.label}${personaActive.sub ? ` · ${personaActive.sub}` : ""}`
+    : hasOverrides
+    ? "Pesos customizados"
+    : "Baseline neutro"
+
   return (
     <LightScrollArea className="flex-1" viewportClassName="px-4 pb-12 pt-5 sm:px-6 sm:pb-14 sm:pt-6 lg:px-10 lg:pb-16 lg:pt-7">
       <div className="mx-auto w-full min-w-0 max-w-[1400px] space-y-6">
-        {/* Pair picker */}
+        {/* Header strip with preset chip */}
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <div
+            className="text-[10px] uppercase tracking-[0.18em] text-[var(--ink-dim)]"
+            style={{ fontFamily: MONO_FONT }}
+          >
+            ▸ Comparativo · {presetLabel} · {pairOptions.length} pares possíveis
+          </div>
+        </div>
+
+        {/* Pair picker — limited to visible players */}
         <div className="flex justify-end">
           <div className="inline-flex max-w-full flex-wrap justify-end gap-px border border-[var(--rule)] bg-[var(--rule)] p-px">
-            {pairOptions.map(([a, b], index) => (
-              <button
-                key={`${a}-${b}`}
-                type="button"
-                onClick={() => setPairIndex(index)}
-                className={cn(
-                  "h-8 px-3 text-[10px] uppercase tracking-[0.1em] transition-colors",
-                  pairIndex === index
-                    ? "bg-[var(--paper)] text-[var(--ink)]"
-                    : "bg-[var(--paper-alt)] text-[var(--ink-3)] hover:text-[var(--ink)]",
-                )}
-                style={{ fontFamily: MONO_FONT }}
-              >
-                {a} × {b}
-              </button>
-            ))}
+            {pairOptions.map(([a, b]) => {
+              const isActive = (pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a)
+              return (
+                <button
+                  key={`${a}-${b}`}
+                  type="button"
+                  onClick={() => setComparePair(a, b)}
+                  className={cn(
+                    "h-8 px-3 text-[10px] uppercase tracking-[0.1em] transition-colors",
+                    isActive
+                      ? "bg-[var(--paper)] text-[var(--ink)]"
+                      : "bg-[var(--paper-alt)] text-[var(--ink-3)] hover:text-[var(--ink)]",
+                  )}
+                  style={{ fontFamily: MONO_FONT }}
+                  title={`Comparar ${displayName(a)} vs ${displayName(b)}`}
+                >
+                  {displayName(a)} × {displayName(b)}
+                </button>
+              )
+            })}
           </div>
         </div>
 
@@ -123,14 +169,22 @@ export function DuelView({
                 className="text-[24px] font-black tracking-[-0.05em] text-[var(--ink)] sm:text-[28px] lg:text-[34px]"
                 style={{ fontFamily: DISPLAY_FONT }}
               >
-                {profileByKey.get(left)?.name ?? left}
+                {displayName(left)}
               </h3>
+              {headlineLeft && !technicalTie && (
+                <span
+                  className="ml-2 text-[10px] uppercase tracking-[0.12em] text-[var(--lime-ink)]"
+                  style={{ fontFamily: MONO_FONT }}
+                >
+                  ▸ Lead +{scoreDelta.toFixed(2)}
+                </span>
+              )}
             </div>
             <div
               className="mt-3 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)]"
               style={{ fontFamily: MONO_FONT }}
             >
-              neutral score
+              {hasOverrides ? "score (current weights)" : "score (baseline)"}
             </div>
             <div
               className="text-[36px] font-black leading-none tracking-[-0.06em] text-[var(--ink)] sm:text-[44px] lg:text-[56px]"
@@ -143,15 +197,23 @@ export function DuelView({
             className="grid place-items-center border-y border-[var(--rule)] bg-[var(--paper-alt)] py-2 text-[14px] italic text-[var(--ink-3)] md:border-x md:border-y-0 md:py-0"
             style={{ fontFamily: SERIF_FONT }}
           >
-            vs.
+            {technicalTie ? "≈" : "vs."}
           </div>
           <div className="px-3 py-4 text-right sm:px-5 sm:py-5 lg:px-8 lg:py-6">
             <div className="flex items-center justify-end gap-3">
+              {!headlineLeft && !technicalTie && (
+                <span
+                  className="text-[10px] uppercase tracking-[0.12em] text-[var(--lime-ink)]"
+                  style={{ fontFamily: MONO_FONT }}
+                >
+                  Lead +{scoreDelta.toFixed(2)} ◂
+                </span>
+              )}
               <h3
                 className="text-[24px] font-black tracking-[-0.05em] text-[var(--ink)] sm:text-[28px] lg:text-[34px]"
                 style={{ fontFamily: DISPLAY_FONT }}
               >
-                {profileByKey.get(right)?.name ?? right}
+                {displayName(right)}
               </h3>
               <span
                 className="h-3 w-3"
@@ -162,7 +224,7 @@ export function DuelView({
               className="mt-3 text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)]"
               style={{ fontFamily: MONO_FONT }}
             >
-              neutral score
+              {hasOverrides ? "score (current weights)" : "score (baseline)"}
             </div>
             <div
               className="text-[36px] font-black leading-none tracking-[-0.06em] text-[var(--ink)] sm:text-[44px] lg:text-[56px]"
@@ -242,17 +304,17 @@ export function DuelView({
         {/* Wins summary */}
         <div className="grid gap-4 xl:grid-cols-3">
           {([
-            [left, leftWins, profileByKey.get(left)?.name ?? left],
-            [right, rightWins, profileByKey.get(right)?.name ?? right],
+            [left, leftWins, displayName(left)],
+            [right, rightWins, displayName(right)],
             ["__ties__", ties, "Empates"],
-          ] as Array<[string, ObservatoryMatrixRow[], string]>).map(([key, wins, displayName]) => (
+          ] as Array<[string, ObservatoryMatrixRow[], string]>).map(([key, wins, label]) => (
             <section key={key} className="border border-[var(--rule)] bg-[var(--paper)] p-5">
               <div className="flex items-center justify-between">
                 <h4
                   className="text-[18px] font-black tracking-[-0.04em] text-[var(--ink)]"
                   style={{ fontFamily: DISPLAY_FONT }}
                 >
-                  {key === "__ties__" ? displayName : `${displayName} wins`}
+                  {key === "__ties__" ? label : `${label} wins`}
                 </h4>
                 <span
                   className="text-[10px] uppercase tracking-[0.12em] text-[var(--ink-3)]"
