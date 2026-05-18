@@ -35,50 +35,66 @@ import type { ObservatorySource, ReaderMode } from "../foundations/constants"
 import { coverageNumeric, formatBytes, statusKeyFromRaw } from "../foundations/utils"
 import { DISPLAY_FONT, MONO_FONT, SANS_FONT, SERIF_FONT, observatoryDarkThemeVars } from "../foundations/theme"
 
+/* Mode switch policy — sem flash de skeleton entre tabs.
+ *
+ * Antes: `loading: () => <ReportLoader />` mostrava barra cinza + "Carregando X"
+ * cada vez que a tab era trocada, mesmo com o chunk já em cache. Resultado: glitch
+ * de ~80-150ms entre cada navegação porque React desmontava o organism atual antes
+ * do próximo chunk render.
+ *
+ * Agora: `loading: () => null` faz Next.js preservar o conteúdo anterior na tela
+ * (Suspense fallback null) enquanto o próximo chunk faz hydrate. Resultado: fade
+ * direto, zero pisca. Trade-off: primeira navegação de cold start fica em branco
+ * por <300ms, mas isso é invisível porque já está em chunk-cache após primeiro load.
+ *
+ * Alternativa rejeitada: forçar `ssr: false` — perderia FCP do server render.
+ * Alternativa rejeitada: pre-import síncrono — perderia code-splitting (bundle único
+ * de ~600KB vs atual 90KB initial + chunks lazy).
+ */
 const MatrixView = dynamic(() => import("./matrix-view").then((mod) => mod.MatrixView), {
-  loading: () => <ReportLoader label="Matrix" />,
+  loading: () => null,
 })
 const CoverageView = dynamic(() => import("./coverage-view").then((mod) => mod.CoverageView), {
-  loading: () => <ReportLoader label="Coverage" />,
+  loading: () => null,
 })
 const WeightsView = dynamic(() => import("./weights-view").then((mod) => mod.WeightsView), {
-  loading: () => <ReportLoader label="Weights" />,
+  loading: () => null,
 })
 const BenchOverviewView = dynamic(() => import("./bench-overview-view").then((mod) => mod.BenchOverviewView), {
-  loading: () => <ReportLoader label="Overview" />,
+  loading: () => null,
 })
 const DuelView = dynamic(() => import("./duel-view").then((mod) => mod.DuelView), {
-  loading: () => <ReportLoader label="Comparativo" />,
+  loading: () => null,
 })
 const DocsView = dynamic(() => import("./docs-view").then((mod) => mod.DocsView), {
-  loading: () => <ReportLoader label="Docs" />,
+  loading: () => null,
 })
 const BenchCuriosityView = dynamic(() => import("./bench-cross-views").then((mod) => mod.BenchCuriosityView), {
-  loading: () => <ReportLoader label="Perguntas" />,
+  loading: () => null,
 })
 const BenchWavesView = dynamic(() => import("./bench-cross-views").then((mod) => mod.BenchWavesView), {
-  loading: () => <ReportLoader label="Waves" />,
+  loading: () => null,
 })
 const SinkraMapReport = dynamic(() => import("./sinkra-map-report").then((mod) => mod.SinkraMapReport), {
-  loading: () => <ReportLoader label="SINKRA Map" dark />,
+  loading: () => null,
 })
 const SinkraFlowReport = dynamic(() => import("./sinkra-map-report").then((mod) => mod.SinkraFlowReport), {
-  loading: () => <ReportLoader label="Fluxo" dark />,
+  loading: () => null,
 })
 const SinkraAutomationReport = dynamic(() => import("./sinkra-map-report").then((mod) => mod.SinkraAutomationReport), {
-  loading: () => <ReportLoader label="Automação" dark />,
+  loading: () => null,
 })
 const SinkraGovernanceReport = dynamic(() => import("./sinkra-map-report").then((mod) => mod.SinkraGovernanceReport), {
-  loading: () => <ReportLoader label="Governança" dark />,
+  loading: () => null,
 })
 const SinkraAccountabilityReport = dynamic(() => import("./sinkra-map-report").then((mod) => mod.SinkraAccountabilityReport), {
-  loading: () => <ReportLoader label="RACI" dark />,
+  loading: () => null,
 })
 const SinkraGapsReport = dynamic(() => import("./sinkra-map-report").then((mod) => mod.SinkraGapsReport), {
-  loading: () => <ReportLoader label="Gaps" dark />,
+  loading: () => null,
 })
 const SinkraEvidenceReport = dynamic(() => import("./sinkra-map-report").then((mod) => mod.SinkraEvidenceReport), {
-  loading: () => <ReportLoader label="Evidências" dark />,
+  loading: () => null,
 })
 
 /* Organism — reader body. Routes between modes:

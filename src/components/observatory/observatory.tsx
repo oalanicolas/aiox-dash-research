@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from "lucide-react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -326,10 +326,17 @@ export function Observatory({
     [router, searchParams, basePath, data.source],
   )
 
+  /* startTransition marca o swap de mode como low-priority — React preserva o
+     organism anterior na tela enquanto o próximo chunk hydrata, eliminando o
+     flash de "Carregando X" entre tabs. Combina com loading: () => null nos
+     dynamic imports do reader-body. */
+  const [, startModeTransition] = useTransition()
   const changeMode = useCallback(
     (nextMode: ReaderMode) => {
-      setMode(nextMode)
-      pushUrl({ view: nextMode })
+      startModeTransition(() => {
+        setMode(nextMode)
+        pushUrl({ view: nextMode })
+      })
     },
     [pushUrl],
   )
