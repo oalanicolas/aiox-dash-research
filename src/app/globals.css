@@ -24,15 +24,18 @@
   --font-bb-display: "TASAOrbiterDisplay", "TASAOrbiterDisplay Fallback", "Geist", system-ui, sans-serif;
   --font-bb-sans: "Geist", system-ui, -apple-system, sans-serif;
   --font-bb-mono: "Geist Mono", "Roboto Mono", ui-monospace, monospace;
+  --font-display: var(--font-bb-display);
+  --font-sans: var(--font-bb-sans);
+  --font-mono: var(--font-bb-mono);
 
   --lime: #d1ff00;
   --dark: #050505;
   --void: #000000;
   --surface: #0f0f11;
-  --surface-alt: #18181b;
+  --surface-alt: #1c1e19;
   --surface-deep: #0a0a0c;
   --surface-panel: #18181b;
-  --surface-console: #111113;
+  --surface-console: #1a1c14;
   --surface-hover: #1e1f22;
   --cream: rgb(244, 244, 232);
   --cream-alt: rgb(245, 244, 231);
@@ -49,27 +52,27 @@
   --success: #22c55e;
   --lime-02: rgba(209, 255, 0, 0.02);
   --lime-05: rgba(209, 255, 0, 0.05);
-  --lime-10: rgba(209, 255, 0, 0.1);
+  --lime-10: rgba(209,255,0,0.1);
   --lime-15: rgba(209, 255, 0, 0.15);
   --lime-25: rgba(209, 255, 0, 0.25);
-  --lime-40: rgba(209, 255, 0, 0.4);
+  --lime-40: rgba(209,255,0,0.4);
   --lime-75: rgba(209, 255, 0, 0.75);
   --fg1: var(--cream);
-  --fg2: rgba(244, 244, 232, 0.7);
+  --fg2: rgba(244,244,232,0.7);
   --fg3: rgba(244, 244, 232, 0.55);
-  --fg-dim: rgba(245, 244, 231, 0.4);
+  --fg-dim: rgba(245,244,231,0.4);
   --fg-meta: #afafaf;
   --fg-muted: #919191;
   --fg-on-lime: var(--dark);
   --border: rgba(156, 156, 156, 0.15);
-  --border-soft: rgba(156, 156, 156, 0.1);
+  --border-soft: rgba(156,156,156,0.1);
   --border-strong: rgba(156, 156, 156, 0.25);
   --border-hover: rgba(156, 156, 156, 0.24);
-  --border-input: rgba(156, 156, 156, 0.2);
+  --border-input: rgba(156,156,156,0.2);
   --lime-glow: rgba(209, 255, 0, 0.25);
-  --lime-glow-soft: rgba(209, 255, 0, 0.1);
-  --shadow: rgba(0, 0, 0, 0.2);
-  --overlay: rgba(61, 61, 61, 0.5);
+  --lime-glow-soft: rgba(209,255,0,0.1);
+  --shadow: rgba(0,0,0,0.2);
+  --overlay: rgba(61,61,61,0.5);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
   --ease-decel: cubic-bezier(0, 0, 0.2, 1);
@@ -244,10 +247,10 @@ a {
 
 .aiox-panel-kicker {
   font-family: var(--font-bb-mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.16em;
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--aiox-lime);
+  color: var(--aiox-fg-dim);
 }
 
 .aiox-panel-title {
