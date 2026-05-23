@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "outputDirectory": ".next",
+  "regions": ["gru1"],
+  "env": {
+    "DEPLOY_MODE": "remote"
+  },
+  "build": {
+    "env": {
+      "DEPLOY_MODE": "remote"
+    }
+  }
+}

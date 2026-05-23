@@ -41,16 +41,29 @@ type ObservatoryPageProps = {
   }>
 }
 
-export async function generateMetadata({ params }: ObservatoryPageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: ObservatoryPageProps): Promise<Metadata> {
   const { source } = await params
   if (!VALID_SOURCES.includes(source as ObservatorySource)) {
     return { title: "AIOX Research" }
   }
   const key = source as ObservatorySource
-  return {
-    title: SOURCE_TITLES[key] ?? "AIOX Research",
-    description: SOURCE_DESCRIPTIONS[key],
+  const baseTitle = SOURCE_TITLES[key] ?? "AIOX Research"
+  const description = SOURCE_DESCRIPTIONS[key]
+
+  const sp = searchParams ? await searchParams : undefined
+  if (sp?.slug) {
+    try {
+      const result = await getObservatoryData({ source: key, slug: sp.slug })
+      const run = result.data.selectedRun
+      if (run?.displayTitle) {
+        return { title: `${run.displayTitle} · AIOX Research`, description }
+      }
+    } catch {
+      // Slug missing or fetch failed — fall back to source-level title.
+    }
   }
+
+  return { title: baseTitle, description }
 }
 
 export default async function ObservatoryPage({ params, searchParams }: ObservatoryPageProps) {

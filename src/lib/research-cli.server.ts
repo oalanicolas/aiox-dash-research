@@ -32,6 +32,21 @@ import {
 } from "@/lib/research-workbench-contract"
 import { getDashWorkspaceRoot } from "@/lib/workspace-root.server"
 
+/**
+ * DEPLOY_MODE=remote disables the local CLI workbench (spawn, fs writes, etc.).
+ * Set in Vercel envs to make the deployed app render the read-only observatory
+ * without attempting to probe for Claude Code / Codex / Gemini binaries or
+ * write to `.tmp/aiox-research-runs/`. The local snapshot still powers the
+ * read-side. Future work: a remote CLI orchestrator at research.aioxsquad.ai.
+ */
+const IS_REMOTE_DEPLOY = process.env.DEPLOY_MODE?.trim().toLowerCase() === "remote"
+
+function remoteDeployRejection(message: string): never {
+  throw new Error(
+    "research-cli: " + message + " (DEPLOY_MODE=remote). The CLI workbench is local-only for now.",
+  )
+}
+
 type CliDefinition = {
   id: ResearchCliId
   name: string
@@ -105,7 +120,9 @@ type PersistedRunState = Omit<ResearchRunState, "log"> & {
   log: string
 }
 
-const RUNS_DIR = path.join(getDashWorkspaceRoot(), ".tmp", "aiox-research-runs")
+function getRunsDir(): string {
+  return path.join(getDashWorkspaceRoot(), ".tmp", "aiox-research-runs")
+}
 const LOCAL_LOG_PREFIX = "[localhost]"
 const FILESYSTEM_POLL_INTERVAL_MS = 5_000
 const FILESYSTEM_LATEST_FILE_LIMIT = 8
@@ -118,6 +135,13 @@ type PipelineProgressSource = ResearchFilesystemSnapshot["progress"] & {
 }
 
 export async function getResearchCliDiscovery(): Promise<ResearchCliDiscovery> {
+  if (IS_REMOTE_DEPLOY) {
+    return {
+      workspaceRoot: "(remote-deploy: workbench disabled)",
+      generatedAt: new Date().toISOString(),
+      clis: [],
+    }
+  }
   const clis = await Promise.all(CLI_DEFINITIONS.map(probeCliDefinition))
   return {
     workspaceRoot: getDashWorkspaceRoot(),
@@ -127,6 +151,7 @@ export async function getResearchCliDiscovery(): Promise<ResearchCliDiscovery> {
 }
 
 export async function startResearchRun(input: Partial<ResearchRunRequest>): Promise<ResearchRunState> {
+  if (IS_REMOTE_DEPLOY) remoteDeployRejection("startResearchRun is not available")
   const request = normalizeResearchRunRequest(input)
   if (request.query.length < 8) {
     throw new Error("Informe uma pergunta de pesquisa com pelo menos 8 caracteres.")
@@ -162,6 +187,7 @@ export async function startResearchRun(input: Partial<ResearchRunRequest>): Prom
 export async function startResearchConsolidationRun(
   input: Partial<ResearchConsolidationRunRequest>,
 ): Promise<ResearchRunState> {
+  if (IS_REMOTE_DEPLOY) remoteDeployRejection("startResearchConsolidationRun is not available")
   const request = normalizeResearchConsolidationRunRequest(input)
   if (request.query.length < 8) {
     throw new Error("Informe uma pergunta de pesquisa com pelo menos 8 caracteres.")
@@ -199,7 +225,7 @@ async function startCliBackedRun(input: CliBackedRunInput): Promise<ResearchRunS
     throw new Error("Este CLI foi detectado, mas ainda não possui execução web habilitada.")
   }
 
-  await mkdir(RUNS_DIR, { recursive: true })
+  await mkdir(getRunsDir(), { recursive: true })
 
   const runId = `${Date.now()}-${input.cliId}-${safeId(input.outputSlug)}`
   const shell = await ensureResearchRunShell({
@@ -212,8 +238,8 @@ async function startCliBackedRun(input: CliBackedRunInput): Promise<ResearchRunS
     prompt: input.prompt,
     logLabel: input.logLabel,
   })
-  const logPath = path.join(RUNS_DIR, `${runId}.log`)
-  const statePath = path.join(RUNS_DIR, `${runId}.json`)
+  const logPath = path.join(getRunsDir(), `${runId}.log`)
+  const statePath = path.join(getRunsDir(), `${runId}.json`)
   const now = new Date().toISOString()
   const initialState: ResearchRunState = {
     runId,
@@ -283,7 +309,7 @@ async function startCliBackedRun(input: CliBackedRunInput): Promise<ResearchRunS
 }
 
 async function startByokBackedRun(input: ByokBackedRunInput): Promise<ResearchRunState> {
-  await mkdir(RUNS_DIR, { recursive: true })
+  await mkdir(getRunsDir(), { recursive: true })
 
   const runId = `${Date.now()}-byok-${safeId(input.outputSlug)}`
   const workspaceRoot = getDashWorkspaceRoot()
@@ -297,8 +323,8 @@ async function startByokBackedRun(input: ByokBackedRunInput): Promise<ResearchRu
     prompt: input.prompt,
     logLabel: input.logLabel,
   })
-  const logPath = path.join(RUNS_DIR, `${runId}.log`)
-  const statePath = path.join(RUNS_DIR, `${runId}.json`)
+  const logPath = path.join(getRunsDir(), `${runId}.log`)
+  const statePath = path.join(getRunsDir(), `${runId}.json`)
   const now = new Date().toISOString()
   const providerLabel = input.byok.providerLabel || OPENROUTER_CLI_LABEL
   const initialState: ResearchRunState = {
@@ -556,9 +582,10 @@ function escapeYaml(value: string) {
 }
 
 export async function getResearchRunState(runId: string): Promise<ResearchRunState | null> {
+  if (IS_REMOTE_DEPLOY) return null
   const id = sanitizeId(runId)
   if (id !== runId) return null
-  const statePath = path.join(RUNS_DIR, `${id}.json`)
+  const statePath = path.join(getRunsDir(), `${id}.json`)
   if (!existsSync(statePath)) return null
   let state: PersistedRunState
   try {
