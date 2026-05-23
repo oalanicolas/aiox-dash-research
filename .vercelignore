@@ -1,0 +1,20 @@
+# Vercel honors .gitignore by default. .gitignore lists src/data/snapshot/ as
+# build-time material to keep the working tree clean. But on Vercel we cannot
+# regenerate the snapshot (the monorepo's docs/, outputs/ are not uploaded),
+# so we whitelist the pre-built snapshot here so it ships with the bundle.
+#
+# Workflow:
+#   1. local: `npm run snapshot` materializes src/data/snapshot/
+#   2. local: `vercel --prod` uploads apps/research/ (snapshot included via this whitelist)
+#   3. remote: `prebuild` script no-ops because VERCEL=1 and manifest exists
+#   4. remote: `next build` traces snapshot into lambda via outputFileTracingIncludes
+
+!src/data/snapshot
+!src/data/snapshot/**
+
+# Standard ignores Vercel should respect regardless of .gitignore quirks.
+.next/
+node_modules/
+.synapse/
+**/.synapse/
+*.tsbuildinfo

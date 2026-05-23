@@ -9,6 +9,14 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: appRoot,
   },
+  outputFileTracingRoot: appRoot,
+  outputFileTracingIncludes: {
+    "/research/**": ["./src/data/snapshot/**"],
+    "/research": ["./src/data/snapshot/**"],
+    "/observatory/**": ["./src/data/snapshot/**"],
+    "/observatory": ["./src/data/snapshot/**"],
+    "/": ["./src/data/snapshot/**"],
+  },
   webpack: (config) => {
     config.watchOptions = {
       ...config.watchOptions,
@@ -18,6 +26,7 @@ const nextConfig: NextConfig = {
         "**/.claude/**",
         "**/outputs/**",
         "**/squads/**",
+        "**/src/data/snapshot/**",
       ],
     }
     return config

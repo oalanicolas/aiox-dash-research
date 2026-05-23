@@ -94,7 +94,20 @@ export function getAvailableObservatorySources(): Array<[ObservatorySource, stri
     "sinkra-maps": path.join(root, "outputs", "sinkra-squad"),
     demo: "",
   }
-  const sources = OBSERVATORY_SOURCE_LABELS.filter(([source]) => source === "demo" || isDirectory(sourcePaths[source]))
+  // Deploy mode hides internal-only sources from the public surface. Triggers:
+  //   - DEPLOY_MODE=remote (explicit, set via Vercel envs)
+  //   - VERCEL=1 (auto-set by Vercel runtime — fallback safety net)
+  //   - NODE_ENV=production AND not local dev (covers any prod build path)
+  // Local dev (npm run dev) keeps everything visible.
+  const isRemoteDeploy =
+    process.env.DEPLOY_MODE?.trim().toLowerCase() === "remote" ||
+    process.env.VERCEL === "1"
+  const HIDDEN_IN_REMOTE: ObservatorySource[] = ["sinkra-maps", "demo"]
+  const sources = OBSERVATORY_SOURCE_LABELS.filter(([source]) => {
+    if (isRemoteDeploy && HIDDEN_IN_REMOTE.includes(source)) return false
+    if (source === "demo") return true
+    return isDirectory(sourcePaths[source])
+  })
   sourceAvailabilityCache = {
     cwd,
     expiresAt: now + SOURCE_CACHE_TTL_MS,
