@@ -15,6 +15,8 @@ const nextConfig: NextConfig = {
     "/research": ["./src/data/snapshot/**"],
     "/observatory/**": ["./src/data/snapshot/**"],
     "/observatory": ["./src/data/snapshot/**"],
+    "/graph/**": ["./src/data/snapshot/**"],
+    "/graph": ["./src/data/snapshot/**"],
     "/": ["./src/data/snapshot/**"],
   },
   webpack: (config) => {

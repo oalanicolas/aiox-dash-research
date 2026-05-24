@@ -1,15 +1,21 @@
 "use client"
 
 import { type CSSProperties } from "react"
+import Link from "next/link"
 import { Check, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { OBSERVATORY_SOURCES, type ObservatorySource } from "../foundations/constants"
 import { MONO_FONT } from "../foundations/theme"
 
+type TopbarNavItem =
+  | { kind: "source"; key: ObservatorySource; label: string }
+  | { kind: "graph"; key: "graph"; label: string }
+
 /* Organism — header principal do Observatory. Mantém a navegação entre fontes,
  * mas usa a faixa única brutalist do dashboard AIOX. */
 export function Topbar({
   source,
+  activeSurface,
   newActionLabel,
   selectedTitle,
   availableSources = OBSERVATORY_SOURCES,
@@ -25,11 +31,25 @@ export function Topbar({
   selectedDate: string
   selectedSchema: string
   availableSources?: Array<[ObservatorySource, string]>
+  activeSurface?: ObservatorySource | "graph"
   onChangeSource: (next: ObservatorySource) => void
   onCopyNew: () => void
   copiedNew?: boolean
 }) {
   const navSources = availableSources
+  const activeKey = activeSurface ?? source
+  const sourceNavItems: TopbarNavItem[] = navSources.map(([key, rawLabel]) => ({
+    kind: "source",
+    key,
+    label: key === "research" ? "Pesquisas" : rawLabel,
+  }))
+  const benchIndex = sourceNavItems.findIndex((item) => item.key === "bench")
+  const graphIndex = benchIndex >= 0 ? benchIndex + 1 : Math.min(2, sourceNavItems.length)
+  const navItems: TopbarNavItem[] = [
+    ...sourceNavItems.slice(0, graphIndex),
+    { kind: "graph", key: "graph", label: "Grafo" },
+    ...sourceNavItems.slice(graphIndex),
+  ]
   const topbarVars = {
     "--top-paper": "var(--dark, #050505)",
     "--top-paper-alt": "var(--surface, #0f0f11)",
@@ -72,31 +92,53 @@ export function Topbar({
         className="hidden min-w-0 items-stretch overflow-x-auto [scrollbar-width:none] md:flex"
         aria-label="Fontes do Observatory"
       >
-        {navSources.map(([key, rawLabel], idx) => {
-          const active = key === source
-          const label = key === "research" ? "Pesquisas" : rawLabel
+        {navItems.map((item, idx) => {
+          const active = item.key === activeKey
+          const content = (
+            <>
+              <span className="text-[var(--top-ink-dim)]">{String(idx + 1).padStart(2, "0")}</span>
+              <span className="truncate">{item.label}</span>
+              {active && <span className="absolute inset-x-0 bottom-0 h-px bg-[var(--top-lime)]" />}
+            </>
+          )
+          const className = cn(
+            "relative inline-flex h-14 shrink-0 items-center gap-2 px-[18px] text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors",
+            active
+              ? "text-[var(--top-lime)]"
+              : "text-[var(--top-ink-dim)] hover:bg-[rgba(245,244,231,0.025)] hover:text-[var(--top-ink)]",
+          )
+          const style = { fontFamily: MONO_FONT, fontSize: "11px", letterSpacing: "0.18em" }
+
+          if (item.kind === "graph") {
+            return (
+              <Link
+                key={item.key}
+                href="/graph"
+                className={className}
+                aria-current={active ? "page" : undefined}
+                style={style}
+              >
+                {content}
+              </Link>
+            )
+          }
+
           return (
             <button
-              key={key}
+              key={item.key}
               type="button"
-              onClick={() => !active && onChangeSource(key)}
-              className={cn(
-                "relative inline-flex h-14 shrink-0 items-center gap-2 px-[18px] text-[11px] font-semibold uppercase tracking-[0.18em] transition-colors",
-                active
-                  ? "text-[var(--top-lime)]"
-                  : "text-[var(--top-ink-dim)] hover:bg-[rgba(245,244,231,0.025)] hover:text-[var(--top-ink)]",
-              )}
-              style={{ fontFamily: MONO_FONT, fontSize: "11px", letterSpacing: "0.18em" }}
+              onClick={() => !active && onChangeSource(item.key)}
+              className={className}
+              aria-current={active ? "page" : undefined}
+              style={style}
             >
-              <span className="text-[var(--top-ink-dim)]">{String(idx + 1).padStart(2, "0")}</span>
-              <span className="truncate">{label}</span>
-              {active && <span className="absolute inset-x-0 bottom-0 h-px bg-[var(--top-lime)]" />}
+              {content}
             </button>
           )
         })}
       </nav>
 
-      <div className="flex h-14 shrink-0 items-center px-5">
+      <div className="flex h-14 shrink-0 items-center gap-2 px-5">
         <button
           type="button"
           onClick={onCopyNew}
