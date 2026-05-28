@@ -476,6 +476,7 @@ function FilesPane({
           subtitle={artifactSubtitle(doc)}
           file={doc.file}
           bytes={doc.bytes}
+          status={doc.status}
           isActive={doc.file === selectedFile}
           onSelect={() => onSelectFile(doc.file)}
         />
@@ -521,6 +522,8 @@ function artifactTitle(doc: ObservatoryDocument): string {
 }
 
 function artifactSubtitle(doc: ObservatoryDocument): string {
+  if (doc.status === "missing") return `${doc.file} · arquivo esperado ausente`
+  if (doc.status === "invalid") return `${doc.file} · conteúdo estruturado inválido`
   const heading = extractFirstHeading(doc.content)
   if (heading) return `${heading} · ${formatBytes(doc.bytes)}`
   return `${doc.file} · ${formatBytes(doc.bytes)}`

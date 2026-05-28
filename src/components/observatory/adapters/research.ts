@@ -63,21 +63,22 @@ export function mapResearchToObservatory(
 ): ObservatoryData {
   const runs = data.runs.map(mapRun)
   const selectedRun = mapRun(data.selectedRun)
+  const presentDocuments = data.documents.filter((doc) => doc.status !== "missing")
   const availableModes: ObservatoryData["availableModes"] = []
-  if (data.documents.length > 0 || data.topSources.length > 0 || data.players.length > 0) availableModes.push("map")
-  if (data.documents.length > 0) availableModes.push("slides")
-  if (data.documents.some((doc) => doc.phase === "recommend" || /recommend|quick-win|followup|follow-up|action-plan|risk-register|decision-ledger/i.test(doc.file))) {
+  if (presentDocuments.length > 0 || data.topSources.length > 0 || data.players.length > 0) availableModes.push("map")
+  if (presentDocuments.length > 0) availableModes.push("slides")
+  if (presentDocuments.some((doc) => doc.phase === "recommend" || /recommend|quick-win|followup|follow-up|action-plan|risk-register|decision-ledger/i.test(doc.file))) {
     availableModes.push("recommendations")
   }
-  if (data.topSources.length > 0 || data.documents.some((doc) => /^(research-graph\.json|claims\.yaml|validation-report\.yaml)$/.test(doc.file))) {
+  if (data.topSources.length > 0 || presentDocuments.some((doc) => /^(research-graph\.json|claims\.yaml|validation-report\.yaml)$/.test(doc.file))) {
     availableModes.push("evidence")
   }
-  if (selectedRun.waves > 0 || data.documents.some((doc) => doc.phase === "wave" || /wave/i.test(doc.file))) {
+  if (selectedRun.waves > 0 || presentDocuments.some((doc) => doc.phase === "wave" || /wave/i.test(doc.file))) {
     availableModes.push("waves")
   }
   if (data.topSources.length > 0) availableModes.push("sources")
   if (data.players.length > 0) availableModes.push("players")
-  if (data.documents.some((doc) => doc.file === "curiosity_queue.yaml")) availableModes.push("curiosity")
+  if (presentDocuments.some((doc) => doc.file === "curiosity_queue.yaml")) availableModes.push("curiosity")
   if (data.documents.length > 0) availableModes.push("document")
 
   return {

@@ -11,7 +11,7 @@ export type ResearchDocument = {
   id: string
   file: string
   phase: string
-  status: "present" | "missing"
+  status: "present" | "missing" | "invalid"
   bytes: number
   content: string
   truncated: boolean
@@ -174,6 +174,13 @@ const CONTENT_LIMIT = 30000
 const DISPLAY_TITLE_MAX = 60
 const RESEARCH_CACHE_TTL_MS = 5_000
 const LEGACY_PARALLEL_SUFFIX = /-(claude|codex|gemini|opencode|byok|consolidado)$/
+const EXPECTED_RESEARCH_FILES = [
+  ...CORE_FILES,
+  "metrics.yaml",
+  "pipeline-state.yaml",
+  "execution-log.jsonl",
+  "sources.yaml",
+]
 
 let summaryCache:
   | {
@@ -301,6 +308,10 @@ function phaseForFile(file: string) {
   if (file.endsWith(".yaml") || file.endsWith(".yml")) return "metadata"
   if (file.endsWith(".jsonl") || file.endsWith(".json")) return "log"
   return "artifact"
+}
+
+function isReadableResearchFile(file: string) {
+  return /\.(md|yaml|yml|jsonl|json)$/i.test(file)
 }
 
 function schemaForRun({
@@ -694,7 +705,7 @@ function parsePlayersYaml(raw: string): PlayerEntry[] {
 
 function filesForView(view?: ReaderMode, selectedFile?: string) {
   const files = new Set<string>()
-  if (selectedFile) files.add(selectedFile)
+  if (selectedFile && isReadableResearchFile(selectedFile)) files.add(selectedFile)
   if (!view || view === "document") return null
 
   files.add("README.md")
@@ -756,11 +767,28 @@ function filesForView(view?: ReaderMode, selectedFile?: string) {
 
 async function buildDocuments(runPath: string, view?: ReaderMode, selectedFile?: string) {
   const files = await listRunFiles(runPath)
-  const readableFiles = files.filter((file) => /\.(md|yaml|yml|jsonl|json)$/i.test(file))
+  const readableFiles = files.filter(isReadableResearchFile)
   const contentFiles = filesForView(view, selectedFile)
+  const expectedFiles = expectedFilesForView(view, selectedFile)
+  const documentFiles = [...new Set([
+    ...readableFiles,
+    ...[...expectedFiles].filter((file) => !files.includes(file)),
+  ])].sort(compareResearchFiles)
 
   return Promise.all(
-    readableFiles.map(async (file) => {
+    documentFiles.map(async (file) => {
+      if (!files.includes(file)) {
+        return {
+          id: file,
+          file,
+          phase: phaseForFile(file),
+          status: "missing" as const,
+          bytes: 0,
+          content: "",
+          truncated: false,
+        }
+      }
+
       const filePath = path.join(runPath, file)
       const shouldReadContent =
         contentFiles === null ||
@@ -773,18 +801,66 @@ async function buildDocuments(runPath: string, view?: ReaderMode, selectedFile?:
       ])
       const truncated = raw.length > CONTENT_LIMIT
       const content = truncated ? `${raw.slice(0, CONTENT_LIMIT)}\n\n[...conteúdo truncado para preview local...]` : raw
+      const status: ResearchDocument["status"] = structuredArtifactIsInvalid(file, raw) ? "invalid" : "present"
 
       return {
         id: file,
         file,
         phase: phaseForFile(file),
-        status: "present" as const,
+        status,
         bytes: fileStat.size,
         content,
         truncated,
       }
     }),
   )
+}
+
+function expectedFilesForView(view?: ReaderMode, selectedFile?: string) {
+  const files = new Set(EXPECTED_RESEARCH_FILES)
+  if (selectedFile && isReadableResearchFile(selectedFile)) files.add(selectedFile)
+  const viewFiles = filesForView(view, selectedFile)
+  if (viewFiles) {
+    for (const file of viewFiles) files.add(file)
+  }
+  return files
+}
+
+function compareResearchFiles(a: string, b: string) {
+  const priority = (file: string) => {
+    const expectedIndex = EXPECTED_RESEARCH_FILES.indexOf(file)
+    if (expectedIndex >= 0) return expectedIndex
+    if (/^wave[-_]/i.test(file)) return 40
+    if (/^\d{2}-/.test(file)) return 50
+    if (/\.ya?ml$/i.test(file)) return 70
+    if (/\.jsonl?$/i.test(file)) return 80
+    return 90
+  }
+  return priority(a) - priority(b) || a.localeCompare(b)
+}
+
+function structuredArtifactIsInvalid(file: string, content: string) {
+  if (!content.trim()) return false
+  try {
+    if (/\.ya?ml$/i.test(file)) {
+      YAML.parse(content)
+      return false
+    }
+    if (/\.json$/i.test(file)) {
+      JSON.parse(content)
+      return false
+    }
+    if (/\.jsonl$/i.test(file)) {
+      for (const line of content.split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (trimmed) JSON.parse(trimmed)
+      }
+      return false
+    }
+  } catch {
+    return true
+  }
+  return false
 }
 
 // In deploy mode, only runs with schema "rich" or "full" (i.e., hasCore +
@@ -853,9 +929,13 @@ export async function getResearchObservatoryData(selectedSlug?: string, selected
   const runs = summaries.map((run) => ({ ...run, active: run.slug === preferredSlug }))
   const selectedRun = runs.find((run) => run.slug === preferredSlug) ?? runs[0]
   const documents = await buildDocuments(path.join(researchRoot, selectedRun.slug), view, selectedFile)
-  const selectedDocument = documents.find((doc) => doc.file === selectedFile)
+  const presentDocuments = documents.filter((doc) => doc.status !== "missing")
+  const selectedDocument = presentDocuments.find((doc) => doc.file === selectedFile)
+    ?? (selectedFile ? documents.find((doc) => doc.file === selectedFile && doc.status === "missing") : undefined)
+    ?? presentDocuments.find((doc) => doc.file === "README.md")
+    ?? presentDocuments.find((doc) => doc.file === "02-research-report.md")
+    ?? presentDocuments[0]
     ?? documents.find((doc) => doc.file === "README.md")
-    ?? documents.find((doc) => doc.file === "02-research-report.md")
     ?? documents[0]
     ?? {
       id: "empty",
@@ -886,7 +966,7 @@ export async function getResearchObservatoryData(selectedSlug?: string, selected
     selectedDocument,
     sourceSummary: [
       `${selectedRun.sources} fontes indexadas`,
-      `${documents.length} artefatos legíveis`,
+      `${documents.filter((doc) => doc.status !== "missing").length} artefatos legíveis`,
       selectedRun.hasMetrics ? "metrics.yaml presente" : "metrics.yaml ausente",
       selectedRun.hasState ? "pipeline-state.yaml presente" : "pipeline-state.yaml ausente",
       selectedRun.hasLog ? "execution-log.jsonl presente" : "execution-log.jsonl ausente",

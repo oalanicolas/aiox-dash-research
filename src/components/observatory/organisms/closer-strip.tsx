@@ -180,6 +180,7 @@ export function CloserStrip({
                 file={doc.file}
                 phase={doc.phase}
                 bytes={doc.bytes}
+                status={doc.status}
                 isActive={doc.file === selectedFile}
                 onSelect={() => onSelectFile(doc.file)}
               />

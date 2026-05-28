@@ -17,6 +17,7 @@ export type ObservatoryDocument = {
   id: string
   file: string
   phase: string
+  status?: "present" | "missing" | "invalid"
   bytes: number
   content: string
   truncated: boolean

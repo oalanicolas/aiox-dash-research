@@ -126,6 +126,7 @@ export function ReaderBody({
   typeSpecific,
   benchCuriosity,
   benchWaves,
+  onSelectFile,
 }: {
   source?: ObservatorySource
   mode?: ReaderMode
@@ -152,10 +153,14 @@ export function ReaderBody({
   typeSpecific?: ObservatoryTypeSpecific
   benchCuriosity?: ObservatoryData["curiosity"]
   benchWaves?: ObservatoryData["waves"]
+  onSelectFile?: (file: string) => void
 }) {
   const benchReport = (children: ReactNode) =>
     source === "bench" || source === "demo" ? <BenchReportShell>{children}</BenchReportShell> : children
-  const researchLabels = researchDashboardLabels(documents ?? [])
+  const allDocuments = documents ?? []
+  const reportDocuments = allDocuments.filter((doc) => doc.status !== "missing")
+  const researchLabels = researchDashboardLabels(reportDocuments)
+  const selectedDocumentStatus = allDocuments.find((doc) => doc.file === file)?.status
 
   if (mode === "overview") {
     return <OverviewView runs={runs ?? []} />
@@ -180,7 +185,7 @@ export function ReaderBody({
       return (
         <ResearchMapReport
           runs={runs ?? []}
-          documents={documents ?? []}
+          documents={reportDocuments}
           sources={topSources ?? []}
           players={researchPlayers ?? []}
           sourceSummary={sourceSummary ?? []}
@@ -212,7 +217,7 @@ export function ReaderBody({
       <OperationalSlidesReport
         source={source ?? "research"}
         runs={runs ?? []}
-        documents={documents ?? []}
+        documents={reportDocuments}
         sourceSummary={sourceSummary ?? []}
         topSources={topSources ?? []}
         researchPlayers={researchPlayers ?? []}
@@ -221,13 +226,13 @@ export function ReaderBody({
     )
   }
   if (mode === "curiosity" && source === "research") {
-    return <ResearchCuriosityReport documents={documents ?? []} />
+    return <ResearchCuriosityReport documents={reportDocuments} />
   }
   if (mode === "recommendations" && source === "research") {
-    return <ResearchRecommendationsReport documents={documents ?? []} labels={researchLabels} />
+    return <ResearchRecommendationsReport documents={reportDocuments} labels={researchLabels} />
   }
   if (mode === "evidence" && source === "research") {
-    return <ResearchEvidenceReport runs={runs ?? []} documents={documents ?? []} sources={topSources ?? []} sourceSummary={sourceSummary ?? []} />
+    return <ResearchEvidenceReport runs={runs ?? []} documents={reportDocuments} sources={topSources ?? []} sourceSummary={sourceSummary ?? []} />
   }
   if (mode === "evidence" && (source === "bench" || source === "demo")) {
     return (
@@ -255,7 +260,7 @@ export function ReaderBody({
     )
   }
   if (mode === "waves" && source === "research") {
-    return <ResearchWavesReport runs={runs ?? []} documents={documents ?? []} />
+    return <ResearchWavesReport runs={runs ?? []} documents={reportDocuments} />
   }
   if (mode === "flow") {
     return <SinkraFlowReport sinkra={typeSpecific?.sinkra} />
@@ -279,7 +284,7 @@ export function ReaderBody({
     return <SourcesView sources={topSources ?? []} sourceSummary={sourceSummary ?? []} />
   }
   if (mode === "players") {
-    return <ResearchPlayersView players={researchPlayers ?? []} documents={documents ?? []} labels={researchLabels} />
+    return <ResearchPlayersView players={researchPlayers ?? []} documents={reportDocuments} labels={researchLabels} />
   }
   if (mode === "score") {
     return <BenchScoreReport dimensions={scoreDimensions ?? []} scoreMetrics={scoreMetrics ?? []} matrix={matrix ?? null} playerProfiles={playerProfiles ?? []} />
@@ -336,7 +341,7 @@ export function ReaderBody({
   }
 
   /* Default: document (markdown) */
-  if (file && isStructuredArtifact(file)) {
+  if (file && isStructuredArtifact(file) && selectedDocumentStatus !== "missing") {
     return <StructuredArtifactView file={file} content={content} bodyRef={bodyRef} />
   }
 
@@ -348,12 +353,13 @@ export function ReaderBody({
   if (file && documents && documents.length > 0 && activeRun) {
     return (
       <DocsView
-        documents={documents}
+        documents={allDocuments}
         selectedFile={file}
         content={content}
         sourceRoot={sourceRoot}
         runSlug={activeRun.slug}
         bodyRef={bodyRef}
+        onSelectFile={onSelectFile}
       />
     )
   }

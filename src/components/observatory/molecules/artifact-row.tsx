@@ -11,6 +11,7 @@ export function ArtifactRow({
   subtitle,
   file,
   bytes,
+  status = "present",
   isActive,
   onSelect,
 }: {
@@ -19,15 +20,18 @@ export function ArtifactRow({
   subtitle: string
   file: string
   bytes: number
+  status?: "present" | "missing" | "invalid"
   isActive: boolean
   onSelect: () => void
 }) {
+  const hasIssue = status === "missing" || status === "invalid"
   return (
     <li
       onClick={onSelect}
       className={cn(
         "grid min-h-[72px] cursor-pointer grid-cols-[34px_minmax(0,1fr)_12px] items-center gap-x-3 border-t border-[var(--rule-soft)] px-4 py-3 transition-colors",
         isActive ? "bg-[var(--paper)]" : "hover:bg-[var(--paper)]",
+        hasIssue && "bg-[var(--paper-alt)]",
       )}
     >
       <span
@@ -40,7 +44,11 @@ export function ArtifactRow({
         <span
           className={cn(
             "block truncate text-[13px] leading-tight",
-            isActive ? "text-[var(--ink)]" : "text-[var(--ink-2)]",
+            status === "missing"
+              ? "text-[var(--ink-dim)]"
+              : status === "invalid"
+                ? "text-red-700"
+                : isActive ? "text-[var(--ink)]" : "text-[var(--ink-2)]",
           )}
           title={title}
         >
@@ -49,6 +57,17 @@ export function ArtifactRow({
         <span className="mt-1 block truncate text-[14px] italic leading-tight text-[var(--ink-3)]" style={{ fontFamily: SERIF_FONT }} title={file}>
           {subtitle || `${file} · ${formatBytes(bytes)}`}
         </span>
+        {hasIssue && (
+          <span
+            className={cn(
+              "mt-1 inline-flex w-fit border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em]",
+              status === "invalid" ? "border-red-400/60 text-red-700" : "border-[var(--ink-faint)] text-[var(--ink-dim)]",
+            )}
+            style={{ fontFamily: MONO_FONT }}
+          >
+            {status === "invalid" ? "inválido" : "ausente"}
+          </span>
+        )}
       </span>
       <ArrowRight
         size={12}

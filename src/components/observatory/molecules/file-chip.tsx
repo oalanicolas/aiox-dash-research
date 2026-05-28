@@ -10,6 +10,7 @@ export function FileChip({
   file,
   phase,
   bytes,
+  status = "present",
   isActive,
   onSelect,
 }: {
@@ -17,9 +18,11 @@ export function FileChip({
   file: string
   phase: string
   bytes: number
+  status?: "present" | "missing" | "invalid"
   isActive: boolean
   onSelect: () => void
 }) {
+  const stateLabel = status === "missing" ? "ausente" : status === "invalid" ? "inválido" : phase
   return (
     <button
       type="button"
@@ -41,7 +44,11 @@ export function FileChip({
         <span
           className={cn(
             "max-w-[160px] truncate text-[11.5px]",
-            isActive ? "text-[var(--ink)]" : "text-[var(--ink-2)] group-hover:text-[var(--ink)]",
+            status === "missing"
+              ? "text-[var(--ink-dim)]"
+              : status === "invalid"
+                ? "text-red-700"
+                : isActive ? "text-[var(--ink)]" : "text-[var(--ink-2)] group-hover:text-[var(--ink)]",
           )}
           style={{ fontFamily: MONO_FONT }}
         >
@@ -53,10 +60,10 @@ export function FileChip({
           className="max-w-[140px] truncate text-[11px] italic text-[var(--ink-3)]"
           style={{ fontFamily: SERIF_FONT }}
         >
-          {phase}
+          {stateLabel}
         </span>
         <span className="text-[10px] text-[var(--ink-dim)]" style={{ fontFamily: MONO_FONT }}>
-          · {formatBytes(bytes)}
+          · {status === "missing" ? "0 B" : formatBytes(bytes)}
         </span>
       </span>
     </button>

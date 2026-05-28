@@ -145,6 +145,10 @@ export function Observatory({
   }, [data.availableModes, data.selectedDocument.file, data.selectedRun.slug, prevRunSlug, urlMode])
 
   useEffect(() => {
+    setSelectedFile((current) => current === data.selectedDocument.file ? current : data.selectedDocument.file)
+  }, [data.selectedDocument.file])
+
+  useEffect(() => {
     if (urlMode && urlMode !== mode) {
       setMode(urlMode)
       return
@@ -159,6 +163,17 @@ export function Observatory({
   )
 
   const selectedContent = useMemo(() => {
+    if (selectedDocument.status === "missing") {
+      return [
+        `# ${selectedDocument.file}`,
+        "",
+        "Arquivo esperado ausente neste run.",
+        "",
+        `- Fonte: \`${data.sourceRoot}/${data.selectedRun.slug}/${selectedDocument.file}\``,
+        `- Fase: \`${selectedDocument.phase}\``,
+        "- Estado: `missing`",
+      ].join("\n")
+    }
     const c = selectedDocument.content?.trim() ?? ""
     if (c.length > 0) return selectedDocument.content
     return placeholderMarkdown(
@@ -498,9 +513,9 @@ export function Observatory({
             canNext={canNextFile}
             onPrev={() => navigateFile(-1)}
             onNext={() => navigateFile(1)}
-            onCopy={() => navigator.clipboard?.writeText(selectedContent)}
             source={data.source}
             selectedRun={data.selectedRun}
+            fileStatus={selectedDocument.status}
             mode={mode}
             availableModes={data.availableModes}
             onChangeMode={changeMode}
@@ -539,6 +554,7 @@ export function Observatory({
             typeSpecific={data.typeSpecific}
             benchCuriosity={data.curiosity}
             benchWaves={data.waves}
+            onSelectFile={selectFile}
           />
         </section>
 

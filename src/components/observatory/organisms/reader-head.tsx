@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Check, Clipboard, FolderOpen, ScrollText } from "lucide-react"
+import { Check, Clipboard, FileText, FolderOpen, ScrollText } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Pager } from "../molecules/pager"
 import type { ObservatorySource, ReaderMode } from "../foundations/constants"
@@ -81,9 +81,9 @@ export function ReaderHead({
   canNext,
   onPrev,
   onNext,
-  onCopy,
   source = "research",
   selectedRun,
+  fileStatus = "present",
   mode = "document",
   availableModes = ["document"],
   onChangeMode,
@@ -101,47 +101,47 @@ export function ReaderHead({
   canNext: boolean
   onPrev: () => void
   onNext: () => void
-  onCopy: () => void
   source?: ObservatorySource
   selectedRun?: ObservatoryRunSummary
+  fileStatus?: "present" | "missing" | "invalid"
   mode?: ReaderMode
   availableModes?: ReaderMode[]
   onChangeMode?: (mode: ReaderMode) => void
   benchEyebrow?: { scale: string; subtitle?: string }
 }) {
-  const [copied, setCopied] = useState(false)
-  const [openingFolder, setOpeningFolder] = useState(false)
+  const [copiedPath, setCopiedPath] = useState(false)
+  const [openingTarget, setOpeningTarget] = useState<"file" | "folder" | null>(null)
   const [folderStatus, setFolderStatus] = useState<{ tone: "success" | "error"; message: string } | null>(null)
 
-  function handleCopy() {
-    onCopy()
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1800)
+  function handleCopyPath(path: string) {
+    void navigator.clipboard?.writeText(path)
+    setCopiedPath(true)
+    window.setTimeout(() => setCopiedPath(false), 1800)
   }
 
-  async function handleOpenFolder() {
-    if (openingFolder) return
-    setOpeningFolder(true)
+  async function handleOpenTarget(kind: "file" | "folder") {
+    if (openingTarget) return
+    setOpeningTarget(kind)
     setFolderStatus(null)
     try {
       const response = await fetch("/api/observatory/open-folder", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ source, slug: runSlug }),
+        body: JSON.stringify({ source, slug: runSlug, file: kind === "file" ? file : undefined }),
       })
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
-        throw new Error(payload?.error ?? "Não foi possível abrir a pasta.")
+        throw new Error(payload?.error ?? "Não foi possível abrir o item local.")
       }
-      setFolderStatus({ tone: "success", message: "Pasta aberta." })
+      setFolderStatus({ tone: "success", message: kind === "file" ? "Arquivo aberto." : "Pasta aberta." })
     } catch (error) {
       console.warn(error)
       setFolderStatus({
         tone: "error",
-        message: error instanceof Error ? error.message : "Não foi possível abrir a pasta.",
+        message: error instanceof Error ? error.message : "Não foi possível abrir o item local.",
       })
     } finally {
-      setOpeningFolder(false)
+      setOpeningTarget(null)
     }
   }
 
@@ -159,6 +159,7 @@ export function ReaderHead({
   const path = `${sourceRoot}/${runSlug}/${showFileMeta ? file : "structured-view"}`
   const runtimeRunIds = source === "research" ? selectedRun?.runtimeRunIds ?? [] : []
   const researchLogHref = runtimeRunIds.length > 0 ? `/research?runs=${encodeURIComponent(runtimeRunIds.join(","))}` : ""
+  const canOpenLocalFile = source !== "demo" && showFileMeta && fileStatus !== "missing"
 
   return (
     <div className={cn(
@@ -230,8 +231,18 @@ export function ReaderHead({
                 <>
                   <button
                     type="button"
-                    onClick={handleOpenFolder}
-                    disabled={openingFolder || source === "demo"}
+                    onClick={() => handleOpenTarget("file")}
+                    disabled={!canOpenLocalFile || openingTarget !== null}
+                    className="inline-flex h-[var(--dash-control-h)] w-[var(--dash-control-h)] items-center justify-center border border-[var(--ink-faint)] text-[var(--ink-3)] transition-colors hover:border-[var(--ink)] hover:text-[var(--ink)] disabled:cursor-not-allowed disabled:opacity-45"
+                    title={fileStatus === "missing" ? "Arquivo ausente" : "Abrir arquivo"}
+                    aria-label={fileStatus === "missing" ? "Arquivo ausente" : "Abrir arquivo"}
+                  >
+                    <FileText size={14} strokeWidth={1.75} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenTarget("folder")}
+                    disabled={openingTarget !== null || source === "demo"}
                     className="inline-flex h-[var(--dash-control-h)] w-[var(--dash-control-h)] items-center justify-center border border-[var(--ink-faint)] text-[var(--ink-3)] transition-colors hover:border-[var(--ink)] hover:text-[var(--ink)] disabled:cursor-not-allowed disabled:opacity-45"
                     title="Abrir pasta do run"
                     aria-label="Abrir pasta do run"
@@ -240,18 +251,18 @@ export function ReaderHead({
                   </button>
                   <button
                     type="button"
-                    onClick={handleCopy}
+                    onClick={() => handleCopyPath(path)}
                     className={cn(
                       "inline-flex h-[var(--dash-control-h)] items-center gap-1.5 border px-2.5 transition-colors",
-                      copied
+                      copiedPath
                         ? "border-[var(--lime-ink)] text-[var(--lime-ink)]"
                         : "border-[var(--ink-faint)] text-[var(--ink-3)] hover:border-[var(--ink)] hover:text-[var(--ink)]",
                     )}
-                    title="Copiar conteúdo"
+                    title="Copiar path"
                   >
-                    {copied ? <Check size={13} strokeWidth={1.75} /> : <Clipboard size={13} strokeWidth={1.75} />}
+                    {copiedPath ? <Check size={13} strokeWidth={1.75} /> : <Clipboard size={13} strokeWidth={1.75} />}
                     <span className="text-[10px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO_FONT }}>
-                      {copied ? "Copiado" : "Copiar"}
+                      {copiedPath ? "Copiado" : "Path"}
                     </span>
                   </button>
                   <Pager

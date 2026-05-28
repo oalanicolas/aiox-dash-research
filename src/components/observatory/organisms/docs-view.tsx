@@ -42,6 +42,7 @@ export function DocsView({
   sourceRoot,
   runSlug,
   bodyRef,
+  onSelectFile,
 }: {
   documents: ObservatoryDocument[]
   selectedFile: string
@@ -49,6 +50,7 @@ export function DocsView({
   sourceRoot: string
   runSlug: string
   bodyRef?: RefObject<HTMLDivElement | null>
+  onSelectFile?: (file: string) => void
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -59,11 +61,17 @@ export function DocsView({
 
   const selectFile = useCallback(
     (file: string) => {
+      if (file === selectedFile) return
+      if (onSelectFile) {
+        onSelectFile(file)
+        return
+      }
       const params = new URLSearchParams(searchParams?.toString() ?? "")
       params.set("file", file)
-      router.push(`?${params.toString()}`, { scroll: true })
+      params.set("view", "document")
+      router.push(`?${params.toString()}`, { scroll: false })
     },
-    [router, searchParams],
+    [onSelectFile, router, searchParams, selectedFile],
   )
 
   const toggleTheme = useCallback(() => {

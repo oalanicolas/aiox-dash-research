@@ -19,29 +19,39 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null)
   const source = typeof body?.source === "string" ? body.source : ""
   const slug = typeof body?.slug === "string" ? body.slug : ""
+  const file = typeof body?.file === "string" ? body.file : ""
 
   if (!isOpenableSource(source)) {
     return NextResponse.json({ error: "Fonte sem pasta local abrível." }, { status: 400 })
   }
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,180}$/.test(slug)) {
+  const safeSlug = safeRunSlug(slug)
+  if (!safeSlug) {
     return NextResponse.json({ error: "Slug inválido." }, { status: 400 })
+  }
+  const safeFile = file ? safeRelativePath(file) : ""
+  if (file && !safeFile) {
+    return NextResponse.json({ error: "Arquivo inválido." }, { status: 400 })
   }
 
   const basePath = resolveDashPath(...SOURCE_ROOTS[source])
-  const targetPath = path.resolve(basePath, slug)
-  if (!isInside(targetPath, basePath)) {
+  const runPath = path.resolve(basePath, safeSlug)
+  if (!isInside(runPath, basePath)) {
     return NextResponse.json({ error: "Pasta fora do workspace." }, { status: 400 })
+  }
+  const targetPath = safeFile ? path.resolve(runPath, safeFile) : runPath
+  if (!isInside(targetPath, runPath)) {
+    return NextResponse.json({ error: "Arquivo fora do run." }, { status: 400 })
   }
 
   try {
     const info = await stat(targetPath)
-    if (!info.isDirectory()) {
-      return NextResponse.json({ error: "Pasta não encontrada." }, { status: 404 })
+    if (safeFile ? !info.isFile() : !info.isDirectory()) {
+      return NextResponse.json({ error: safeFile ? "Arquivo não encontrado." : "Pasta não encontrada." }, { status: 404 })
     }
-    await openFolder(targetPath)
-    return NextResponse.json({ ok: true, path: targetPath })
+    await openLocalPath(targetPath)
+    return NextResponse.json({ ok: true, path: targetPath, kind: safeFile ? "file" : "folder" })
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Falha ao abrir pasta."
+    const message = error instanceof Error ? error.message : "Falha ao abrir item local."
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -55,7 +65,23 @@ function isInside(targetPath: string, basePath: string) {
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))
 }
 
-function openFolder(targetPath: string) {
+function safeRunSlug(value: string) {
+  if (!value || value.includes("\0")) return ""
+  if (value === "." || value === ".." || value.startsWith(".")) return ""
+  if (path.isAbsolute(value) || value.includes("/") || value.includes("\\")) return ""
+  return value
+}
+
+function safeRelativePath(value: string) {
+  if (!value || value.includes("\0")) return ""
+  const normalized = path.normalize(value)
+  if (normalized === "." || normalized === ".." || path.isAbsolute(normalized) || normalized.startsWith(`..${path.sep}`)) {
+    return ""
+  }
+  return normalized
+}
+
+function openLocalPath(targetPath: string) {
   const [command, args] =
     process.platform === "darwin"
       ? ["open", [targetPath]]
